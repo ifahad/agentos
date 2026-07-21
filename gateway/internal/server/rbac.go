@@ -132,6 +132,7 @@ func (s *Server) handleCreateOrg(w http.ResponseWriter, r *http.Request, c *call
 	var req struct {
 		Name             string  `json:"name"`
 		MonthlyBudgetUSD float64 `json:"monthly_budget_usd"`
+		RateLimitRPM     int     `json:"rate_limit_rpm"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, errUnsupported, "invalid JSON body")
@@ -146,7 +147,61 @@ func (s *Server) handleCreateOrg(w http.ResponseWriter, r *http.Request, c *call
 		writeError(w, http.StatusInternalServerError, errProviderError, "failed to create org")
 		return
 	}
+	// An optional non-zero rate limit is applied post-create so CreateOrg keeps
+	// its Phase 5 signature (0 = unlimited, the default).
+	if req.RateLimitRPM != 0 {
+		org, err = s.store.UpdateOrg(r.Context(), org.ID, nil, &req.RateLimitRPM)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, errProviderError, "failed to set org rate limit")
+			return
+		}
+	}
 	writeJSON(w, http.StatusOK, org)
+}
+
+// handleUpdateOrg patches an org's monthly budget and/or rate limit. Root may
+// patch any org; a user must be an owner or admin of the target org (the
+// update_org capability). A nil field is left unchanged.
+func (s *Server) handleUpdateOrg(w http.ResponseWriter, r *http.Request, c *caller) {
+	orgID := r.PathValue("org_id")
+	if !s.authorizeOrgAction(w, c, orgID, rbac.ActUpdateOrg) {
+		return
+	}
+	var req struct {
+		MonthlyBudgetUSD *float64 `json:"monthly_budget_usd"`
+		RateLimitRPM     *int     `json:"rate_limit_rpm"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, errUnsupported, "invalid JSON body")
+		return
+	}
+	org, err := s.store.UpdateOrg(r.Context(), orgID, req.MonthlyBudgetUSD, req.RateLimitRPM)
+	if errors.Is(err, store.ErrOrgNotFound) {
+		writeError(w, http.StatusNotFound, errNotFound, "unknown org "+orgID)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errProviderError, "failed to update org")
+		return
+	}
+	writeJSON(w, http.StatusOK, org)
+}
+
+// handleWhoami reports the authenticated caller's identity. Root → {"root":true};
+// a user token → its id, org, email, and role. Unauthenticated callers are
+// rejected by adminAuth with 401 invalid_key before reaching here.
+func (s *Server) handleWhoami(w http.ResponseWriter, _ *http.Request, c *caller) {
+	if c.root {
+		writeJSON(w, http.StatusOK, map[string]any{"root": true})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"root":    false,
+		"user_id": c.user.ID,
+		"org_id":  c.user.OrgID,
+		"email":   c.user.Email,
+		"role":    c.user.Role,
+	})
 }
 
 // orgWithSpend is one row of GET /admin/orgs: an org plus its aggregate spend.

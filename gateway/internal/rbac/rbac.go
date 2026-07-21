@@ -30,6 +30,7 @@ type Action string
 const (
 	ActCreateOrg  Action = "create_org"
 	ActListOrgs   Action = "list_orgs"
+	ActUpdateOrg  Action = "update_org"
 	ActCreateUser Action = "create_user"
 	ActListUsers  Action = "list_users"
 	ActDeleteUser Action = "delete_user"
@@ -46,11 +47,13 @@ const (
 //   - viewer: read-only usage/audit
 var capabilities = map[string]map[Action]bool{
 	RoleOwner: {
+		ActUpdateOrg:  true,
 		ActCreateUser: true, ActListUsers: true, ActDeleteUser: true,
 		ActCreateKey: true, ActListKeys: true,
 		ActViewUsage: true, ActViewAudit: true,
 	},
 	RoleAdmin: {
+		ActUpdateOrg:  true,
 		ActCreateUser: true, ActListUsers: true, ActDeleteUser: true,
 		ActCreateKey: true, ActListKeys: true,
 		ActViewUsage: true, ActViewAudit: true,

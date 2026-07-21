@@ -26,6 +26,12 @@ func TestCanCapabilityMatrix(t *testing.T) {
 		{RoleOwner, ActListOrgs, false},
 		{RoleAdmin, ActCreateOrg, false},
 
+		// update_org: owner and admin yes; member and viewer no.
+		{RoleOwner, ActUpdateOrg, true},
+		{RoleAdmin, ActUpdateOrg, true},
+		{RoleMember, ActUpdateOrg, false},
+		{RoleViewer, ActUpdateOrg, false},
+
 		// Owner manages users and keys, views everything.
 		{RoleOwner, ActCreateUser, true},
 		{RoleOwner, ActDeleteUser, true},

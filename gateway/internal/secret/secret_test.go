@@ -37,7 +37,8 @@ func TestFromEnvDefaultsToEnv(t *testing.T) {
 }
 
 func TestFromEnvUnknownBackend(t *testing.T) {
-	t.Setenv("AGENTOS_SECRETS_BACKEND", "vault")
+	// "vault" is a valid backend as of Phase 6; use a name that is still unknown.
+	t.Setenv("AGENTOS_SECRETS_BACKEND", "consul")
 	if _, err := FromEnv(); err == nil {
 		t.Fatal("FromEnv with unknown backend: want error")
 	}

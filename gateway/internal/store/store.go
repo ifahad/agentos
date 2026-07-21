@@ -41,6 +41,9 @@ const (
 	// KindGuardrailError marks a failed model-classifier call: the request
 	// was allowed (fail open) but the blind spot is audited.
 	KindGuardrailError = "guardrail_error"
+	// KindRateLimited marks a request rejected by the per-tenant rate limiter
+	// (Phase 6). No spend is recorded; only the rejection is audited.
+	KindRateLimited = "rate_limited"
 )
 
 // Key is an authenticated virtual key.
@@ -54,10 +57,13 @@ type Key struct {
 // Org is a tenant. A MonthlyBudgetUSD of 0 means unlimited (the org budget cap
 // is skipped) — this keeps the bootstrapped default org behaving as Phase 1–4.
 type Org struct {
-	ID               string    `json:"id"`
-	Name             string    `json:"name"`
-	MonthlyBudgetUSD float64   `json:"monthly_budget_usd"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID               string  `json:"id"`
+	Name             string  `json:"name"`
+	MonthlyBudgetUSD float64 `json:"monthly_budget_usd"`
+	// RateLimitRPM is the org's requests-per-minute cap (Phase 6). 0 means
+	// unlimited (the default), preserving Phase 1–5 behavior.
+	RateLimitRPM int       `json:"rate_limit_rpm"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 // User is a member of an org, authenticated by an agu- token.
@@ -135,8 +141,18 @@ type Store interface {
 	Org(ctx context.Context, id string) (*Org, error)                               // ErrOrgNotFound
 	Orgs(ctx context.Context) ([]Org, error)
 	OrgSpend(ctx context.Context, orgID string) (float64, error) // sum of the org's keys' spend
+	// UpdateOrg patches an org's monthly budget and/or rate limit (Phase 6). A
+	// nil field is left unchanged. Returns the updated org, or ErrOrgNotFound.
+	UpdateOrg(ctx context.Context, id string, monthlyBudgetUSD *float64, rateLimitRPM *int) (*Org, error)
 	CreateUser(ctx context.Context, orgID, email, role string) (user *User, token string, err error)
 	AuthenticateUser(ctx context.Context, token string) (*User, error) // ErrInvalidToken
+	// UserByEmail finds a user by email within an org (Phase 6 SSO upsert).
+	// Returns ErrUserNotFound when no such user exists.
+	UserByEmail(ctx context.Context, orgID, email string) (*User, error)
+	// IssueUserToken rotates and returns a fresh agu- token for an existing
+	// user (Phase 6 SSO login mints a token for a returning user). The prior
+	// token is invalidated. Returns ErrUserNotFound for an unknown user id.
+	IssueUserToken(ctx context.Context, userID string) (token string, err error)
 	Users(ctx context.Context, orgID string) ([]User, error)
 	DeleteUser(ctx context.Context, orgID, userID string) error // ErrUserNotFound
 }

@@ -64,6 +64,10 @@ CREATE INDEX IF NOT EXISTS users_org_idx ON users (org_id);
 -- Pre-existing keys join the bootstrapped default org, attributed to root.
 ALTER TABLE keys ADD COLUMN IF NOT EXISTS org_id     TEXT NOT NULL DEFAULT 'org_default';
 ALTER TABLE keys ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT 'root';
+
+-- Phase 6 per-tenant rate limits (additive, migration-safe). 0 = unlimited,
+-- so pre-existing orgs keep Phase 1–5 behavior.
+ALTER TABLE orgs ADD COLUMN IF NOT EXISTS rate_limit_rpm INTEGER NOT NULL DEFAULT 0;
 `
 
 // NewPostgres connects to databaseURL and ensures the schema exists.
@@ -270,8 +274,8 @@ func (p *Postgres) EnsureOrg(ctx context.Context, id, name string, monthlyBudget
 func (p *Postgres) Org(ctx context.Context, id string) (*Org, error) {
 	var o Org
 	err := p.pool.QueryRow(ctx,
-		`SELECT id, name, monthly_budget_usd, created_at FROM orgs WHERE id = $1`, id).
-		Scan(&o.ID, &o.Name, &o.MonthlyBudgetUSD, &o.CreatedAt)
+		`SELECT id, name, monthly_budget_usd, rate_limit_rpm, created_at FROM orgs WHERE id = $1`, id).
+		Scan(&o.ID, &o.Name, &o.MonthlyBudgetUSD, &o.RateLimitRPM, &o.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrOrgNotFound
 	}
@@ -283,7 +287,7 @@ func (p *Postgres) Org(ctx context.Context, id string) (*Org, error) {
 
 func (p *Postgres) Orgs(ctx context.Context) ([]Org, error) {
 	rows, err := p.pool.Query(ctx,
-		`SELECT id, name, monthly_budget_usd, created_at FROM orgs ORDER BY id`)
+		`SELECT id, name, monthly_budget_usd, rate_limit_rpm, created_at FROM orgs ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("query orgs: %w", err)
 	}
@@ -291,12 +295,33 @@ func (p *Postgres) Orgs(ctx context.Context) ([]Org, error) {
 	var out []Org
 	for rows.Next() {
 		var o Org
-		if err := rows.Scan(&o.ID, &o.Name, &o.MonthlyBudgetUSD, &o.CreatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.Name, &o.MonthlyBudgetUSD, &o.RateLimitRPM, &o.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan org: %w", err)
 		}
 		out = append(out, o)
 	}
 	return out, rows.Err()
+}
+
+// UpdateOrg patches the monthly budget and/or rate limit; nil fields are left
+// unchanged. It uses COALESCE so a single statement handles any combination.
+func (p *Postgres) UpdateOrg(ctx context.Context, id string, monthlyBudgetUSD *float64, rateLimitRPM *int) (*Org, error) {
+	var o Org
+	err := p.pool.QueryRow(ctx,
+		`UPDATE orgs SET
+                 monthly_budget_usd = COALESCE($2, monthly_budget_usd),
+                 rate_limit_rpm     = COALESCE($3, rate_limit_rpm)
+             WHERE id = $1
+             RETURNING id, name, monthly_budget_usd, rate_limit_rpm, created_at`,
+		id, monthlyBudgetUSD, rateLimitRPM).
+		Scan(&o.ID, &o.Name, &o.MonthlyBudgetUSD, &o.RateLimitRPM, &o.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrOrgNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("update org: %w", err)
+	}
+	return &o, nil
 }
 
 func (p *Postgres) OrgSpend(ctx context.Context, orgID string) (float64, error) {
@@ -346,6 +371,36 @@ func (p *Postgres) AuthenticateUser(ctx context.Context, token string) (*User, e
 		return nil, fmt.Errorf("authenticate user: %w", err)
 	}
 	return &u, nil
+}
+
+func (p *Postgres) UserByEmail(ctx context.Context, orgID, email string) (*User, error) {
+	var u User
+	err := p.pool.QueryRow(ctx,
+		`SELECT id, org_id, email, role, created_at FROM users WHERE org_id = $1 AND email = $2 ORDER BY created_at LIMIT 1`,
+		orgID, email).Scan(&u.ID, &u.OrgID, &u.Email, &u.Role, &u.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrUserNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("user by email: %w", err)
+	}
+	return &u, nil
+}
+
+func (p *Postgres) IssueUserToken(ctx context.Context, userID string) (string, error) {
+	token, err := newUserToken()
+	if err != nil {
+		return "", err
+	}
+	tag, err := p.pool.Exec(ctx,
+		`UPDATE users SET token_hash = $1 WHERE id = $2`, hashSecret(token), userID)
+	if err != nil {
+		return "", fmt.Errorf("issue user token: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return "", ErrUserNotFound
+	}
+	return token, nil
 }
 
 func (p *Postgres) Users(ctx context.Context, orgID string) ([]User, error) {

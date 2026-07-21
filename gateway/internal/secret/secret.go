@@ -12,9 +12,10 @@ import (
 
 // Backend identifiers selected by AGENTOS_SECRETS_BACKEND.
 const (
-	BackendEnv  = "env"
-	BackendFile = "file"
-	BackendAge  = "age"
+	BackendEnv   = "env"
+	BackendFile  = "file"
+	BackendAge   = "age"
+	BackendVault = "vault"
 )
 
 // Source resolves named secrets. Get reports the value and whether it is set;
@@ -129,7 +130,9 @@ func FromEnv() (Source, error) {
 		return NewFile(os.Getenv("AGENTOS_SECRETS_FILE"))
 	case BackendAge:
 		return NewAge(os.Getenv("AGENTOS_SECRETS_FILE"), os.Getenv("AGENTOS_SECRETS_AGE_KEY"))
+	case BackendVault:
+		return NewVault(os.Getenv("AGENTOS_VAULT_ADDR"), os.Getenv("AGENTOS_VAULT_TOKEN"), os.Getenv("AGENTOS_VAULT_KV_PATH"))
 	default:
-		return nil, fmt.Errorf("AGENTOS_SECRETS_BACKEND must be env, file, or age (got %q)", backend)
+		return nil, fmt.Errorf("AGENTOS_SECRETS_BACKEND must be env, file, age, or vault (got %q)", backend)
 	}
 }

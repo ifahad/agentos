@@ -231,6 +231,23 @@ func (m *Memory) Orgs(_ context.Context) ([]Org, error) {
 	return out, nil
 }
 
+func (m *Memory) UpdateOrg(_ context.Context, id string, monthlyBudgetUSD *float64, rateLimitRPM *int) (*Org, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	o, ok := m.orgs[id]
+	if !ok {
+		return nil, ErrOrgNotFound
+	}
+	if monthlyBudgetUSD != nil {
+		o.MonthlyBudgetUSD = *monthlyBudgetUSD
+	}
+	if rateLimitRPM != nil {
+		o.RateLimitRPM = *rateLimitRPM
+	}
+	cp := *o
+	return &cp, nil
+}
+
 func (m *Memory) OrgSpend(_ context.Context, orgID string) (float64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -277,6 +294,33 @@ func (m *Memory) AuthenticateUser(_ context.Context, token string) (*User, error
 		}
 	}
 	return nil, ErrInvalidToken
+}
+
+func (m *Memory) UserByEmail(_ context.Context, orgID, email string) (*User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, mu := range m.users {
+		if mu.user.OrgID == orgID && mu.user.Email == email {
+			cp := mu.user
+			return &cp, nil
+		}
+	}
+	return nil, ErrUserNotFound
+}
+
+func (m *Memory) IssueUserToken(_ context.Context, userID string) (string, error) {
+	token, err := newUserToken()
+	if err != nil {
+		return "", err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mu, ok := m.users[userID]
+	if !ok {
+		return "", ErrUserNotFound
+	}
+	mu.tokenHash = hashSecret(token)
+	return token, nil
 }
 
 func (m *Memory) Users(_ context.Context, orgID string) ([]User, error) {

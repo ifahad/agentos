@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ifahad/agentos/gateway/internal/guardrail"
+	"github.com/ifahad/agentos/gateway/internal/oidc"
 	"github.com/ifahad/agentos/gateway/internal/provider"
 	"github.com/ifahad/agentos/gateway/internal/secret"
 	"github.com/ifahad/agentos/gateway/internal/server"
@@ -109,6 +110,31 @@ func main() {
 			opts = append(opts, server.WithCORSOrigins(origins))
 			log.Printf("CORS enabled for %d origin(s)", len(origins))
 		}
+	}
+
+	// Per-tenant rate limits (Phase 6). Default 0 = unlimited unless an org
+	// opts in, so behavior is unchanged when the env is unset.
+	if raw := os.Getenv("AGENTOS_RATE_LIMIT_RPM"); raw != "" {
+		rpm, err := strconv.Atoi(raw)
+		if err != nil || rpm < 0 {
+			log.Fatalf("AGENTOS_RATE_LIMIT_RPM must be a non-negative integer (got %q)", raw)
+		}
+		opts = append(opts, server.WithRateLimits(rpm))
+		if rpm > 0 {
+			log.Printf("default rate limit: %d requests/min per org", rpm)
+		}
+	}
+
+	// OpenID Connect SSO (Phase 6). Enabled only when AGENTOS_OIDC_ISSUER is
+	// set; misconfiguration (discovery failure, missing client id/secret) is
+	// fatal at startup.
+	oidcProvider, oidcEnabled, err := oidc.FromEnv(ctx, adminKey)
+	if err != nil {
+		log.Fatalf("OIDC: %v", err)
+	}
+	if oidcEnabled {
+		opts = append(opts, server.WithOIDC(oidcProvider))
+		log.Printf("OIDC SSO enabled (issuer=%s)", oidcProvider.Issuer())
 	}
 
 	if endpoint := os.Getenv("AGENTOS_OTEL_ENDPOINT"); endpoint != "" {

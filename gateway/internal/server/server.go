@@ -20,7 +20,9 @@ import (
 	"go.opentelemetry.io/otel/trace/noop"
 
 	"github.com/ifahad/agentos/gateway/internal/guardrail"
+	"github.com/ifahad/agentos/gateway/internal/oidc"
 	"github.com/ifahad/agentos/gateway/internal/provider"
+	"github.com/ifahad/agentos/gateway/internal/ratelimit"
 	"github.com/ifahad/agentos/gateway/internal/rbac"
 	"github.com/ifahad/agentos/gateway/internal/secret"
 	"github.com/ifahad/agentos/gateway/internal/store"
@@ -36,6 +38,9 @@ const (
 	errGuardrailBlocked  = "guardrail_blocked"
 	errForbidden         = "forbidden"
 	errNotFound          = "not_found"
+	errRateLimited       = "rate_limited"
+	errSSODisabled       = "sso_disabled"
+	errSSOFailed         = "sso_failed"
 )
 
 // Audit listing bounds from the frozen contract.
@@ -56,6 +61,9 @@ type Server struct {
 	tracer      trace.Tracer
 	secrets     secret.Source
 	secretNames []string
+	oidc        *oidc.Provider     // nil = SSO disabled
+	limiter     *ratelimit.Limiter // per-org token buckets
+	defaultRPM  int                // AGENTOS_RATE_LIMIT_RPM; 0 = unlimited
 }
 
 // DefaultSecretNames are the provider keys reported by GET /admin/secrets/status.
@@ -99,6 +107,32 @@ func WithSecrets(src secret.Source, names []string) Option {
 	}
 }
 
+// WithOIDC enables OpenID Connect SSO with the given (non-nil) provider.
+func WithOIDC(p *oidc.Provider) Option {
+	return func(s *Server) {
+		if p != nil {
+			s.oidc = p
+		}
+	}
+}
+
+// WithRateLimits sets the global default requests-per-minute applied to orgs
+// whose own rate_limit_rpm is 0. A default of 0 keeps rate limiting off unless
+// an org opts in, reproducing Phase 5 behavior.
+func WithRateLimits(defaultRPM int) Option {
+	return func(s *Server) { s.defaultRPM = defaultRPM }
+}
+
+// WithRateLimiter injects a specific limiter (used by tests to supply an
+// injected clock). Without it New installs a wall-clock limiter.
+func WithRateLimiter(l *ratelimit.Limiter) Option {
+	return func(s *Server) {
+		if l != nil {
+			s.limiter = l
+		}
+	}
+}
+
 // New builds a Server. adminKey guards the /admin endpoints.
 func New(st store.Store, router *provider.Router, adminKey string, opts ...Option) *Server {
 	s := &Server{
@@ -110,6 +144,7 @@ func New(st store.Store, router *provider.Router, adminKey string, opts ...Optio
 		tracer:      noop.NewTracerProvider().Tracer("gateway"),
 		secrets:     secret.NewEnv(),
 		secretNames: DefaultSecretNames,
+		limiter:     ratelimit.New(),
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -127,12 +162,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /admin/keys", s.adminAuth(s.handleListKeys))
 	mux.HandleFunc("GET /admin/usage", s.adminAuth(s.handleUsage))
 	mux.HandleFunc("GET /admin/audit", s.adminAuth(s.handleAudit))
+	mux.HandleFunc("GET /admin/whoami", s.adminAuth(s.handleWhoami))
 	mux.HandleFunc("POST /admin/orgs", s.adminAuth(s.handleCreateOrg))
 	mux.HandleFunc("GET /admin/orgs", s.adminAuth(s.handleListOrgs))
+	mux.HandleFunc("PATCH /admin/orgs/{org_id}", s.adminAuth(s.handleUpdateOrg))
 	mux.HandleFunc("POST /admin/orgs/{org_id}/users", s.adminAuth(s.handleCreateUser))
 	mux.HandleFunc("GET /admin/orgs/{org_id}/users", s.adminAuth(s.handleListUsers))
 	mux.HandleFunc("DELETE /admin/orgs/{org_id}/users/{user_id}", s.adminAuth(s.handleDeleteUser))
 	mux.HandleFunc("GET /admin/secrets/status", s.adminAuth(s.handleSecretsStatus))
+	mux.HandleFunc("GET /auth/oidc/status", s.handleOIDCStatus)
+	mux.HandleFunc("GET /auth/oidc/login", s.handleOIDCLogin)
+	mux.HandleFunc("GET /auth/oidc/callback", s.handleOIDCCallback)
 	if len(s.corsOrigins) > 0 {
 		return s.withCORS(mux)
 	}
@@ -333,6 +373,10 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if s.rateLimited(w, r, key, model) {
+		return
+	}
+
 	if key.SpendUSD >= key.MonthlyBudgetUSD {
 		writeError(w, http.StatusPaymentRequired, errBudgetExceeded,
 			fmt.Sprintf("monthly budget of $%.2f exhausted for key %q", key.MonthlyBudgetUSD, key.Name))
@@ -421,6 +465,10 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	model, _ := body["model"].(string)
 	if model == "" {
 		writeError(w, http.StatusBadRequest, errUnsupported, `"model" is required`)
+		return
+	}
+
+	if s.rateLimited(w, r, key, model) {
 		return
 	}
 
@@ -649,6 +697,40 @@ func (s *Server) recordAudit(r *http.Request, u store.Usage) {
 	if err := s.store.RecordAudit(context.WithoutCancel(r.Context()), u); err != nil {
 		log.Printf("record audit for key %q: %v", u.KeyName, err)
 	}
+}
+
+// effectiveRPM returns the rate limit for a key's org: the org's own
+// rate_limit_rpm when positive, else the global default. 0 means unlimited.
+func (s *Server) effectiveRPM(ctx context.Context, orgID string) int {
+	if org, err := s.store.Org(ctx, orgID); err == nil && org.RateLimitRPM > 0 {
+		return org.RateLimitRPM
+	}
+	return s.defaultRPM
+}
+
+// rateLimited enforces the per-org token bucket for a virtual-key caller. It
+// runs after authentication and before the budget checks. When the org's bucket
+// is empty it writes a 429 with a Retry-After header, audits the rejection with
+// kind rate_limited, and returns true. An unlimited org (effective rpm 0) is
+// always allowed. The root admin key never reaches here (it is not a virtual
+// key), so it is inherently exempt.
+func (s *Server) rateLimited(w http.ResponseWriter, r *http.Request, key *store.Key, model string) bool {
+	rpm := s.effectiveRPM(r.Context(), key.OrgID)
+	if rpm <= 0 {
+		return false
+	}
+	allowed, retryAfter := s.limiter.Allow(key.OrgID, rpm)
+	if allowed {
+		return false
+	}
+	s.recordAudit(r, store.Usage{
+		KeyName: key.Name, Model: model, Status: http.StatusTooManyRequests,
+		Kind: store.KindRateLimited,
+	})
+	w.Header().Set("Retry-After", strconv.Itoa(ratelimit.RetryAfterSeconds(retryAfter)))
+	writeError(w, http.StatusTooManyRequests, errRateLimited,
+		fmt.Sprintf("org %q exceeded its rate limit of %d requests/min", key.OrgID, rpm))
+	return true
 }
 
 func setSpanAttributes(span trace.Span, u store.Usage) {
