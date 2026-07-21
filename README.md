@@ -185,7 +185,16 @@ the collector's debug exporter shows traces either way.
 - **Per-tenant rate limits** — each org has a `rate_limit_rpm` (token bucket,
   0 = unlimited); over-limit chat/embeddings calls get 429 `rate_limited` with
   a `Retry-After` header. Set per org (`PATCH /admin/orgs/{id}`) or globally
-  (`AGENTOS_RATE_LIMIT_RPM`).
+  (`AGENTOS_RATE_LIMIT_RPM`). `AGENTOS_RATELIMIT_BACKEND=postgres` shares the
+  bucket across gateway replicas via atomic SQL (default `memory` per-instance).
+- **SCIM 2.0 provisioning** — set `AGENTOS_SCIM_TOKEN` and an IdP (Okta/Entra)
+  can create, list, deactivate, and delete users at `/scim/v2/Users`.
+  Deactivating a user immediately invalidates their `agu-…` tokens — the
+  deprovisioning path. Off by default (routes 404 when the token is unset).
+- **Secret rotation** — `POST /admin/secrets/reload` (root) re-fetches the
+  active backend (file re-read, Vault re-GET, age re-decrypt) with no restart;
+  `AGENTOS_SECRETS_REFRESH_S` polls on an interval. Rotated keys take effect
+  on the next request.
 
 ## Connectors
 
@@ -218,7 +227,9 @@ suite against a deterministic mock model and fails under 0.8 — label a PR
    gate.~~ ✅
 6. ~~**Enterprise identity**: OIDC SSO, Vault secrets backend, per-tenant rate
    limits, `whoami` endpoint.~~ ✅
-7. Next: SAML, SCIM user provisioning, distributed rate-limit store, secret
-   rotation webhooks, cloud-KMS backends.
+7. ~~**Scale & provisioning**: SCIM 2.0 user provisioning, distributed
+   (Postgres) rate-limit store, secret rotation/reload.~~ ✅
+8. Next: SAML SSO, cloud-KMS secret backends, Redis limiter option, secret
+   rotation webhooks, SCIM Groups.
 
 License: [Apache-2.0](LICENSE)

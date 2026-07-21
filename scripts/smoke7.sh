@@ -9,6 +9,10 @@ ADMIN="Authorization: Bearer $AGENTOS_ADMIN_KEY"
 SCIM_TOKEN=${SCIM_TOKEN:-scim-secret-local}
 SCIM="Authorization: Bearer $SCIM_TOKEN"
 MODEL=${AGENTOS_MODEL:-ollama/qwen3.6:latest}
+RUN=$$
+ALICE="scim.alice.$RUN@corp.test"
+DEPROV="deprovision.me.$RUN@corp.test"
+NOPE="nope.$RUN@corp.test"
 COMPOSE="docker compose -f deploy/compose.yaml --env-file deploy/.env"
 JQ() { python3 -c "import json,sys;d=json.load(sys.stdin);print($1)"; }
 
@@ -31,16 +35,16 @@ echo "PASS"
 say "SCIM: provision a user (POST /scim/v2/Users → 201)"
 CREATE=$(curl -sS -o /tmp/scim-create.json -w '%{http_code}' -X POST "$GATEWAY/scim/v2/Users" -H "$SCIM" \
   -H 'Content-Type: application/scim+json' \
-  -d '{"schemas":["urn:ietf:params:scim:schemas:core:2.0:User"],"userName":"scim.alice@corp.test","externalId":"idp-alice-001","name":{"formatted":"Alice SCIM"},"active":true}')
+  -d "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"userName\":\"$ALICE\",\"externalId\":\"idp-alice-001\",\"name\":{\"formatted\":\"Alice SCIM\"},\"active\":true}")
 [ "$CREATE" = "201" ] || { cat /tmp/scim-create.json; fail "SCIM create expected 201, got $CREATE"; }
 SCIM_ID=$(JQ "d['id']" < /tmp/scim-create.json)
 python3 -m json.tool < /tmp/scim-create.json | head -12
 echo "PASS (scim user $SCIM_ID)"
 
 say "SCIM: get by id + filtered list"
-curl -fsS "$GATEWAY/scim/v2/Users/$SCIM_ID" -H "$SCIM" | JQ "d['userName']" | grep -q 'scim.alice@corp.test' \
+curl -fsS "$GATEWAY/scim/v2/Users/$SCIM_ID" -H "$SCIM" | JQ "d['userName']" | grep -qF "$ALICE" \
   || fail "SCIM get returned wrong user"
-LIST=$(curl -fsS "$GATEWAY/scim/v2/Users?filter=userName%20eq%20%22scim.alice@corp.test%22" -H "$SCIM")
+LIST=$(curl -fsS "$GATEWAY/scim/v2/Users?filter=userName%20eq%20%22$ALICE%22" -H "$SCIM")
 echo "$LIST" | JQ "d['totalResults']" | grep -q '1' || fail "SCIM filter should match exactly 1"
 echo "PASS"
 
@@ -48,12 +52,12 @@ say "SCIM deactivation invalidates a user's agu- token"
 # create a user via the RBAC admin API (returns an agu- token), prove whoami
 # works, then deactivate that user via SCIM PATCH and prove the token dies.
 UTOKEN=$(curl -fsS -X POST "$GATEWAY/admin/orgs/org_default/users" -H "$ADMIN" -H 'Content-Type: application/json' \
-  -d '{"email":"deprovision.me@corp.test","role":"member"}' | JQ "d['token']")
+  -d "{\"email\":\"$DEPROV\",\"role\":\"member\"}" | JQ "d['token']")
 curl -fsS "$GATEWAY/admin/whoami" -H "Authorization: Bearer $UTOKEN" | JQ "d['email']" \
-  | grep -q 'deprovision.me@corp.test' || fail "new user token should work before deactivation"
-UID=$(curl -fsS "$GATEWAY/scim/v2/Users?filter=userName%20eq%20%22deprovision.me@corp.test%22" -H "$SCIM" \
+  | grep -qF "$DEPROV" || fail "new user token should work before deactivation"
+DUID=$(curl -fsS "$GATEWAY/scim/v2/Users?filter=userName%20eq%20%22$DEPROV%22" -H "$SCIM" \
   | JQ "d['Resources'][0]['id']")
-curl -fsS -o /dev/null -X PATCH "$GATEWAY/scim/v2/Users/$UID" -H "$SCIM" -H 'Content-Type: application/scim+json' \
+curl -fsS -o /dev/null -X PATCH "$GATEWAY/scim/v2/Users/$DUID" -H "$SCIM" -H 'Content-Type: application/scim+json' \
   -d '{"schemas":["urn:ietf:params:scim:api:messages:2.0:PatchOp"],"Operations":[{"op":"replace","path":"active","value":false}]}'
 CODE=$(curl -s -o /dev/null -w '%{http_code}' "$GATEWAY/admin/whoami" -H "Authorization: Bearer $UTOKEN")
 [ "$CODE" = "401" ] || fail "deactivated user's token should be 401, got $CODE"
@@ -91,7 +95,7 @@ CODE=$(curl -s -o /tmp/p7-reload.json -w '%{http_code}' -X POST "$GATEWAY/admin/
 python3 -m json.tool < /tmp/p7-reload.json | head -6
 # a user token must be forbidden
 VT=$(curl -fsS -X POST "$GATEWAY/admin/orgs/org_default/users" -H "$ADMIN" -H 'Content-Type: application/json' \
-  -d '{"email":"nope@corp.test","role":"viewer"}' | JQ "d['token']")
+  -d "{\"email\":\"$NOPE\",\"role\":\"viewer\"}" | JQ "d['token']")
 FORB=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$GATEWAY/admin/secrets/reload" -H "Authorization: Bearer $VT")
 [ "$FORB" = "403" ] || fail "non-root secrets reload should be 403, got $FORB"
 curl -fsS "$GATEWAY/admin/audit?limit=8" -H "$ADMIN" | grep -q 'secret_reload' || fail "secret_reload not audited"
