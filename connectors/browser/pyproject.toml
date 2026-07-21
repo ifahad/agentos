@@ -1,0 +1,39 @@
+[project]
+name = "agentos-browser"
+version = "0.1.0"
+description = "AgentOS browser/computer-use connector: Playwright chromium exposed as MCP tools over streamable HTTP"
+license = "Apache-2.0"
+readme = "README.md"
+authors = [
+    { name = "ifahad", email = "me@fahad.dev" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "mcp>=1.12.0",
+    "playwright==1.61.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.8,<0.12.0"]
+build-backend = "uv_build"
+
+[project.scripts]
+agentos-browser = "agentos_browser.main:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "ruff>=0.7.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
