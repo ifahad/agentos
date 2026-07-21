@@ -6,6 +6,25 @@ runtime, infra/efficiency) plus an OpenClaw security review. Findings are
 deduplicated and ranked by real severity **including exploit chains**. The two
 CRITICALs were re-verified by hand against source.
 
+## Remediation status (2026-07-21, hardening pass)
+
+**Fixed & verified** — C1 (runtime auth, fail-closed + constant-time; console
+proxies via nginx injection), C2/H1 (SSH: exec-capable binaries denied even if
+allowlisted, redirection/globbing blocked, `known_hosts` required),
+C3/H6 (immutable safety preamble + proposal override-screen + retrieved-doc
+untrusted delimiters), H2 (REST/SOAP strip auth header cross-host + deny
+private-IP redirects), H3 (OIDC `email_verified` + match on stable `sub`),
+H4 (usage/spend/audit keyed by `secret_hash`+`org_id`; cross-org same-name leak
+closed — verified live), H5 (provider keys read from the live `secret.Source`;
+reload rotates), M1 (`crypto/subtle` for admin/SCIM tokens). The two CRITICAL
+chain halves (runtime-no-auth × SSH-RCE) are both closed.
+
+**Still open (tracked backlog, next pass):** budget TOCTOU (M3), request-body
+size caps (M4), SQL `statement_timeout`, browser IP backstop, runtime non-root
+image + K8s securityContext, HTTP server timeouts + graceful shutdown, audit
+retention, and the efficiency items (N+1, `keys(org_id)` index [added in H4
+migration], duplicate per-request org lookups, unbuffered proxy responses).
+
 ## Bottom line
 
 The **gateway core is solid** — no criticals, strong crypto (`crypto/rand`,

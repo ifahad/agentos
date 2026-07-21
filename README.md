@@ -164,6 +164,21 @@ the collector's debug exporter shows traces either way.
 - **SSH connector** — legacy boxes as MCP tools with a strict command
   allowlist and command-chaining rejection (`connectors/ssh/`, opt-in).
 
+## Security
+
+A pre-autonomy security audit and its hardening are recorded in
+[`docs/security/2026-07-21-security-assessment.md`](docs/security/2026-07-21-security-assessment.md).
+Hardened in that pass: the **runtime API now requires authentication**
+(`AGENTOS_RUNTIME_AUTH_TOKEN`, fail-closed; the console injects it server-side
+via nginx), the **SSH connector** denies exec-capable binaries and requires
+`known_hosts`, **REST/SOAP** strip their auth header across redirects and refuse
+private-IP SSRF, **OIDC** requires `email_verified` and matches on stable `sub`,
+**tenant usage/spend/audit** are isolated by key hash + org (no same-name
+cross-org leak), **secret rotation** reaches live provider keys, and an
+**immutable safety preamble** frames every agent run (retrieved/tool content is
+treated as untrusted data). Set `AGENTOS_RUNTIME_AUTH_TOKEN` and a real
+`AGENTOS_ADMIN_KEY` for any non-local deployment.
+
 ## Multi-tenancy & secrets
 
 - **RBAC** — orgs, users, and roles (`owner`/`admin`/`member`/`viewer`) with
