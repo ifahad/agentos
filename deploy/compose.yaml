@@ -83,6 +83,7 @@ services:
       AGENTOS_EMBED_MODEL: ${AGENTOS_EMBED_MODEL:-ollama/bge-m3}
       AGENTOS_AGENT_PROFILE: ${AGENTOS_AGENT_PROFILE:-react}
       AGENTOS_JUDGE_MODEL: ${AGENTOS_JUDGE_MODEL:-anthropic/claude-haiku-4-5}
+      AGENTOS_RUNTIME_AUTH_TOKEN: ${AGENTOS_RUNTIME_AUTH_TOKEN:-runtime-local-dev}
     ports:
       - "${AGENTOS_RUNTIME_PORT:-8000}:8000"
     # On both networks: `default` to reach gateway/postgres/connectors, and
@@ -154,6 +155,10 @@ services:
 
   console:
     build: ../console
+    environment:
+      # nginx injects this as the Bearer token when proxying /api/runtime/,
+      # so the browser never holds the runtime credential.
+      AGENTOS_RUNTIME_AUTH_TOKEN: ${AGENTOS_RUNTIME_AUTH_TOKEN:-runtime-local-dev}
     ports:
       - "${AGENTOS_CONSOLE_PORT:-3000}:80"
     depends_on:

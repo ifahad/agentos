@@ -5,6 +5,7 @@ set -euo pipefail
 
 GATEWAY=${GATEWAY:-http://localhost:8080}
 RUNTIME=${RUNTIME:-http://localhost:8000}
+RUNTIME_AUTH_TOKEN=${AGENTOS_RUNTIME_AUTH_TOKEN:-runtime-local-dev}
 ADMIN_KEY=${AGENTOS_ADMIN_KEY:-admin-local-dev}
 
 say() { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -13,10 +14,10 @@ say "gateway health"
 curl -fsS "$GATEWAY/healthz"
 
 say "runtime health"
-curl -fsS "$RUNTIME/healthz"
+curl -fsS -H "Authorization: Bearer $RUNTIME_AUTH_TOKEN" "$RUNTIME/healthz"
 
 say "asking the agent a question that requires the legacy ERP"
-RESP=$(curl -fsS -X POST "$RUNTIME/runs" \
+RESP=$(curl -fsS -X POST -H "Authorization: Bearer $RUNTIME_AUTH_TOKEN" "$RUNTIME/runs" \
   -H 'Content-Type: application/json' \
   -d '{"input": "Which customer has the highest total order value across all their orders? Give the name and the total."}')
 echo "$RESP" | python3 -m json.tool

@@ -8,6 +8,7 @@ set -euo pipefail
 
 export GATEWAY=${GATEWAY:-http://localhost:8080}
 export RUNTIME=${RUNTIME:-http://localhost:18000}
+RUNTIME_AUTH_TOKEN=${AGENTOS_RUNTIME_AUTH_TOKEN:-runtime-local-dev}
 export AGENTOS_ADMIN_KEY=${AGENTOS_ADMIN_KEY:-admin-local-dev}
 RUNTIME_KEY=${AGENTOS_RUNTIME_KEY:-agos-local-dev-runtime}
 COMPOSE="docker compose -f deploy/compose.yaml --env-file deploy/.env"
@@ -69,8 +70,8 @@ echo "PASS (heuristic short-circuit still blocks obvious injection under model m
 $COMPOSE up -d gateway > /dev/null 2>&1   # restore default guardrail mode
 
 say "LLM-judge eval case runs and scores"
-for i in $(seq 1 30); do curl -fsS "$RUNTIME/healthz" >/dev/null 2>&1 && break; sleep 2; done
-EVAL=$(curl -fsS -X POST "$RUNTIME/evals/run" -H 'Content-Type: application/json' -d '{"suite":"default","use_judge":true}')
+for i in $(seq 1 30); do curl -fsS -H "Authorization: Bearer $RUNTIME_AUTH_TOKEN" "$RUNTIME/healthz" >/dev/null 2>&1 && break; sleep 2; done
+EVAL=$(curl -fsS -X POST -H "Authorization: Bearer $RUNTIME_AUTH_TOKEN" "$RUNTIME/evals/run" -H 'Content-Type: application/json' -d '{"suite":"default","use_judge":true}')
 python3 - "$EVAL" <<'PY'
 import json,sys
 d=json.loads(sys.argv[1])
