@@ -38,7 +38,7 @@ func New(runner Runner, allowlist []string) *Tools {
 // Register adds the run_command and list_allowed tools to s.
 func (t *Tools) Register(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("run_command",
-		mcp.WithDescription("Run a single command on the configured SSH host. The command's basename must be on the allowlist (see list_allowed) and shell chaining metacharacters (;, &&, ||, |, backtick, $() are rejected. Returns JSON {exit_code, stdout, stderr, truncated, timed_out}."),
+		mcp.WithDescription("Run a single command on the configured SSH host. The command's basename must be on the allowlist (see list_allowed). Rejected: shell-dangerous characters (chaining ; && || | backtick $(); redirection > <; globbing * ? [ ]; brace/group { } ( ); ~ ! and backslash), exec-capable binaries (find, awk, tar, git, sed, perl, python, bash, ... — even if allowlisted), and arbitrary-exec flags (-exec, --to-command, ...). Returns JSON {exit_code, stdout, stderr, truncated, timed_out}."),
 		mcp.WithString("command",
 			mcp.Required(),
 			mcp.Description(`A single command with arguments, e.g. "df -h" or "/bin/ls /var/log". No pipes, chaining, or substitution.`),

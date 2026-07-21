@@ -71,7 +71,14 @@ func TestRunCommand(t *testing.T) {
 		{
 			name:     "chaining rejected before execution",
 			args:     map[string]any{"command": "ls; rm -rf /"},
-			wantText: "rejected: command chaining not allowed",
+			wantText: "rejected: disallowed shell character",
+			wantErr:  true,
+			wantRuns: 0,
+		},
+		{
+			name:     "exec-capable binary rejected before execution",
+			args:     map[string]any{"command": "find / -name x"},
+			wantText: "rejected: command not permitted: find can execute arbitrary code",
 			wantErr:  true,
 			wantRuns: 0,
 		},

@@ -63,15 +63,17 @@ func run() error {
 		return err
 	}
 
-	var hostKeyCallback ssh.HostKeyCallback
-	if path := os.Getenv("AGENTOS_SSH_KNOWN_HOSTS"); path != "" {
-		hostKeyCallback, err = knownhosts.New(path)
-		if err != nil {
-			return fmt.Errorf("AGENTOS_SSH_KNOWN_HOSTS: load %q: %w", path, err)
-		}
-	} else {
-		log.Print("ssh-connector: WARNING: AGENTOS_SSH_KNOWN_HOSTS is unset, host key checking is DISABLED (InsecureIgnoreHostKey); set it to a known_hosts file for strict checking")
-		hostKeyCallback = ssh.InsecureIgnoreHostKey() //nolint:gosec // deliberate, warned about above
+	hostKeyCallback, hostKeyMode, err := resolveHostKeyCallback(
+		os.Getenv("AGENTOS_SSH_KNOWN_HOSTS"),
+		os.Getenv("AGENTOS_SSH_INSECURE_HOST_KEY"),
+	)
+	if err != nil {
+		return err
+	}
+	if hostKeyMode == hostKeyInsecure {
+		log.Print("ssh-connector: WARNING: host-key verification is DISABLED via AGENTOS_SSH_INSECURE_HOST_KEY=true. " +
+			"The connection is exposed to man-in-the-middle attacks and the SSH password/session can be captured. " +
+			"This is for local development ONLY; set AGENTOS_SSH_KNOWN_HOSTS to a known_hosts file for production.")
 	}
 
 	allowlist := parseAllowlist(os.Getenv("AGENTOS_SSH_ALLOW_COMMANDS"))
@@ -144,6 +146,42 @@ func run() error {
 		return fmt.Errorf("shutdown: %w", err)
 	}
 	return nil
+}
+
+// hostKeyMode records how host-key verification was resolved, so callers can
+// emit the appropriate warning.
+type hostKeyMode int
+
+const (
+	// hostKeyStrict verifies against a known_hosts file (fail-closed).
+	hostKeyStrict hostKeyMode = iota
+	// hostKeyInsecure disables host-key verification (explicit dev opt-out).
+	hostKeyInsecure
+)
+
+// resolveHostKeyCallback decides the SSH host-key policy fail-closed (H1):
+//
+//   - known_hosts path set  → strict knownhosts verification;
+//   - path unset, insecure opt-out ("true") → InsecureIgnoreHostKey (dev only);
+//   - path unset, no opt-out → error (refuse to start).
+//
+// Both env values unset is the default and returns an error: the connector
+// will not run with host-key verification silently disabled.
+func resolveHostKeyCallback(knownHostsPath, insecureOptOut string) (ssh.HostKeyCallback, hostKeyMode, error) {
+	if knownHostsPath != "" {
+		cb, err := knownhosts.New(knownHostsPath)
+		if err != nil {
+			return nil, hostKeyStrict, fmt.Errorf("AGENTOS_SSH_KNOWN_HOSTS: load %q: %w", knownHostsPath, err)
+		}
+		return cb, hostKeyStrict, nil
+	}
+	if strings.EqualFold(strings.TrimSpace(insecureOptOut), "true") {
+		return ssh.InsecureIgnoreHostKey(), hostKeyInsecure, nil //nolint:gosec // explicit, loudly-warned dev opt-out
+	}
+	return nil, hostKeyStrict, errors.New(
+		"AGENTOS_SSH_KNOWN_HOSTS is unset: refusing to start with host-key verification disabled (MITM risk). " +
+			"Set AGENTOS_SSH_KNOWN_HOSTS to a known_hosts file for strict verification, " +
+			"or set AGENTOS_SSH_INSECURE_HOST_KEY=true to explicitly disable host-key checking (INSECURE, dev only).")
 }
 
 // authMethod builds the SSH auth from exactly one of password / PEM private
