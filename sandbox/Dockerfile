@@ -1,6 +1,6 @@
-# Build stage: rust:1-slim is Debian bookworm based, so the release binary
-# links against the same glibc as the runtime image below (aarch64/amd64 both fine).
-FROM rust:1-slim AS build
+# Build stage: pinned to the bookworm variant so the release binary links
+# against the same glibc as the runtime image below (aarch64/amd64 both fine).
+FROM rust:1-bookworm AS build
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src

@@ -93,13 +93,52 @@ flips on human approval for the `query` tool (runs return
 `POST /runs/{thread_id}/approve`) and prompt-injection blocking at the
 gateway. `make smoke2` exercises all of it end-to-end.
 
+## Sandboxed code execution
+
+Agents get a `run_python` tool backed by the Rust sandbox service: per-run
+temp workdir, cleared environment, process-group kill, CPU/memory/file
+rlimits — inside a container running read-only with all capabilities
+dropped. See `sandbox/README.md` for the isolation layers and residual risk.
+
+## Self-improvement (eval-gated, human-approved)
+
+```
+POST /evals/run      run the eval suite (runtime/evals/default.yaml)
+POST /improve        reflect on failures -> propose a new system prompt,
+                     auto-evaluated against the baseline
+POST /proposals/{id}/approve   the ONLY way a proposal activates
+```
+
+Proposals never activate themselves — the console's **Improve** page shows
+eval history, baseline-vs-candidate scores, and approve/deny controls
+(with an explicit warning if a human overrides a below-baseline candidate).
+
+## Kubernetes
+
+`deploy/helm/agentos/` — Helm 3 chart: all seven services with per-service
+toggles, bundled pgvector Postgres or an external database URL, hardened
+sandbox pod, optional console ingress. `deploy/helm/test-render.sh` verifies
+rendering.
+
+## Observability
+
+```bash
+docker compose -f deploy/compose.yaml -f deploy/compose.otel.yaml up -d
+```
+
+adds an OpenTelemetry collector; gateway and runtime emit spans per request,
+model call, and tool call. Forward to Langfuse/LangSmith by editing
+`deploy/otel-collector.yaml` (commented example inside).
+
 ## Roadmap
 
 1. ~~**Core loop**: gateway + runtime + SQL connector + compose demo.~~ ✅
 2. ~~**Operability & governance**: console UI, streaming, guardrails,
    human-in-the-loop approvals, LlamaIndex/pgvector context engine,
    deepagents profile, opt-in OpenTelemetry.~~ ✅
-3. Rust sandbox, eval-gated self-improvement loop, more connectors
-   (REST/SOAP, SSH, browser), Helm charts, Langfuse compose profile.
+3. ~~**Autonomy, safely**: Rust sandbox, eval-gated self-improvement loop,
+   REST/OpenAPI connector + demo CRM, Helm chart, OTel collector profile.~~ ✅
+4. Next: SOAP/SSH/browser connectors, egress-less sandbox topology,
+   LLM-judge evals, Langfuse bundled profile, model-based guardrails.
 
 License: [Apache-2.0](LICENSE)

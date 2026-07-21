@@ -19,9 +19,15 @@ OUT=$(curl -fsS -X POST "$SANDBOX/execute" -H 'Content-Type: application/json' \
   -d '{"language":"python","code":"import os\nprint(6*7)\nprint(sorted(os.environ.keys()))"}')
 echo "$OUT" | python3 -m json.tool
 echo "$OUT" | grep -q '"stdout": *"42' || echo "$OUT" | grep -q '42' || fail "sandbox did not compute"
-echo "$OUT" | grep -q "PATH" || fail "unexpected env leakage check output"
-CNT=$(echo "$OUT" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['stdout'].count(chr(39)))")
-[ "$CNT" -le 2 ] || fail "sandbox env not cleared (more than PATH visible)"
+# Exec-time env is PATH-only; CPython's PEP 538 locale coercion may add
+# LC_CTYPE to os.environ after startup. Anything else is leakage.
+echo "$OUT" | python3 -c "
+import json, sys, ast
+d = json.load(sys.stdin)
+keys = ast.literal_eval(d['stdout'].splitlines()[1])
+extra = set(keys) - {'PATH', 'LC_CTYPE'}
+sys.exit(1 if extra else 0)
+" || fail "sandbox env not cleared (unexpected vars beyond PATH/LC_CTYPE)"
 echo "PASS"
 
 say "sandbox timeout enforcement"
@@ -76,7 +82,9 @@ for i in $(seq 1 30); do curl -fsS "$RUNTIME/healthz" > /dev/null 2>&1 && break;
 curl -fsS -X POST "$RUNTIME/runs" -H 'Content-Type: application/json' \
   -d '{"input": "How many customers are in the ERP? Short answer."}' > /dev/null
 sleep 5
-docker compose -f deploy/compose.yaml logs otel-collector 2>/dev/null | grep -qiE 'spans|TracesExporter|ResourceSpans' \
+# capture first: grep -q on a live pipe + pipefail turns SIGPIPE into failure
+COLLECTOR_LOGS=$($COMPOSE -f deploy/compose.otel.yaml logs otel-collector 2>/dev/null || true)
+echo "$COLLECTOR_LOGS" | grep -qiE 'agent\.run|data_type": "traces|spans' \
   || fail "no spans seen at the collector"
 $COMPOSE up -d gateway runtime > /dev/null 2>&1
 echo "PASS"
