@@ -9,10 +9,28 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ifahad/agentos/gateway/internal/rbac"
 )
 
 // ErrInvalidKey is returned by Authenticate when the secret is unknown.
 var ErrInvalidKey = errors.New("invalid key")
+
+// ErrInvalidToken is returned by AuthenticateUser when a user token is unknown.
+var ErrInvalidToken = errors.New("invalid user token")
+
+// ErrOrgNotFound is returned when an org id does not exist.
+var ErrOrgNotFound = errors.New("org not found")
+
+// ErrUserNotFound is returned when a user id does not exist in the given org.
+var ErrUserNotFound = errors.New("user not found")
+
+// Multi-tenant defaults from the frozen contract. Pre-existing keys belong to
+// the bootstrapped default org and are attributed to the root superuser.
+const (
+	DefaultOrgID = "org_default"
+	RootCreator  = "root"
+)
 
 // Audit entry kinds. Records persisted before kinds existed count as chat.
 const (
@@ -30,6 +48,25 @@ type Key struct {
 	Name             string
 	MonthlyBudgetUSD float64
 	SpendUSD         float64
+	OrgID            string // owning org; DefaultOrgID for pre-existing keys
+}
+
+// Org is a tenant. A MonthlyBudgetUSD of 0 means unlimited (the org budget cap
+// is skipped) — this keeps the bootstrapped default org behaving as Phase 1–4.
+type Org struct {
+	ID               string    `json:"id"`
+	Name             string    `json:"name"`
+	MonthlyBudgetUSD float64   `json:"monthly_budget_usd"`
+	CreatedAt        time.Time `json:"created_at"`
+}
+
+// User is a member of an org, authenticated by an agu- token.
+type User struct {
+	ID        string    `json:"id"`
+	OrgID     string    `json:"org_id"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Usage records one proxied request for accounting and audit.
@@ -71,12 +108,19 @@ type KeyInfo struct {
 	Name             string  `json:"name"`
 	MonthlyBudgetUSD float64 `json:"monthly_budget_usd"`
 	SpendUSD         float64 `json:"spend_usd"`
+	OrgID            string  `json:"org_id"`
 }
 
 // Store is the persistence interface shared by the memory and Postgres
 // implementations.
 type Store interface {
+	// CreateKey is the Phase 1–4 back-compat wrapper: it creates a key in the
+	// default org attributed to the root superuser by delegating to
+	// CreateKeyIn. Existing callers and tests keep compiling unchanged.
 	CreateKey(ctx context.Context, name string, budgetUSD float64) (secret string, err error)
+	// CreateKeyIn creates a key in orgID attributed to createdBy (a user id or
+	// RootCreator). Phase 5 callers use this to scope keys to a tenant.
+	CreateKeyIn(ctx context.Context, name string, budgetUSD float64, orgID, createdBy string) (secret string, err error)
 	Authenticate(ctx context.Context, secret string) (*Key, error) // ErrInvalidKey
 	RecordUsage(ctx context.Context, u Usage) error                // updates spend
 	RecordAudit(ctx context.Context, u Usage) error                // audit log only, no spend
@@ -84,6 +128,17 @@ type Store interface {
 	Keys(ctx context.Context) ([]KeyInfo, error)
 	AuditList(ctx context.Context, limit int) ([]AuditEntry, error) // newest first
 	EnsureKey(ctx context.Context, name, secret string, budgetUSD float64) error
+
+	// Multi-tenant RBAC additions (Phase 5).
+	CreateOrg(ctx context.Context, name string, monthlyBudgetUSD float64) (*Org, error)
+	EnsureOrg(ctx context.Context, id, name string, monthlyBudgetUSD float64) error // idempotent bootstrap
+	Org(ctx context.Context, id string) (*Org, error)                               // ErrOrgNotFound
+	Orgs(ctx context.Context) ([]Org, error)
+	OrgSpend(ctx context.Context, orgID string) (float64, error) // sum of the org's keys' spend
+	CreateUser(ctx context.Context, orgID, email, role string) (user *User, token string, err error)
+	AuthenticateUser(ctx context.Context, token string) (*User, error) // ErrInvalidToken
+	Users(ctx context.Context, orgID string) ([]User, error)
+	DeleteUser(ctx context.Context, orgID, userID string) error // ErrUserNotFound
 }
 
 // kindOrChat maps an unset kind to KindChat.
@@ -107,4 +162,31 @@ func newSecret() (string, error) {
 func hashSecret(secret string) string {
 	sum := sha256.Sum256([]byte(secret))
 	return hex.EncodeToString(sum[:])
+}
+
+// newUserToken generates a fresh user token of the form agu-<random>. The agu-
+// prefix is distinct from the agos- service-key prefix.
+func newUserToken() (string, error) {
+	buf := make([]byte, 24)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate user token: %w", err)
+	}
+	return "agu-" + hex.EncodeToString(buf), nil
+}
+
+// newID generates a prefixed random id like org_<hex> or usr_<hex>.
+func newID(prefix string) (string, error) {
+	buf := make([]byte, 12)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate id: %w", err)
+	}
+	return prefix + hex.EncodeToString(buf), nil
+}
+
+// validateRole guards CreateUser against unknown roles.
+func validateRole(role string) error {
+	if !rbac.ValidRole(role) {
+		return fmt.Errorf("invalid role %q", role)
+	}
+	return nil
 }

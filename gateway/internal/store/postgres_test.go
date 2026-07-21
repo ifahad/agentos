@@ -21,7 +21,7 @@ func newTestPostgres(t *testing.T) *Postgres {
 		t.Fatalf("NewPostgres: %v", err)
 	}
 	t.Cleanup(p.Close)
-	if _, err := p.pool.Exec(ctx, `TRUNCATE keys, "usage", audit_log`); err != nil {
+	if _, err := p.pool.Exec(ctx, `TRUNCATE keys, "usage", audit_log, orgs, users`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	return p

@@ -21,16 +21,21 @@ import (
 
 	"github.com/ifahad/agentos/gateway/internal/guardrail"
 	"github.com/ifahad/agentos/gateway/internal/provider"
+	"github.com/ifahad/agentos/gateway/internal/rbac"
+	"github.com/ifahad/agentos/gateway/internal/secret"
 	"github.com/ifahad/agentos/gateway/internal/store"
 )
 
 // Error type strings from the frozen contract.
 const (
-	errInvalidKey       = "invalid_key"
-	errBudgetExceeded   = "budget_exceeded"
-	errUnsupported      = "unsupported"
-	errProviderError    = "provider_error"
-	errGuardrailBlocked = "guardrail_blocked"
+	errInvalidKey        = "invalid_key"
+	errBudgetExceeded    = "budget_exceeded"
+	errOrgBudgetExceeded = "org_budget_exceeded"
+	errUnsupported       = "unsupported"
+	errProviderError     = "provider_error"
+	errGuardrailBlocked  = "guardrail_blocked"
+	errForbidden         = "forbidden"
+	errNotFound          = "not_found"
 )
 
 // Audit listing bounds from the frozen contract.
@@ -49,7 +54,12 @@ type Server struct {
 	guard       guardrail.Guardrail
 	corsOrigins []string
 	tracer      trace.Tracer
+	secrets     secret.Source
+	secretNames []string
 }
+
+// DefaultSecretNames are the provider keys reported by GET /admin/secrets/status.
+var DefaultSecretNames = []string{"AGENTOS_ANTHROPIC_API_KEY", "AGENTOS_OPENAI_API_KEY"}
 
 // Option customizes a Server built by New.
 type Option func(*Server)
@@ -75,15 +85,31 @@ func WithTracer(t trace.Tracer) Option {
 	return func(s *Server) { s.tracer = t }
 }
 
+// WithSecrets sets the secret source and the secret names surfaced by
+// GET /admin/secrets/status. Without it the env backend and provider-key names
+// are used, reproducing Phase 1–4 behavior.
+func WithSecrets(src secret.Source, names []string) Option {
+	return func(s *Server) {
+		if src != nil {
+			s.secrets = src
+		}
+		if names != nil {
+			s.secretNames = names
+		}
+	}
+}
+
 // New builds a Server. adminKey guards the /admin endpoints.
 func New(st store.Store, router *provider.Router, adminKey string, opts ...Option) *Server {
 	s := &Server{
-		store:     st,
-		router:    router,
-		adminKey:  adminKey,
-		client:    &http.Client{Timeout: 5 * time.Minute},
-		guardMode: guardrail.ModeOff,
-		tracer:    noop.NewTracerProvider().Tracer("gateway"),
+		store:       st,
+		router:      router,
+		adminKey:    adminKey,
+		client:      &http.Client{Timeout: 5 * time.Minute},
+		guardMode:   guardrail.ModeOff,
+		tracer:      noop.NewTracerProvider().Tracer("gateway"),
+		secrets:     secret.NewEnv(),
+		secretNames: DefaultSecretNames,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -97,10 +123,16 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("POST /v1/chat/completions", s.handleChatCompletions)
 	mux.HandleFunc("POST /v1/embeddings", s.handleEmbeddings)
-	mux.HandleFunc("POST /admin/keys", s.adminOnly(s.handleCreateKey))
-	mux.HandleFunc("GET /admin/keys", s.adminOnly(s.handleListKeys))
-	mux.HandleFunc("GET /admin/usage", s.adminOnly(s.handleUsage))
-	mux.HandleFunc("GET /admin/audit", s.adminOnly(s.handleAudit))
+	mux.HandleFunc("POST /admin/keys", s.adminAuth(s.handleCreateKey))
+	mux.HandleFunc("GET /admin/keys", s.adminAuth(s.handleListKeys))
+	mux.HandleFunc("GET /admin/usage", s.adminAuth(s.handleUsage))
+	mux.HandleFunc("GET /admin/audit", s.adminAuth(s.handleAudit))
+	mux.HandleFunc("POST /admin/orgs", s.adminAuth(s.handleCreateOrg))
+	mux.HandleFunc("GET /admin/orgs", s.adminAuth(s.handleListOrgs))
+	mux.HandleFunc("POST /admin/orgs/{org_id}/users", s.adminAuth(s.handleCreateUser))
+	mux.HandleFunc("GET /admin/orgs/{org_id}/users", s.adminAuth(s.handleListUsers))
+	mux.HandleFunc("DELETE /admin/orgs/{org_id}/users/{user_id}", s.adminAuth(s.handleDeleteUser))
+	mux.HandleFunc("GET /admin/secrets/status", s.adminAuth(s.handleSecretsStatus))
 	if len(s.corsOrigins) > 0 {
 		return s.withCORS(mux)
 	}
@@ -114,7 +146,7 @@ func (s *Server) withCORS(next http.Handler) http.Handler {
 		if origin := r.Header.Get("Origin"); origin != "" && s.originAllowed(origin) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Add("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
 			w.Header().Set("Access-Control-Max-Age", "600")
 		}
@@ -154,21 +186,12 @@ func bearerToken(r *http.Request) (string, bool) {
 	return token, true
 }
 
-func (s *Server) adminOnly(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		token, ok := bearerToken(r)
-		if !ok || s.adminKey == "" || token != s.adminKey {
-			writeError(w, http.StatusUnauthorized, errInvalidKey, "invalid admin key")
-			return
-		}
-		next(w, r)
-	}
-}
-
-func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request, c *caller) {
 	var req struct {
 		Name             string  `json:"name"`
 		MonthlyBudgetUSD float64 `json:"monthly_budget_usd"`
+		OrgID            string  `json:"org_id"`
+		RoleScope        string  `json:"role_scope"` // reserved; accepted, currently a no-op
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, errUnsupported, "invalid JSON body")
@@ -178,7 +201,29 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, errUnsupported, `"name" is required`)
 		return
 	}
-	secret, err := s.store.CreateKey(r.Context(), req.Name, req.MonthlyBudgetUSD)
+
+	orgID, createdBy := store.DefaultOrgID, store.RootCreator
+	if c.root {
+		if req.OrgID != "" {
+			if _, err := s.store.Org(r.Context(), req.OrgID); err != nil {
+				writeError(w, http.StatusNotFound, errNotFound, fmt.Sprintf("unknown org %q", req.OrgID))
+				return
+			}
+			orgID = req.OrgID
+		}
+	} else {
+		if !c.can(rbac.ActCreateKey) {
+			writeForbidden(w, "role lacks create_key capability")
+			return
+		}
+		if req.OrgID != "" && req.OrgID != c.user.OrgID {
+			writeForbidden(w, "cannot create keys outside your org")
+			return
+		}
+		orgID, createdBy = c.user.OrgID, c.user.ID
+	}
+
+	secret, err := s.store.CreateKeyIn(r.Context(), req.Name, req.MonthlyBudgetUSD, orgID, createdBy)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errProviderError, "failed to create key")
 		return
@@ -187,26 +232,44 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request) {
 		"key":                secret,
 		"name":               req.Name,
 		"monthly_budget_usd": req.MonthlyBudgetUSD,
+		"org_id":             orgID,
 	})
 }
 
-func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request, c *caller) {
+	if !c.root && !c.can(rbac.ActListKeys) {
+		writeForbidden(w, "role lacks list_keys capability")
+		return
+	}
 	keys, err := s.store.Keys(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errProviderError, "failed to list keys")
 		return
 	}
+	keys = s.scopeKeys(c, keys)
 	if keys == nil {
 		keys = []store.KeyInfo{}
 	}
 	writeJSON(w, http.StatusOK, keys)
 }
 
-func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request, c *caller) {
+	if !c.root && !c.can(rbac.ActViewUsage) {
+		writeForbidden(w, "role lacks view_usage capability")
+		return
+	}
 	usage, err := s.store.Usage(r.Context())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errProviderError, "failed to load usage")
 		return
+	}
+	if !c.root {
+		names, err := s.orgKeyNames(r.Context(), c.user.OrgID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, errProviderError, "failed to scope usage")
+			return
+		}
+		usage = filterUsage(usage, names)
 	}
 	if usage == nil {
 		usage = []store.KeyUsage{}
@@ -214,7 +277,11 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, usage)
 }
 
-func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request, c *caller) {
+	if !c.root && !c.can(rbac.ActViewAudit) {
+		writeForbidden(w, "role lacks view_audit capability")
+		return
+	}
 	limit := auditDefaultLimit
 	if q := r.URL.Query().Get("limit"); q != "" {
 		n, err := strconv.Atoi(q)
@@ -228,6 +295,14 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errProviderError, "failed to list audit log")
 		return
+	}
+	if !c.root {
+		names, err := s.orgKeyNames(r.Context(), c.user.OrgID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, errProviderError, "failed to scope audit")
+			return
+		}
+		entries = filterAudit(entries, names)
 	}
 	if entries == nil {
 		entries = []store.AuditEntry{}
@@ -261,6 +336,12 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	if key.SpendUSD >= key.MonthlyBudgetUSD {
 		writeError(w, http.StatusPaymentRequired, errBudgetExceeded,
 			fmt.Sprintf("monthly budget of $%.2f exhausted for key %q", key.MonthlyBudgetUSD, key.Name))
+		return
+	}
+
+	if s.orgBudgetExceeded(r.Context(), key.OrgID) {
+		writeError(w, http.StatusPaymentRequired, errOrgBudgetExceeded,
+			fmt.Sprintf("org %q monthly budget exhausted", key.OrgID))
 		return
 	}
 
@@ -346,6 +427,12 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 	if key.SpendUSD >= key.MonthlyBudgetUSD {
 		writeError(w, http.StatusPaymentRequired, errBudgetExceeded,
 			fmt.Sprintf("monthly budget of $%.2f exhausted for key %q", key.MonthlyBudgetUSD, key.Name))
+		return
+	}
+
+	if s.orgBudgetExceeded(r.Context(), key.OrgID) {
+		writeError(w, http.StatusPaymentRequired, errOrgBudgetExceeded,
+			fmt.Sprintf("org %q monthly budget exhausted", key.OrgID))
 		return
 	}
 

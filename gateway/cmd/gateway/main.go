@@ -13,6 +13,7 @@ import (
 
 	"github.com/ifahad/agentos/gateway/internal/guardrail"
 	"github.com/ifahad/agentos/gateway/internal/provider"
+	"github.com/ifahad/agentos/gateway/internal/secret"
 	"github.com/ifahad/agentos/gateway/internal/server"
 	"github.com/ifahad/agentos/gateway/internal/store"
 	"github.com/ifahad/agentos/gateway/internal/telemetry"
@@ -40,6 +41,16 @@ func main() {
 		log.Println("AGENTOS_DATABASE_URL empty; using in-memory store")
 	}
 
+	// Bootstrap the default org that owns every pre-existing key. Its budget is
+	// 0 (unlimited), so Phase 1–4 keys behave exactly as before.
+	bootstrapOrg := os.Getenv("AGENTOS_BOOTSTRAP_ORG")
+	if bootstrapOrg == "" {
+		bootstrapOrg = "default"
+	}
+	if err := st.EnsureOrg(ctx, store.DefaultOrgID, bootstrapOrg, 0); err != nil {
+		log.Fatalf("bootstrap org: %v", err)
+	}
+
 	bootstrap, err := store.ParseBootstrapKeys(os.Getenv("AGENTOS_BOOTSTRAP_KEYS"))
 	if err != nil {
 		log.Fatalf("AGENTOS_BOOTSTRAP_KEYS: %v", err)
@@ -48,16 +59,26 @@ func main() {
 		log.Fatalf("bootstrap keys: %v", err)
 	}
 	if len(bootstrap) > 0 {
-		log.Printf("bootstrapped %d virtual key(s)", len(bootstrap))
+		log.Printf("bootstrapped %d virtual key(s) into org %q", len(bootstrap), store.DefaultOrgID)
 	}
 
+	// Resolve provider keys through the secret source (default env backend
+	// reproduces current behavior exactly). Misconfig is fatal.
+	secrets, err := secret.FromEnv()
+	if err != nil {
+		log.Fatalf("secrets backend: %v", err)
+	}
+	log.Printf("secrets backend: %s", secrets.Backend())
+	anthropicKey, _ := secrets.Get("AGENTOS_ANTHROPIC_API_KEY")
+	openaiKey, _ := secrets.Get("AGENTOS_OPENAI_API_KEY")
+
 	router := &provider.Router{
-		AnthropicAPIKey: os.Getenv("AGENTOS_ANTHROPIC_API_KEY"),
-		OpenAIAPIKey:    os.Getenv("AGENTOS_OPENAI_API_KEY"),
+		AnthropicAPIKey: anthropicKey,
+		OpenAIAPIKey:    openaiKey,
 		OllamaBaseURL:   os.Getenv("AGENTOS_OLLAMA_BASE_URL"),
 	}
 
-	var opts []server.Option
+	opts := []server.Option{server.WithSecrets(secrets, server.DefaultSecretNames)}
 
 	guardMode := os.Getenv("AGENTOS_GUARDRAILS_MODE")
 	if guardMode == "" {
