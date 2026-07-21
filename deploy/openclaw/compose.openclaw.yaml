@@ -1,0 +1,40 @@
+# ILLUSTRATIVE overlay: run an OpenClaw worker as a governed, contained client
+# of the AgentOS gateway. Adapt the image/config to your OpenClaw version — this
+# is a template, not a turnkey deployment. See docs/interop/openclaw.md.
+#
+#   docker compose -f compose.yaml -f openclaw/compose.openclaw.yaml up -d openclaw
+#
+# Security posture baked in below: non-root, read-only rootfs, all caps dropped,
+# no-new-privileges, on an isolated network, control plane NOT published.
+services:
+  openclaw:
+    image: ${OPENCLAW_IMAGE:-ghcr.io/your-org/openclaw:pin-a-digest}
+    # OpenClaw talks to models ONLY through the governed AgentOS gateway.
+    environment:
+      # Map these to your OpenClaw version's OpenAI-compatible provider settings.
+      OPENAI_BASE_URL: http://gateway:8080/v1
+      OPENAI_API_KEY: ${AGENTOS_OPENCLAW_KEY:?set a scoped agos- virtual key}
+      OPENCLAW_MODEL: ${OPENCLAW_MODEL:-anthropic/claude-sonnet-5}
+      # Skills: a vetted, read-only, screened dir — never ClawHub auto-fetch.
+      OPENCLAW_SKILLS_DIR: /skills
+      OPENCLAW_DISABLE_REGISTRY: "true"
+    volumes:
+      # Read-only, human-reviewed skills only.
+      - ./skills:/skills:ro
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 256
+    # Control plane (:18789) is intentionally NOT published to the host (no
+    # `ports:`), so it is reachable only from inside the compose network.
+    # OpenClaw joins the default network so it can reach `gateway:8080`. In
+    # production, restrict its egress to the gateway only with a NetworkPolicy
+    # (K8s) or an egress firewall — Docker Compose alone can't scope per-service
+    # egress. Adapt as needed.
+    depends_on:
+      - gateway
