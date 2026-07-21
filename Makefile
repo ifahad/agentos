@@ -29,6 +29,12 @@ smoke:
 smoke2:
 	bash scripts/smoke2.sh
 
+smoke3:
+	bash scripts/smoke3.sh
+
+test-rust:
+	cd sandbox && $(HOME)/.cargo/bin/cargo fmt --check && $(HOME)/.cargo/bin/cargo clippy --all-targets -- -D warnings && $(HOME)/.cargo/bin/cargo test
+
 fmt:
 	cd gateway && $(HOME)/.local/go/bin/gofmt -w .
 	cd connectors/sql && $(HOME)/.local/go/bin/gofmt -w .

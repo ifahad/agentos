@@ -1,0 +1,21 @@
+# Observability overlay: OTel collector receiving traces from gateway + runtime.
+#   docker compose -f compose.yaml -f compose.otel.yaml up -d
+# Forwarding to Langfuse/LangSmith: edit otel-collector.yaml (see comments).
+services:
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.116.1
+    command: ["--config=/etc/otel/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - "${AGENTOS_OTEL_PORT:-4318}:4318"
+  gateway:
+    environment:
+      AGENTOS_OTEL_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      - otel-collector
+  runtime:
+    environment:
+      AGENTOS_OTEL_ENDPOINT: http://otel-collector:4318
+    depends_on:
+      - otel-collector
