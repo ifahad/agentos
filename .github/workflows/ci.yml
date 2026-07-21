@@ -1,0 +1,117 @@
+name: ci
+
+# Continuous integration for every AgentOS component. Runs on every push (all
+# branches) and every pull request. Each component is an independent job so a
+# failure is isolated to the language/service it belongs to.
+on:
+  push:
+  pull_request:
+
+# Cancel superseded runs on the same ref to save minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    name: go (gateway + connectors)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          # Cache module downloads keyed on every module's go.sum. Modules that
+          # do not exist yet simply contribute nothing to the key.
+          cache-dependency-path: "**/go.sum"
+      - name: vet + test each Go module that exists
+        run: |
+          set -euo pipefail
+          # gateway plus every connector module. A module is tested only when
+          # it actually has a go.mod, so a not-yet-landed connector (e.g. soap
+          # while it is still in progress) is skipped rather than failing CI.
+          modules="gateway connectors/sql connectors/rest connectors/ssh connectors/soap"
+          failed=0
+          for d in $modules; do
+            if [ -f "$d/go.mod" ]; then
+              echo "::group::$d"
+              ( cd "$d" && go vet ./... && go test ./... ) || failed=1
+              echo "::endgroup::"
+            else
+              echo "skip $d (no go.mod)"
+            fi
+          done
+          exit $failed
+
+  python:
+    name: python runtime
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "runtime/uv.lock"
+      - name: ruff + pytest
+        working-directory: runtime
+        run: |
+          set -euo pipefail
+          uv sync --all-extras --dev
+          uv run ruff check .
+          uv run pytest
+
+  rust:
+    name: rust sandbox
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust (stable + rustfmt + clippy)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: sandbox
+      - name: fmt + clippy + test
+        working-directory: sandbox
+        run: |
+          set -euo pipefail
+          cargo fmt --check
+          cargo clippy --all-targets -- -D warnings
+          cargo test
+
+  console:
+    name: console (node)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: console/package-lock.json
+      - name: install + test + build
+        working-directory: console
+        run: |
+          set -euo pipefail
+          npm ci
+          npm test -- --run
+          npm run build
+
+  helm:
+    name: helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install helm
+        uses: azure/setup-helm@v4
+      - name: render tests (helm lint + template assertions)
+        run: bash deploy/helm/test-render.sh

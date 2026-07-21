@@ -1,5 +1,8 @@
 # AgentOS
 
+[![ci](https://img.shields.io/github/actions/workflow/status/ifahad/agentos/ci.yml?branch=main&label=ci)](https://github.com/ifahad/agentos/actions/workflows/ci.yml)
+[![evals](https://img.shields.io/github/actions/workflow/status/ifahad/agentos/evals.yml?branch=main&label=evals)](https://github.com/ifahad/agentos/actions/workflows/evals.yml)
+
 **An open-source, self-hostable agentic operating layer: any LLM provider in,
 any legacy system out, with governed autonomous agents in between.**
 

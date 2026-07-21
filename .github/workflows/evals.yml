@@ -1,0 +1,165 @@
+name: evals
+
+# LLM-judge eval gate. Boots the full compose stack against a DETERMINISTIC,
+# OFFLINE mock model (deploy/ci/mock-model.py) so the runtime eval suite
+# (runtime/evals/default.yaml) runs with no real provider and no network, then
+# fails the job if the suite score drops below the threshold.
+#
+# Triggers: manual (workflow_dispatch) and pull requests labelled `run-evals`
+# (evals are heavier than unit CI, so they are opt-in per PR).
+#
+# ---------------------------------------------------------------------------
+# Eval wiring (mock model, zero-friction)
+# ---------------------------------------------------------------------------
+# The runtime calls every model THROUGH the gateway. The gateway routes the
+# `ollama/` model prefix to AGENTOS_OLLAMA_BASE_URL with no auth header and $0
+# cost. So we:
+#   1. run deploy/ci/mock-model.py on the runner host (stdlib only, nothing to
+#      install) listening on :8100;
+#   2. point the gateway at it via AGENTOS_OLLAMA_BASE_URL=http://host.docker.internal:8100
+#      (the compose gateway already declares host.docker.internal as an extra_host);
+#   3. set the runtime's three models to ollama/mock-* so agent, judge and embed
+#      calls all land on the mock.
+# The mock returns canned tool-calls + answers keyed off conversation substrings,
+# so the suite scores 1.0 every run.
+#
+# ---------------------------------------------------------------------------
+# Running against REAL models instead
+# ---------------------------------------------------------------------------
+# Skip the mock and export real provider config before `compose up`, e.g. as
+# repo secrets/vars:
+#   AGENTOS_ANTHROPIC_API_KEY  (secret)  -> real key
+#   AGENTOS_MODEL       = anthropic/claude-sonnet-5
+#   AGENTOS_JUDGE_MODEL = anthropic/claude-haiku-4-5
+#   AGENTOS_EMBED_MODEL = ollama/bge-m3   (or an openai/ embed model with a key)
+# and drop the AGENTOS_OLLAMA_BASE_URL/mock steps. Everything else is identical.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MOCK_PORT: "8100"
+  RUNTIME_URL: "http://localhost:8000"
+  SCORE_THRESHOLD: "0.8"
+
+jobs:
+  evals:
+    name: eval gate (mock model)
+    runs-on: ubuntu-latest
+    # Run on manual dispatch, OR on a PR that carries the `run-evals` label.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'run-evals')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start deterministic mock model
+        run: |
+          set -euo pipefail
+          python3 deploy/ci/mock-model.py --port "$MOCK_PORT" \
+            > mock-model.log 2>&1 &
+          echo "MOCK_PID=$!" >> "$GITHUB_ENV"
+          # Wait for the mock to answer /healthz.
+          for i in $(seq 1 30); do
+            if curl -sf "http://localhost:${MOCK_PORT}/healthz" >/dev/null; then
+              echo "mock model is up"; exit 0
+            fi
+            sleep 1
+          done
+          echo "mock model failed to start" >&2
+          cat mock-model.log >&2
+          exit 1
+
+      - name: Write compose env (mock wiring)
+        run: |
+          set -euo pipefail
+          cat > deploy/.env <<'EOF'
+          AGENTOS_ADMIN_KEY=admin-ci
+          AGENTOS_RUNTIME_KEY=agos-ci-runtime
+          AGENTOS_MODEL=ollama/mock-agent
+          AGENTOS_JUDGE_MODEL=ollama/mock-judge
+          AGENTOS_EMBED_MODEL=ollama/mock-embed
+          AGENTOS_OLLAMA_BASE_URL=http://host.docker.internal:8100
+          AGENTOS_GUARDRAILS_MODE=off
+          EOF
+          echo "wrote deploy/.env:"; cat deploy/.env
+
+      - name: Boot compose stack
+        run: |
+          set -euo pipefail
+          docker compose -f deploy/compose.yaml --env-file deploy/.env \
+            up -d --build \
+            postgres gateway sql-connector demo-crm rest-connector sandbox runtime
+
+      - name: Wait for runtime health
+        run: |
+          set -euo pipefail
+          # The runtime's lifespan finishes MCP tool loading + agent build before
+          # uvicorn serves, so a 200 on /healthz means the agent is ready.
+          for i in $(seq 1 60); do
+            if curl -sf "${RUNTIME_URL}/healthz" >/dev/null; then
+              echo "runtime is healthy"; exit 0
+            fi
+            sleep 3
+          done
+          echo "runtime did not become healthy in time" >&2
+          docker compose -f deploy/compose.yaml logs --no-color runtime gateway sql-connector rest-connector >&2 || true
+          exit 1
+
+      - name: Run eval suite and gate on score
+        run: |
+          set -euo pipefail
+          resp="$(curl -sf -X POST "${RUNTIME_URL}/evals/run" \
+            -H 'content-type: application/json' \
+            -d '{"suite":"default","use_judge":true}')"
+          echo "raw response: $resp"
+          python3 - "$resp" <<'PY'
+          import json, os, sys
+          resp = json.loads(sys.argv[1])
+          score = float(resp.get("score", 0.0))
+          passed = resp.get("passed", 0)
+          failed = resp.get("failed", 0)
+          threshold = float(os.environ["SCORE_THRESHOLD"])
+          lines = [
+              "## Eval gate (mock model)",
+              "",
+              f"- **Score:** {score:.3f} (threshold {threshold:.2f})",
+              f"- **Passed:** {passed}  **Failed:** {failed}",
+              "",
+              "| case | passed | judge score |",
+              "| --- | --- | --- |",
+          ]
+          for c in resp.get("cases", []):
+              js = c.get("judge_score")
+              js = "-" if js is None else f"{js:.2f}"
+              lines.append(f"| {c['name']} | {'yes' if c['passed'] else 'NO'} | {js} |")
+          summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary:
+              with open(summary, "a") as fh:
+                  fh.write("\n".join(lines) + "\n")
+          print("\n".join(lines))
+          if score < threshold:
+              print(f"::error::eval score {score:.3f} below threshold {threshold:.2f}")
+              sys.exit(1)
+          PY
+
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          echo "===== mock-model.log ====="; cat mock-model.log || true
+          docker compose -f deploy/compose.yaml logs --no-color || true
+
+      - name: Tear down
+        if: always()
+        run: |
+          docker compose -f deploy/compose.yaml down -v || true
+          if [ -n "${MOCK_PID:-}" ]; then kill "${MOCK_PID}" 2>/dev/null || true; fi
