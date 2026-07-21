@@ -1,0 +1,25 @@
+# env / secrets
+.env
+*.env.local
+
+# Go
+gateway/gateway
+connectors/sql/sql-connector
+*.test
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+runtime/dist/
+
+# Node
+node_modules/
+
+# Rust
+sandbox/target/
+
+# misc
+.DS_Store
