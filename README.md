@@ -75,12 +75,31 @@ make fmt         # gofmt + ruff format
 Design spec: [`docs/superpowers/specs/2026-07-21-agentos-design.md`](docs/superpowers/specs/2026-07-21-agentos-design.md)
 · Phase 1 plan: [`docs/superpowers/plans/2026-07-21-phase-1-core-loop.md`](docs/superpowers/plans/2026-07-21-phase-1-core-loop.md)
 
+## Console
+
+`make up` also starts the admin console at http://localhost:3000
+(`AGENTOS_CONSOLE_PORT`): usage per key, key creation, the audit trail with
+guardrail badges, a playground with streaming and human-in-the-loop
+approvals, and knowledge-base document management.
+
+## Governance overlay
+
+```bash
+docker compose -f deploy/compose.yaml -f deploy/compose.hitl.yaml up -d
+```
+
+flips on human approval for the `query` tool (runs return
+`202 pending_approval` until approved in the console or via
+`POST /runs/{thread_id}/approve`) and prompt-injection blocking at the
+gateway. `make smoke2` exercises all of it end-to-end.
+
 ## Roadmap
 
-1. **Core loop** (this phase): gateway + runtime + SQL connector + compose demo.
-2. Console UI, OpenTelemetry → Langfuse/LangSmith, deepagents planner graphs,
-   LlamaIndex context engine, guardrails, streaming, more connectors,
-   human-in-the-loop approvals.
-3. Rust sandbox, eval-gated self-improvement loop, Helm charts.
+1. ~~**Core loop**: gateway + runtime + SQL connector + compose demo.~~ ✅
+2. ~~**Operability & governance**: console UI, streaming, guardrails,
+   human-in-the-loop approvals, LlamaIndex/pgvector context engine,
+   deepagents profile, opt-in OpenTelemetry.~~ ✅
+3. Rust sandbox, eval-gated self-improvement loop, more connectors
+   (REST/SOAP, SSH, browser), Helm charts, Langfuse compose profile.
 
 License: [Apache-2.0](LICENSE)
