@@ -290,6 +290,11 @@ select:focus {
   padding: 5px 8px;
 }
 
+.rpm-input {
+  width: 84px;
+  padding: 5px 8px;
+}
+
 .mode-toggle {
   display: flex;
   gap: 8px;

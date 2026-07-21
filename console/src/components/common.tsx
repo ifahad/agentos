@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ApiError } from "../lib/api";
+import { ApiError, formatRetryAfter } from "../lib/api";
 
 /** Standard page header. */
 export function PageHead({ title, subtitle }: { title: string; subtitle?: string }) {
@@ -50,6 +50,7 @@ export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.status === 401) return "Unauthorized — set your credentials in Settings.";
     if (err.status === 403) return "You don't have permission to perform this action.";
+    if (err.status === 429) return `Rate limited — retry in ${formatRetryAfter(err.retryAfter)}.`;
     return `${err.message} (${err.type}, HTTP ${err.status})`;
   }
   return err instanceof Error ? err.message : String(err);

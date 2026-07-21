@@ -1,32 +1,42 @@
 import { useState } from "react";
-import { saveAdminKey, saveStoredOrgId, saveStoredRole } from "../lib/api";
+import { SSO_LOGIN_URL } from "../lib/api";
 import type { AuthRole } from "../lib/rbac";
-import { ROLES, roleLabel } from "../lib/rbac";
-import type { Role } from "../lib/types";
+import { roleLabel } from "../lib/rbac";
+import { ErrorNotice } from "./common";
 
 interface Props {
   adminKey: string;
   role: AuthRole;
   orgId: string;
-  onSave: (key: string, role: AuthRole, orgId: string) => void;
+  email: string;
+  ssoEnabled: boolean;
+  identityError: string | null;
+  onSave: (key: string) => void;
   onClose: () => void;
 }
 
-export function SettingsModal({ adminKey, role, orgId, onSave, onClose }: Props) {
+export function SettingsModal({
+  adminKey,
+  role,
+  orgId,
+  email,
+  ssoEnabled,
+  identityError,
+  onSave,
+  onClose,
+}: Props) {
   const [mode, setMode] = useState<"root" | "user">(role === "root" ? "root" : "user");
   const [value, setValue] = useState(adminKey);
-  const [userRole, setUserRole] = useState<Role>(role === "root" ? "member" : role);
-  const [org, setOrg] = useState(orgId);
 
-  const save = () => {
-    const trimmed = value.trim();
-    const nextRole: AuthRole = mode === "root" ? "root" : userRole;
-    const nextOrg = mode === "root" ? "" : org.trim();
-    saveAdminKey(trimmed);
-    saveStoredRole(nextRole);
-    saveStoredOrgId(nextOrg);
-    onSave(trimmed, nextRole, nextOrg);
-  };
+  const save = () => onSave(value.trim());
+
+  // Once whoami has resolved a token, show the identity the gateway reports —
+  // read-only. The console no longer asks the caller to type their role/org.
+  const resolved = adminKey && !identityError;
+  const identityLine =
+    role === "root"
+      ? "Root admin · global superuser"
+      : [email, roleLabel(role), orgId].filter(Boolean).join(" · ");
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -35,9 +45,36 @@ export function SettingsModal({ adminKey, role, orgId, onSave, onClose }: Props)
         <p>
           Authenticate calls to the gateway admin API. Use the{" "}
           <strong>root admin key</strong> (global superuser) or a{" "}
-          <strong>user token</strong> (<code>agu-…</code>) issued from the Users page. The token
-          is sent as a Bearer credential and stored in this browser only.
+          <strong>user token</strong> (<code>agu-…</code>) issued from the Users page. Your role and
+          org are read from the gateway (<code>whoami</code>) — no need to enter them. The token is
+          sent as a Bearer credential and stored in this browser only.
         </p>
+
+        {identityError && <ErrorNotice error={identityError} />}
+
+        {resolved && identityLine && (
+          <div className="secret-reveal" style={{ marginBottom: 16 }}>
+            <strong>Signed in</strong>
+            <div className="muted mono" style={{ marginTop: 6 }}>
+              {identityLine}
+            </div>
+          </div>
+        )}
+
+        {ssoEnabled && (
+          <>
+            <button
+              className="btn primary"
+              style={{ width: "100%" }}
+              onClick={() => window.location.assign(SSO_LOGIN_URL)}
+            >
+              Sign in with SSO
+            </button>
+            <p className="muted" style={{ fontSize: "12px", margin: "10px 0 16px" }}>
+              Redirects to your identity provider and returns with a user token issued for you.
+            </p>
+          </>
+        )}
 
         <div className="mode-toggle">
           <button
@@ -66,34 +103,11 @@ export function SettingsModal({ adminKey, role, orgId, onSave, onClose }: Props)
             autoFocus
           />
         </label>
-
         {mode === "user" && (
-          <>
-            <label className="field">
-              <span>Your role</span>
-              <select value={userRole} onChange={(e) => setUserRole(e.target.value as Role)}>
-                {ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {roleLabel(r)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Your org id</span>
-              <input
-                type="text"
-                className="mono"
-                value={org}
-                placeholder="org_default"
-                onChange={(e) => setOrg(e.target.value)}
-              />
-            </label>
-            <p className="muted" style={{ fontSize: "12px", marginBottom: 0 }}>
-              The role only shapes what the console shows — the gateway enforces your real
-              permissions and answers 403 if you exceed them.
-            </p>
-          </>
+          <p className="muted" style={{ fontSize: "12px", marginBottom: 0 }}>
+            Your role and org come from the token itself — the gateway enforces your real
+            permissions and answers 403 if you exceed them.
+          </p>
         )}
 
         <div className="modal-actions">

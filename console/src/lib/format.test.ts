@@ -4,9 +4,23 @@ import {
   compactJSON,
   formatInt,
   formatLatency,
+  formatRpm,
   formatTimestamp,
   formatUSD,
 } from "./format";
+
+describe("formatRpm", () => {
+  it("shows 'unlimited' for zero or non-positive limits", () => {
+    expect(formatRpm(0)).toBe("unlimited");
+    expect(formatRpm(-1)).toBe("unlimited");
+    expect(formatRpm(Number.NaN)).toBe("unlimited");
+  });
+
+  it("shows 'N rpm' for a positive limit", () => {
+    expect(formatRpm(60)).toBe("60 rpm");
+    expect(formatRpm(12.6)).toBe("13 rpm");
+  });
+});
 
 describe("formatUSD", () => {
   it("uses two decimals from a dollar upward", () => {

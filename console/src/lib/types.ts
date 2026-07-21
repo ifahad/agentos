@@ -50,7 +50,17 @@ export interface Org {
   monthly_budget_usd: number;
   spend_usd: number;
   created_at: string;
+  // Per-tenant request-rate cap (requests/minute); 0 = unlimited (Phase 6).
+  rate_limit_rpm: number;
 }
+
+// GET /admin/whoami — the gateway resolves the caller's Bearer token to an
+// identity. The root admin key answers {root:true}; an `agu-…` user token
+// answers its user/org/email/role (Phase 6). This REPLACES manual role/org
+// entry in the console for user-token callers.
+export type WhoAmI =
+  | { root: true }
+  | { root: false; user_id: string; org_id: string; email: string; role: Role };
 
 // GET /admin/orgs/{org_id}/users row — never carries a token.
 export interface User {

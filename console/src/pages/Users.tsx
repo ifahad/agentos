@@ -19,7 +19,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
   const isRoot = role === "root";
 
   // Root can enumerate every org and pick one; a user-token caller is scoped to
-  // their own org (persisted in Settings — the gateway rejects any other).
+  // their own org (resolved from whoami — the gateway rejects any other).
   const orgsLoad = useLoad(
     () =>
       adminKey && allowed && isRoot
@@ -124,7 +124,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
               </>
             ) : (
               <span>
-                Org <span className="mono">{activeOrg || "— set your org id in Settings"}</span>
+                Org <span className="mono">{activeOrg || "— resolving your identity…"}</span>
               </span>
             )}
           </div>
@@ -232,7 +232,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
                   {users.length === 0 && !usersLoad.loading && (
                     <tr>
                       <td colSpan={canRemove ? 4 : 3} className="empty">
-                        {activeOrg ? "No users in this org yet." : "Select or set an org to list its users."}
+                        {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
                       </td>
                     </tr>
                   )}

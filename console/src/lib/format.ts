@@ -42,6 +42,12 @@ export function compactJSON(value: unknown, maxLen = 400): string {
   return s.length > maxLen ? `${s.slice(0, maxLen - 1)}…` : s;
 }
 
+/** Per-tenant rate limit for display: 0 (or invalid) -> "unlimited", else "N rpm". */
+export function formatRpm(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "unlimited";
+  return `${Math.round(n)} rpm`;
+}
+
 /** Fraction of budget spent, clamped to [0, 1]; 0 when the budget is 0. */
 export function budgetFraction(spend: number, budget: number): number {
   if (!Number.isFinite(spend) || !Number.isFinite(budget) || budget <= 0) return 0;

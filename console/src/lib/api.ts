@@ -8,9 +8,14 @@
 export const GATEWAY_BASE = "/api/gateway";
 export const RUNTIME_BASE = "/api/runtime";
 
+// Where the SSO button sends the browser. The gateway 302s to the provider and,
+// after callback, 302s back to the console with the token in the URL fragment.
+export const SSO_LOGIN_URL = `${GATEWAY_BASE}/auth/oidc/login`;
+
 const ADMIN_KEY_STORAGE = "agentos.adminKey";
 const AUTH_ROLE_STORAGE = "agentos.authRole";
 const ORG_ID_STORAGE = "agentos.orgId";
+const EMAIL_STORAGE = "agentos.email";
 
 export interface RequestSpec {
   url: string;
@@ -60,6 +65,16 @@ export function runtimeRequest(path: string, body?: unknown): RequestSpec {
   return buildRequest(RUNTIME_BASE, path, { body });
 }
 
+/** GET /admin/whoami — resolves the caller's Bearer token to an identity. */
+export function whoamiRequest(adminKey: string): RequestSpec {
+  return gatewayAdminRequest("/admin/whoami", adminKey);
+}
+
+/** GET /auth/oidc/status — public; the console uses it to show/hide SSO. */
+export function oidcStatusRequest(): RequestSpec {
+  return buildRequest(GATEWAY_BASE, "/auth/oidc/status");
+}
+
 // ---- Credential persistence ----
 //
 // The caller authenticates with a single Bearer token that is EITHER the root
@@ -104,7 +119,7 @@ export function saveStoredRole(role: string): void {
   writeStorage(AUTH_ROLE_STORAGE, role);
 }
 
-/** Persisted org id for user-token callers (empty for root). */
+/** Persisted org id for user-token callers (empty for root). From whoami. */
 export function getStoredOrgId(): string {
   return readStorage(ORG_ID_STORAGE);
 }
@@ -113,25 +128,62 @@ export function saveStoredOrgId(orgId: string): void {
   writeStorage(ORG_ID_STORAGE, orgId);
 }
 
+/** Persisted email for user-token callers (empty for root). From whoami. */
+export function getStoredEmail(): string {
+  return readStorage(EMAIL_STORAGE);
+}
+
+export function saveStoredEmail(email: string): void {
+  writeStorage(EMAIL_STORAGE, email);
+}
+
 // ---- Error handling ----
 
 export class ApiError extends Error {
   readonly status: number;
   readonly type: string;
+  // Seconds until a retry may succeed, read from a 429's `Retry-After` header.
+  readonly retryAfter?: number;
 
-  constructor(status: number, type: string, message: string) {
+  constructor(status: number, type: string, message: string, retryAfter?: number) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.type = type;
+    if (retryAfter !== undefined) this.retryAfter = retryAfter;
   }
+}
+
+/**
+ * Parse a `Retry-After` header (delta-seconds or an HTTP-date) into seconds.
+ * Pure: returns undefined for a missing/unparseable header.
+ */
+export function parseRetryAfter(header: string | null | undefined): number | undefined {
+  if (!header) return undefined;
+  const trimmed = header.trim();
+  if (trimmed === "") return undefined;
+  const secs = Number(trimmed);
+  if (Number.isFinite(secs) && secs >= 0) return secs;
+  const when = Date.parse(trimmed);
+  if (!Number.isNaN(when)) {
+    const diff = Math.round((when - Date.now()) / 1000);
+    return diff > 0 ? diff : 0;
+  }
+  return undefined;
+}
+
+/** "3s" from a seconds count; "a moment" when unknown/non-positive. */
+export function formatRetryAfter(seconds: number | undefined): string {
+  if (seconds === undefined || !Number.isFinite(seconds) || seconds <= 0) return "a moment";
+  return `${Math.ceil(seconds)}s`;
 }
 
 /**
  * Extract a human-readable error from a response body. The gateway answers
  * {"error":{"type","message"}}; the runtime (FastAPI) answers {"detail": ...}.
+ * `retryAfter` (from a 429's header) is carried through when present.
  */
-export function parseErrorBody(status: number, body: unknown): ApiError {
+export function parseErrorBody(status: number, body: unknown, retryAfter?: number): ApiError {
   if (body && typeof body === "object") {
     const rec = body as Record<string, unknown>;
     const err = rec["error"];
@@ -141,17 +193,18 @@ export function parseErrorBody(status: number, body: unknown): ApiError {
         status,
         typeof e["type"] === "string" ? e["type"] : "error",
         typeof e["message"] === "string" ? e["message"] : `HTTP ${status}`,
+        retryAfter,
       );
     }
     const detail = rec["detail"];
     if (typeof detail === "string") {
-      return new ApiError(status, "error", detail);
+      return new ApiError(status, "error", detail, retryAfter);
     }
     if (detail !== undefined) {
-      return new ApiError(status, "error", JSON.stringify(detail));
+      return new ApiError(status, "error", JSON.stringify(detail), retryAfter);
     }
   }
-  return new ApiError(status, "error", `HTTP ${status}`);
+  return new ApiError(status, "error", `HTTP ${status}`, retryAfter);
 }
 
 /** Fetch + JSON-decode, throwing ApiError on non-2xx. */
@@ -159,7 +212,7 @@ export async function apiFetch<T>(spec: RequestSpec): Promise<T> {
   const res = await fetch(spec.url, spec.init);
   const body = await safeJson(res);
   if (!res.ok) {
-    throw parseErrorBody(res.status, body);
+    throw parseErrorBody(res.status, body, parseRetryAfter(res.headers.get("Retry-After")));
   }
   return body as T;
 }
@@ -169,7 +222,7 @@ export async function apiFetchRaw(spec: RequestSpec): Promise<{ status: number; 
   const res = await fetch(spec.url, spec.init);
   const body = await safeJson(res);
   if (!res.ok && res.status !== 202) {
-    throw parseErrorBody(res.status, body);
+    throw parseErrorBody(res.status, body, parseRetryAfter(res.headers.get("Retry-After")));
   }
   return { status: res.status, body };
 }

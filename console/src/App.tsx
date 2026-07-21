@@ -1,8 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
 import { SettingsModal } from "./components/SettingsModal";
-import { getAdminKey, getStoredOrgId, getStoredRole } from "./lib/api";
+import { errorMessage } from "./components/common";
+import {
+  apiFetch,
+  getAdminKey,
+  getStoredEmail,
+  getStoredOrgId,
+  getStoredRole,
+  oidcStatusRequest,
+  saveAdminKey,
+  saveStoredEmail,
+  saveStoredOrgId,
+  saveStoredRole,
+  whoamiRequest,
+} from "./lib/api";
 import type { AuthRole } from "./lib/rbac";
 import { asAuthRole, can, roleLabel } from "./lib/rbac";
+import { identityFromWhoAmI, parseAuthFragment } from "./lib/sso";
+import type { WhoAmI } from "./lib/types";
 import { Audit } from "./pages/Audit";
 import { Documents } from "./pages/Documents";
 import { Improve } from "./pages/Improve";
@@ -57,13 +72,66 @@ function usePath(): [string, (p: string) => void] {
 export function App() {
   const [path, navigate] = usePath();
   const [adminKey, setAdminKey] = useState(getAdminKey);
+  // role / orgId / email are DERIVED from whoami, not manual entry. They start
+  // from the last resolved values (persisted) and refresh whenever the token
+  // changes; whoami is authoritative.
   const [role, setRole] = useState<AuthRole>(() => asAuthRole(getStoredRole()));
   const [orgId, setOrgId] = useState(getStoredOrgId);
+  const [email, setEmail] = useState(getStoredEmail);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [ssoEnabled, setSsoEnabled] = useState(false);
+  const [identityError, setIdentityError] = useState<string | null>(null);
 
   const route = ROUTES.find((r) => r.path === path) ?? ROUTES[0];
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const visibleRoutes = ROUTES.filter((r) => !r.visible || r.visible(role));
+
+  // Resolve the caller's identity from the gateway. On success the UI is driven
+  // by the real role/org/email; on failure (401) we prompt for credentials.
+  const refreshIdentity = useCallback(async (key: string) => {
+    if (!key) {
+      setRole("root");
+      setOrgId("");
+      setEmail("");
+      saveStoredRole("");
+      saveStoredOrgId("");
+      saveStoredEmail("");
+      setIdentityError(null);
+      return;
+    }
+    try {
+      const who = await apiFetch<WhoAmI>(whoamiRequest(key));
+      const id = identityFromWhoAmI(who);
+      setRole(id.role);
+      setOrgId(id.orgId);
+      setEmail(id.email);
+      saveStoredRole(id.role);
+      saveStoredOrgId(id.orgId);
+      saveStoredEmail(id.email);
+      setIdentityError(null);
+    } catch (err) {
+      setIdentityError(errorMessage(err));
+      setSettingsOpen(true);
+    }
+  }, []);
+
+  // On load: (1) pick up an SSO token from the URL fragment and clear it,
+  // (2) probe whether SSO is enabled, (3) resolve identity from any token.
+  useEffect(() => {
+    const frag = parseAuthFragment(window.location.hash);
+    let key = getAdminKey();
+    if (frag.token) {
+      saveAdminKey(frag.token);
+      key = frag.token;
+      setAdminKey(frag.token);
+      history.replaceState(null, "", window.location.pathname + window.location.search);
+    }
+    apiFetch<{ enabled: boolean }>(oidcStatusRequest())
+      .then((s) => setSsoEnabled(Boolean(s.enabled)))
+      .catch(() => setSsoEnabled(false));
+    if (key) void refreshIdentity(key);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="shell">
@@ -104,11 +172,14 @@ export function App() {
           adminKey={adminKey}
           role={role}
           orgId={orgId}
-          onSave={(k, r, o) => {
+          email={email}
+          ssoEnabled={ssoEnabled}
+          identityError={identityError}
+          onSave={(k) => {
+            saveAdminKey(k);
             setAdminKey(k);
-            setRole(r);
-            setOrgId(o);
             setSettingsOpen(false);
+            void refreshIdentity(k);
           }}
           onClose={() => setSettingsOpen(false)}
         />
