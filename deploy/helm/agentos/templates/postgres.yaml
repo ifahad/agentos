@@ -1,0 +1,117 @@
+{{- if .Values.postgres.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "agentos.fullname" . }}-postgres-initdb
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+data:
+{{ (.Files.Glob "files/initdb/*.sql").AsConfig | indent 2 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentos.fullname" . }}-postgres
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  clusterIP: None
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+  selector:
+    {{- include "agentos.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "agentos.fullname" . }}-postgres
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgres
+spec:
+  serviceName: {{ include "agentos.fullname" . }}-postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentos.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgres
+  template:
+    metadata:
+      labels:
+        {{- include "agentos.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: "{{ .Values.postgres.image.repository }}:{{ .Values.postgres.image.tag }}"
+          imagePullPolicy: {{ .Values.postgres.image.pullPolicy }}
+          ports:
+            - name: postgres
+              containerPort: 5432
+          env:
+            - name: POSTGRES_USER
+              value: {{ .Values.postgres.auth.username | quote }}
+            - name: POSTGRES_DB
+              value: {{ .Values.postgres.auth.database | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentos.secretName" . }}
+                  key: postgres-password
+            # Keep data out of the volume root so the PVC's lost+found does
+            # not trip initdb.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          readinessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U {{ .Values.postgres.auth.username }} -d {{ .Values.postgres.auth.database }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - pg_isready -U {{ .Values.postgres.auth.username }} -d {{ .Values.postgres.auth.database }}
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          {{- with .Values.postgres.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+            - name: initdb
+              mountPath: /docker-entrypoint-initdb.d
+              readOnly: true
+      volumes:
+        - name: initdb
+          configMap:
+            name: {{ include "agentos.fullname" . }}-postgres-initdb
+        {{- if not .Values.postgres.persistence.enabled }}
+        - name: pgdata
+          emptyDir: {}
+        {{- end }}
+  {{- if .Values.postgres.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: pgdata
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.postgres.persistence.storageClassName }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.postgres.persistence.size }}
+  {{- end }}
+{{- end }}

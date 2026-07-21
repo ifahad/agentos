@@ -1,0 +1,168 @@
+# Default values for the agentos chart.
+# Service topology and env contracts mirror deploy/compose.yaml (Phase 3).
+
+nameOverride: ""
+fullnameOverride: ""
+
+# -- Chart-managed credentials (rendered into a Secret named <fullname>-secrets).
+# Override these for anything beyond a local/dev cluster.
+adminKey: "admin-local-dev"
+runtimeKey: "agos-local-dev-runtime"
+# -- Monthly budget (USD) granted to the runtime's virtual key via
+# AGENTOS_BOOTSTRAP_KEYS ("runtime:<runtimeKey>:<budget>").
+runtimeBudget: 25
+
+# -- Existing Secret holding provider API keys, mounted into the gateway as env.
+# Expected keys (both optional): AGENTOS_ANTHROPIC_API_KEY, AGENTOS_OPENAI_API_KEY.
+providerKeys:
+  existingSecret: ""
+
+# -- Used only when postgres.enabled=false. Full connection URL for the
+# gateway store and the runtime checkpoint DB, e.g.
+# postgres://user:pass@host:5432/agentos
+externalDatabaseUrl: ""
+
+# -- OTLP/HTTP endpoint (e.g. http://otel-collector:4318). When set it is
+# exported as AGENTOS_OTEL_ENDPOINT on gateway and runtime.
+otel:
+  endpoint: ""
+
+postgres:
+  enabled: true
+  image:
+    repository: pgvector/pgvector
+    tag: pg16
+    pullPolicy: IfNotPresent
+  auth:
+    username: agentos
+    password: agentos
+    database: agentos
+  persistence:
+    enabled: true
+    size: 8Gi
+    storageClassName: ""
+  resources: {}
+
+gateway:
+  enabled: true
+  image:
+    repository: agentos/gateway
+    tag: ""  # defaults to Chart.appVersion
+    pullPolicy: IfNotPresent
+  service:
+    port: 8080
+  guardrailsMode: "off"
+  # -- Optional Ollama endpoint reachable from the cluster (empty = disabled).
+  ollamaBaseUrl: ""
+  # -- Comma-separated CORS origins (empty = none; console uses its nginx proxy).
+  corsOrigins: ""
+  resources: {}
+  extraEnv: []
+
+runtime:
+  enabled: true
+  image:
+    repository: agentos/runtime
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 8000
+  model: "anthropic/claude-sonnet-5"
+  embedModel: "ollama/bge-m3"
+  agentProfile: "react"
+  # -- Comma-joined into AGENTOS_APPROVAL_TOOLS (empty = HITL off).
+  approvalTools: ""
+  # -- Extra MCP server URLs appended to the composed AGENTOS_MCP_SERVERS.
+  extraMcpServers: []
+  resources: {}
+  extraEnv: []
+
+sqlConnector:
+  enabled: true
+  image:
+    repository: agentos/sql-connector
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 8090
+  # -- Read-only ERP connection. Defaults to the bundled Postgres' seeded
+  # legacy_erp DB; required when postgres.enabled=false.
+  databaseUrl: ""
+  maxRows: 200
+  resources: {}
+  extraEnv: []
+
+restConnector:
+  enabled: false
+  image:
+    repository: agentos/rest-connector
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 8091
+  # -- OpenAPI 3 JSON spec URL (required when enabled). Defaults to the
+  # demo CRM's spec when demoCrm.enabled=true.
+  specUrl: ""
+  baseUrl: ""
+  allowMutations: false
+  # -- Raw header ("Name: value") attached to upstream calls (empty = none).
+  authHeader: ""
+  maxBodyBytes: 65536
+  resources: {}
+  extraEnv: []
+
+sandbox:
+  enabled: true
+  image:
+    repository: agentos/sandbox
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 8070
+  maxTimeoutSeconds: 30
+  maxOutputBytes: 65536
+  # -- Defense-in-depth defaults; the pod also runs read-only with all
+  # capabilities dropped (see templates/sandbox.yaml).
+  resources:
+    limits:
+      cpu: "1"
+      memory: 768Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  extraEnv: []
+
+console:
+  enabled: true
+  image:
+    repository: agentos/console
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 80
+  resources: {}
+  extraEnv: []
+
+demoCrm:
+  enabled: false
+  image:
+    repository: agentos/demo-crm
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 8095
+  resources: {}
+  extraEnv: []
+
+# -- Ingress for the console (which reverse-proxies gateway + runtime APIs).
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  host: agentos.local
+  path: /
+  pathType: Prefix
+  tls: []
+  # tls:
+  #   - secretName: agentos-tls
+  #     hosts: [agentos.example.com]

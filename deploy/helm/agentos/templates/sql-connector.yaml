@@ -1,0 +1,70 @@
+{{- if .Values.sqlConnector.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentos.fullname" . }}-sql-connector
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sql-connector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentos.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sql-connector
+  template:
+    metadata:
+      labels:
+        {{- include "agentos.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sql-connector
+    spec:
+      containers:
+        - name: sql-connector
+          image: "{{ .Values.sqlConnector.image.repository }}:{{ .Values.sqlConnector.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.sqlConnector.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8090
+          env:
+            - name: AGENTOS_CONNECTOR_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentos.secretName" . }}
+                  key: connector-database-url
+            - name: AGENTOS_CONNECTOR_MAX_ROWS
+              value: {{ .Values.sqlConnector.maxRows | quote }}
+            {{- with .Values.sqlConnector.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          {{- with .Values.sqlConnector.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentos.fullname" . }}-sql-connector
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sql-connector
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.sqlConnector.service.port }}
+      targetPort: http
+  selector:
+    {{- include "agentos.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: sql-connector
+{{- end }}

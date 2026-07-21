@@ -1,0 +1,81 @@
+{{- if .Values.restConnector.enabled }}
+{{- $specUrl := .Values.restConnector.specUrl }}
+{{- if and (not $specUrl) .Values.demoCrm.enabled }}
+{{- $specUrl = printf "http://%s-demo-crm:%v/openapi.json" (include "agentos.fullname" .) .Values.demoCrm.service.port }}
+{{- end }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentos.fullname" . }}-rest-connector
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rest-connector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentos.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: rest-connector
+  template:
+    metadata:
+      labels:
+        {{- include "agentos.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: rest-connector
+    spec:
+      containers:
+        - name: rest-connector
+          image: "{{ .Values.restConnector.image.repository }}:{{ .Values.restConnector.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.restConnector.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8091
+          env:
+            - name: AGENTOS_REST_SPEC_URL
+              value: {{ required "restConnector.specUrl is required when restConnector.enabled=true (or enable demoCrm for its bundled spec)" $specUrl | quote }}
+            {{- with .Values.restConnector.baseUrl }}
+            - name: AGENTOS_REST_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            - name: AGENTOS_REST_ALLOW_MUTATIONS
+              value: {{ .Values.restConnector.allowMutations | quote }}
+            {{- with .Values.restConnector.authHeader }}
+            - name: AGENTOS_REST_AUTH_HEADER
+              value: {{ . | quote }}
+            {{- end }}
+            - name: AGENTOS_REST_MAX_BODY_BYTES
+              value: {{ .Values.restConnector.maxBodyBytes | quote }}
+            {{- with .Values.restConnector.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          {{- with .Values.restConnector.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentos.fullname" . }}-rest-connector
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rest-connector
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.restConnector.service.port }}
+      targetPort: http
+  selector:
+    {{- include "agentos.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: rest-connector
+{{- end }}

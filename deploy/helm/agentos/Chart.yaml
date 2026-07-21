@@ -1,0 +1,11 @@
+apiVersion: v2
+name: agentos
+description: AgentOS — model gateway, agent runtime, MCP connectors, code sandbox and admin console.
+type: application
+version: 0.1.0
+appVersion: "0.3.0"
+keywords:
+  - agents
+  - llm
+  - mcp
+home: https://github.com/ifahad/agentos

@@ -1,0 +1,65 @@
+{{- if .Values.demoCrm.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentos.fullname" . }}-demo-crm
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: demo-crm
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentos.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: demo-crm
+  template:
+    metadata:
+      labels:
+        {{- include "agentos.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: demo-crm
+    spec:
+      containers:
+        - name: demo-crm
+          image: "{{ .Values.demoCrm.image.repository }}:{{ .Values.demoCrm.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.demoCrm.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8095
+          {{- with .Values.demoCrm.extraEnv }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          {{- with .Values.demoCrm.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentos.fullname" . }}-demo-crm
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: demo-crm
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.demoCrm.service.port }}
+      targetPort: http
+  selector:
+    {{- include "agentos.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: demo-crm
+{{- end }}

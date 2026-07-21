@@ -1,0 +1,86 @@
+{{- if .Values.sandbox.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentos.fullname" . }}-sandbox
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentos.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sandbox
+  template:
+    metadata:
+      labels:
+        {{- include "agentos.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sandbox
+    spec:
+      # Hardened per the Phase 3 sandbox contract: read-only root FS, no
+      # privilege escalation, all capabilities dropped, tmpfs-style /tmp for
+      # per-execution workdirs, resource limits always set.
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: sandbox
+          image: "{{ .Values.sandbox.image.repository }}:{{ .Values.sandbox.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.sandbox.image.pullPolicy }}
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 8070
+          env:
+            - name: AGENTOS_SANDBOX_MAX_TIMEOUT_S
+              value: {{ .Values.sandbox.maxTimeoutSeconds | quote }}
+            - name: AGENTOS_SANDBOX_MAX_OUTPUT_BYTES
+              value: {{ .Values.sandbox.maxOutputBytes | quote }}
+            {{- with .Values.sandbox.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.sandbox.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentos.fullname" . }}-sandbox
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.sandbox.service.port }}
+      targetPort: http
+  selector:
+    {{- include "agentos.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+{{- end }}

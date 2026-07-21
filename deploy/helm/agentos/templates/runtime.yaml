@@ -1,0 +1,95 @@
+{{- if .Values.runtime.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentos.fullname" . }}-runtime
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runtime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentos.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: runtime
+  template:
+    metadata:
+      labels:
+        {{- include "agentos.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: runtime
+    spec:
+      containers:
+        - name: runtime
+          image: "{{ .Values.runtime.image.repository }}:{{ .Values.runtime.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.runtime.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8000
+          env:
+            - name: AGENTOS_GATEWAY_URL
+              value: {{ include "agentos.gatewayUrl" . | quote }}
+            - name: AGENTOS_GATEWAY_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentos.secretName" . }}
+                  key: runtime-key
+            - name: AGENTOS_MODEL
+              value: {{ .Values.runtime.model | quote }}
+            - name: AGENTOS_MCP_SERVERS
+              value: {{ include "agentos.mcpServers" . | quote }}
+            - name: AGENTOS_CHECKPOINT_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentos.secretName" . }}
+                  key: database-url
+            {{- if .Values.sandbox.enabled }}
+            - name: AGENTOS_SANDBOX_URL
+              value: "http://{{ include "agentos.fullname" . }}-sandbox:{{ .Values.sandbox.service.port }}"
+            {{- end }}
+            - name: AGENTOS_APPROVAL_TOOLS
+              value: {{ .Values.runtime.approvalTools | quote }}
+            - name: AGENTOS_EMBED_MODEL
+              value: {{ .Values.runtime.embedModel | quote }}
+            - name: AGENTOS_AGENT_PROFILE
+              value: {{ .Values.runtime.agentProfile | quote }}
+            {{- with .Values.otel.endpoint }}
+            - name: AGENTOS_OTEL_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.runtime.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          {{- with .Values.runtime.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentos.fullname" . }}-runtime
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: runtime
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.runtime.service.port }}
+      targetPort: http
+  selector:
+    {{- include "agentos.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: runtime
+{{- end }}

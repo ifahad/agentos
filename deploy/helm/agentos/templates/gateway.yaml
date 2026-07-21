@@ -1,0 +1,95 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentos.fullname" . }}-gateway
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentos.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: gateway
+  template:
+    metadata:
+      labels:
+        {{- include "agentos.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: gateway
+    spec:
+      containers:
+        - name: gateway
+          image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: AGENTOS_ADMIN_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentos.secretName" . }}
+                  key: admin-key
+            - name: AGENTOS_DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentos.secretName" . }}
+                  key: database-url
+            - name: AGENTOS_BOOTSTRAP_KEYS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentos.secretName" . }}
+                  key: bootstrap-keys
+            - name: AGENTOS_GUARDRAILS_MODE
+              value: {{ .Values.gateway.guardrailsMode | quote }}
+            {{- with .Values.gateway.ollamaBaseUrl }}
+            - name: AGENTOS_OLLAMA_BASE_URL
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.gateway.corsOrigins }}
+            - name: AGENTOS_CORS_ORIGINS
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.otel.endpoint }}
+            - name: AGENTOS_OTEL_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            {{- include "agentos.providerKeyEnv" . | nindent 12 }}
+            {{- with .Values.gateway.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          {{- with .Values.gateway.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentos.fullname" . }}-gateway
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.gateway.service.port }}
+      targetPort: http
+  selector:
+    {{- include "agentos.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: gateway
+{{- end }}
