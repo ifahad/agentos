@@ -20,21 +20,36 @@ type memoryUser struct {
 	tokenHash string
 }
 
+// memoryUsage is one per-key aggregate plus the owning org, keyed internally by
+// the key's stable identity (secret_hash) so same-named keys in different orgs
+// never share a row (H4).
+type memoryUsage struct {
+	agg   KeyUsage
+	orgID string
+}
+
+// memoryAudit is one audit row plus the owning org (used only for org scoping;
+// org_id is never serialized in the JSON response).
+type memoryAudit struct {
+	entry AuditEntry
+	orgID string
+}
+
 // Memory is an in-process Store used when AGENTOS_DATABASE_URL is empty.
 type Memory struct {
 	mu    sync.Mutex
-	keys  map[string]*memoryKey  // secret hash -> key
-	usage map[string]*KeyUsage   // key name -> aggregate
-	audit []AuditEntry           // oldest first
-	orgs  map[string]*Org        // org id -> org
-	users map[string]*memoryUser // user id -> user (with token hash)
+	keys  map[string]*memoryKey   // secret hash -> key
+	usage map[string]*memoryUsage // identity (secret_hash | "name:"+name) -> aggregate
+	audit []memoryAudit           // oldest first
+	orgs  map[string]*Org         // org id -> org
+	users map[string]*memoryUser  // user id -> user (with token hash)
 }
 
 // NewMemory returns an empty in-memory store.
 func NewMemory() *Memory {
 	return &Memory{
 		keys:  make(map[string]*memoryKey),
-		usage: make(map[string]*KeyUsage),
+		usage: make(map[string]*memoryUsage),
 		orgs:  make(map[string]*Org),
 		users: make(map[string]*memoryUser),
 	}
@@ -64,86 +79,138 @@ func (m *Memory) CreateKeyIn(_ context.Context, name string, budgetUSD float64, 
 func (m *Memory) Authenticate(_ context.Context, secret string) (*Key, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	k, ok := m.keys[hashSecret(secret)]
+	hash := hashSecret(secret)
+	k, ok := m.keys[hash]
 	if !ok {
 		return nil, ErrInvalidKey
 	}
-	return &Key{Name: k.name, MonthlyBudgetUSD: k.budgetUSD, SpendUSD: k.spendUSD, OrgID: orgOrDefault(k.orgID)}, nil
+	return &Key{Name: k.name, MonthlyBudgetUSD: k.budgetUSD, SpendUSD: k.spendUSD, OrgID: orgOrDefault(k.orgID), SecretHash: hash}, nil
+}
+
+// resolveIdentity determines the stable identity (secret_hash) and org for a
+// usage/audit row. The caller-supplied values win; missing values are resolved
+// from the owning key by name (legacy path). Callers hold m.mu.
+func (m *Memory) resolveIdentity(u Usage) (identity, orgID string) {
+	identity, orgID = u.SecretHash, u.OrgID
+	if identity == "" || orgID == "" {
+		for h, k := range m.keys {
+			if k.name == u.KeyName {
+				if identity == "" {
+					identity = h
+				}
+				if orgID == "" {
+					orgID = orgOrDefault(k.orgID)
+				}
+				break
+			}
+		}
+	}
+	if identity == "" {
+		identity = "name:" + u.KeyName
+	}
+	return identity, orgID
 }
 
 func (m *Memory) RecordUsage(_ context.Context, u Usage) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for _, k := range m.keys {
-		if k.name == u.KeyName {
+	identity, orgID := m.resolveIdentity(u)
+	// Attribute spend by secret_hash when the caller provided one (isolated),
+	// else by name for legacy callers.
+	if u.SecretHash != "" {
+		if k, ok := m.keys[u.SecretHash]; ok {
 			k.spendUSD += u.CostUSD
 		}
+	} else {
+		for _, k := range m.keys {
+			if k.name == u.KeyName {
+				k.spendUSD += u.CostUSD
+			}
+		}
 	}
-	agg, ok := m.usage[u.KeyName]
+	mu, ok := m.usage[identity]
 	if !ok {
-		agg = &KeyUsage{Name: u.KeyName}
-		m.usage[u.KeyName] = agg
+		mu = &memoryUsage{agg: KeyUsage{Name: u.KeyName}, orgID: orgID}
+		m.usage[identity] = mu
 	}
-	agg.Requests++
-	agg.InputTokens += u.InputTokens
-	agg.OutputTokens += u.OutputTokens
-	agg.SpendUSD += u.CostUSD
-	m.appendAudit(u)
+	if orgID != "" {
+		mu.orgID = orgID
+	}
+	mu.agg.Name = u.KeyName
+	mu.agg.Requests++
+	mu.agg.InputTokens += u.InputTokens
+	mu.agg.OutputTokens += u.OutputTokens
+	mu.agg.SpendUSD += u.CostUSD
+	m.appendAudit(u, orgID)
 	return nil
 }
 
 func (m *Memory) RecordAudit(_ context.Context, u Usage) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	m.appendAudit(u)
+	_, orgID := m.resolveIdentity(u)
+	m.appendAudit(u, orgID)
 	return nil
 }
 
 // appendAudit stamps and stores one audit entry; callers hold m.mu.
-func (m *Memory) appendAudit(u Usage) {
-	m.audit = append(m.audit, AuditEntry{
-		TS:           time.Now().UTC(),
-		KeyName:      u.KeyName,
-		Model:        u.Model,
-		InputTokens:  u.InputTokens,
-		OutputTokens: u.OutputTokens,
-		CostUSD:      u.CostUSD,
-		LatencyMS:    u.LatencyMS,
-		Status:       u.Status,
-		Kind:         kindOrChat(u.Kind),
+func (m *Memory) appendAudit(u Usage, orgID string) {
+	m.audit = append(m.audit, memoryAudit{
+		entry: AuditEntry{
+			TS:           time.Now().UTC(),
+			KeyName:      u.KeyName,
+			Model:        u.Model,
+			InputTokens:  u.InputTokens,
+			OutputTokens: u.OutputTokens,
+			CostUSD:      u.CostUSD,
+			LatencyMS:    u.LatencyMS,
+			Status:       u.Status,
+			Kind:         kindOrChat(u.Kind),
+		},
+		orgID: orgID,
 	})
 }
 
-func (m *Memory) AuditList(_ context.Context, limit int) ([]AuditEntry, error) {
+func (m *Memory) AuditList(_ context.Context, orgID string, limit int) ([]AuditEntry, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if limit > len(m.audit) {
-		limit = len(m.audit)
-	}
 	if limit < 0 {
 		limit = 0
 	}
 	out := make([]AuditEntry, 0, limit)
+	// Newest first; an empty orgID returns all rows (root), else scope by org.
 	for i := len(m.audit) - 1; i >= 0 && len(out) < limit; i-- {
-		out = append(out, m.audit[i])
+		if orgID != "" && m.audit[i].orgID != orgID {
+			continue
+		}
+		out = append(out, m.audit[i].entry)
 	}
 	return out, nil
 }
 
-func (m *Memory) Usage(_ context.Context) ([]KeyUsage, error) {
+func (m *Memory) Usage(_ context.Context, orgID string) ([]KeyUsage, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	seen := make(map[string]bool)
 	var out []KeyUsage
-	for name, agg := range m.usage {
-		seen[name] = true
-		out = append(out, *agg)
-	}
-	for _, k := range m.keys {
-		if !seen[k.name] {
-			seen[k.name] = true
-			out = append(out, KeyUsage{Name: k.name})
+	// Aggregates that have recorded usage, scoped by org (empty = all).
+	for _, mu := range m.usage {
+		if orgID != "" && mu.orgID != orgID {
+			continue
 		}
+		out = append(out, mu.agg)
+	}
+	// Keys with no usage yet still appear (with zero counts), scoped by org.
+	for h, k := range m.keys {
+		if orgID != "" && orgOrDefault(k.orgID) != orgID {
+			continue
+		}
+		if _, ok := m.usage[h]; ok {
+			continue
+		}
+		if _, ok := m.usage["name:"+k.name]; ok {
+			continue
+		}
+		out = append(out, KeyUsage{Name: k.name})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
@@ -397,7 +464,8 @@ func (m *Memory) Audit() []Usage {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]Usage, len(m.audit))
-	for i, e := range m.audit {
+	for i, a := range m.audit {
+		e := a.entry
 		out[i] = Usage{
 			KeyName:      e.KeyName,
 			Model:        e.Model,

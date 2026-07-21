@@ -18,11 +18,13 @@ import (
 // and a token endpoint returning an RS256-signed ID token. It exercises the
 // real go-oidc verification path (no bypass).
 type mockOIDC struct {
-	server   *httptest.Server
-	key      *rsa.PrivateKey
-	clientID string
-	email    string // the email claim the token endpoint issues
-	kid      string
+	server        *httptest.Server
+	key           *rsa.PrivateKey
+	clientID      string
+	email         string // the email claim the token endpoint issues
+	emailVerified bool   // the email_verified claim (default true)
+	sub           string // the subject claim (default "subject-123")
+	kid           string
 }
 
 func newMockOIDC(t *testing.T, clientID, email string) *mockOIDC {
@@ -31,7 +33,7 @@ func newMockOIDC(t *testing.T, clientID, email string) *mockOIDC {
 	if err != nil {
 		t.Fatalf("generate rsa key: %v", err)
 	}
-	m := &mockOIDC{key: key, clientID: clientID, email: email, kid: "test-key-1"}
+	m := &mockOIDC{key: key, clientID: clientID, email: email, emailVerified: true, sub: "subject-123", kid: "test-key-1"}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
@@ -87,12 +89,13 @@ func (m *mockOIDC) signIDToken(t *testing.T, expiry time.Time) string {
 	t.Helper()
 	header := map[string]any{"alg": "RS256", "typ": "JWT", "kid": m.kid}
 	claims := map[string]any{
-		"iss":   m.server.URL,
-		"aud":   m.clientID,
-		"sub":   "subject-123",
-		"email": m.email,
-		"exp":   expiry.Unix(),
-		"iat":   time.Now().Unix(),
+		"iss":            m.server.URL,
+		"aud":            m.clientID,
+		"sub":            m.sub,
+		"email":          m.email,
+		"email_verified": m.emailVerified,
+		"exp":            expiry.Unix(),
+		"iat":            time.Now().Unix(),
 	}
 	hb, _ := json.Marshal(header)
 	cb, _ := json.Marshal(claims)

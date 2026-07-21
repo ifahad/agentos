@@ -233,3 +233,97 @@ func TestStoreEnsureOrgIdempotent(t *testing.T) {
 		})
 	}
 }
+
+// TestStoreTenantIsolationSameKeyName proves H4: two orgs each own a key named
+// "runtime"; spend/usage/audit recorded against org B's key must not appear in
+// org A's spend, usage, or audit. This is the exact assessment scenario, now
+// keyed on secret_hash + org_id instead of the user-chosen name.
+func TestStoreTenantIsolationSameKeyName(t *testing.T) {
+	for _, sf := range rbacStores() {
+		t.Run(sf.name, func(t *testing.T) {
+			st := sf.make(t)
+			ctx := context.Background()
+
+			orgA, err := st.CreateOrg(ctx, "orgA", 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			orgB, err := st.CreateOrg(ctx, "orgB", 0)
+			if err != nil {
+				t.Fatal(err)
+			}
+			secretA, err := st.CreateKeyIn(ctx, "runtime", 100, orgA.ID, RootCreator)
+			if err != nil {
+				t.Fatal(err)
+			}
+			secretB, err := st.CreateKeyIn(ctx, "runtime", 100, orgB.ID, RootCreator)
+			if err != nil {
+				t.Fatal(err)
+			}
+			keyA, err := st.Authenticate(ctx, secretA)
+			if err != nil {
+				t.Fatal(err)
+			}
+			keyB, err := st.Authenticate(ctx, secretB)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if keyA.SecretHash == "" || keyA.SecretHash == keyB.SecretHash {
+				t.Fatalf("expected distinct non-empty secret hashes, got %q / %q", keyA.SecretHash, keyB.SecretHash)
+			}
+
+			// All traffic hits org B's "runtime" key only.
+			if err := st.RecordUsage(ctx, Usage{
+				SecretHash: keyB.SecretHash, OrgID: keyB.OrgID, KeyName: "runtime",
+				Model: "m", InputTokens: 10, OutputTokens: 5, CostUSD: 3, Status: 200,
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			// Org A's key spend is untouched.
+			keyA, _ = st.Authenticate(ctx, secretA)
+			if keyA.SpendUSD != 0 {
+				t.Errorf("org A key spend = %v, want 0 (no contamination)", keyA.SpendUSD)
+			}
+			if a, _ := st.OrgSpend(ctx, orgA.ID); a != 0 {
+				t.Errorf("org A spend = %v, want 0", a)
+			}
+			if b, _ := st.OrgSpend(ctx, orgB.ID); !almostEqual(b, 3) {
+				t.Errorf("org B spend = %v, want 3", b)
+			}
+
+			// Usage scoping: org A sees its "runtime" with zero usage; org B sees
+			// the spend. Names collide but the rows are isolated by org.
+			ua, _ := st.Usage(ctx, orgA.ID)
+			if len(ua) != 1 || ua[0].Name != "runtime" || ua[0].Requests != 0 || ua[0].SpendUSD != 0 {
+				t.Errorf("org A usage = %+v, want one runtime row with zero usage", ua)
+			}
+			ub, _ := st.Usage(ctx, orgB.ID)
+			if len(ub) != 1 || ub[0].Name != "runtime" || ub[0].Requests != 1 || !almostEqual(ub[0].SpendUSD, 3) {
+				t.Errorf("org B usage = %+v, want one runtime row with the spend", ub)
+			}
+
+			// Audit scoping: the request appears only for org B.
+			aa, _ := st.AuditList(ctx, orgA.ID, 50)
+			if len(aa) != 0 {
+				t.Errorf("org A audit = %d rows, want 0", len(aa))
+			}
+			ab, _ := st.AuditList(ctx, orgB.ID, 50)
+			if len(ab) != 1 || ab[0].KeyName != "runtime" {
+				t.Errorf("org B audit = %+v, want 1 runtime row", ab)
+			}
+
+			// Root sees both keys' usage (two distinct rows despite the shared name).
+			all, _ := st.Usage(ctx, "")
+			var runtimeRows int
+			for _, u := range all {
+				if u.Name == "runtime" {
+					runtimeRows++
+				}
+			}
+			if runtimeRows != 2 {
+				t.Errorf("root usage runtime rows = %d, want 2 (one per org)", runtimeRows)
+			}
+		})
+	}
+}

@@ -60,6 +60,10 @@ type Key struct {
 	MonthlyBudgetUSD float64
 	SpendUSD         float64
 	OrgID            string // owning org; DefaultOrgID for pre-existing keys
+	// SecretHash is the stable per-key identity (the keys table PK). Usage,
+	// spend, and audit are attributed by this hash, never by the user-chosen
+	// name, so two orgs may share a key name without cross-contamination (H4).
+	SecretHash string
 }
 
 // Org is a tenant. A MonthlyBudgetUSD of 0 means unlimited (the org budget cap
@@ -92,6 +96,12 @@ type User struct {
 
 // Usage records one proxied request for accounting and audit.
 type Usage struct {
+	// SecretHash is the stable identity of the owning key (H4). When set, spend
+	// updates and usage/audit rows are attributed by it; org scoping uses OrgID.
+	// Legacy callers that leave it empty are resolved by KeyName against the keys
+	// table so pre-existing behavior and tests are preserved.
+	SecretHash   string
+	OrgID        string
 	KeyName      string
 	Model        string
 	InputTokens  int64
@@ -145,9 +155,14 @@ type Store interface {
 	Authenticate(ctx context.Context, secret string) (*Key, error) // ErrInvalidKey
 	RecordUsage(ctx context.Context, u Usage) error                // updates spend
 	RecordAudit(ctx context.Context, u Usage) error                // audit log only, no spend
-	Usage(ctx context.Context) ([]KeyUsage, error)
+	// Usage returns per-key aggregates. An empty orgID returns all keys (root);
+	// a non-empty orgID scopes to that org in the store query — the isolation is
+	// pushed down, not filtered by name in Go (H4).
+	Usage(ctx context.Context, orgID string) ([]KeyUsage, error)
 	Keys(ctx context.Context) ([]KeyInfo, error)
-	AuditList(ctx context.Context, limit int) ([]AuditEntry, error) // newest first
+	// AuditList returns audit rows newest first. An empty orgID returns all
+	// (root); a non-empty orgID scopes by org_id in the query (H4).
+	AuditList(ctx context.Context, orgID string, limit int) ([]AuditEntry, error)
 	EnsureKey(ctx context.Context, name, secret string, budgetUSD float64) error
 
 	// Multi-tenant RBAC additions (Phase 5).

@@ -172,3 +172,54 @@ func TestCost(t *testing.T) {
 		})
 	}
 }
+
+// mutableSource is a settable secret.Source for the rotation test: Reload flips
+// the returned value, standing in for a file/age/vault secret being rotated.
+type mutableSource struct{ anthropic, openai string }
+
+func (s *mutableSource) Get(name string) (string, bool) {
+	switch name {
+	case AnthropicKeyName:
+		return s.anthropic, s.anthropic != ""
+	case OpenAIKeyName:
+		return s.openai, s.openai != ""
+	}
+	return "", false
+}
+func (s *mutableSource) Backend() string { return "mutable" }
+
+// TestRouteResolvesKeyFromLiveSource proves H5: with a secret.Source injected,
+// Route reads the provider key on each call, so a rotation changes the key used
+// upstream. The static field is only a fallback when the source lacks a value.
+func TestRouteResolvesKeyFromLiveSource(t *testing.T) {
+	src := &mutableSource{anthropic: "sk-ant-v1", openai: "sk-oai-v1"}
+	router := &Router{Secrets: src, AnthropicAPIKey: "static-fallback"}
+
+	route, err := router.Route("anthropic/claude-sonnet-5")
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if route.APIKey != "sk-ant-v1" {
+		t.Fatalf("api key = %q, want live source value sk-ant-v1", route.APIKey)
+	}
+
+	// Rotate the secret; the very next Route call must reflect it (no restart).
+	src.anthropic = "sk-ant-v2"
+	route, _ = router.Route("anthropic/claude-sonnet-5")
+	if route.APIKey != "sk-ant-v2" {
+		t.Errorf("after rotation api key = %q, want sk-ant-v2", route.APIKey)
+	}
+
+	// OpenAI resolves independently from the same source.
+	oroute, _ := router.Route("openai/gpt-4o-mini")
+	if oroute.APIKey != "sk-oai-v1" {
+		t.Errorf("openai key = %q, want sk-oai-v1", oroute.APIKey)
+	}
+
+	// When the source lacks a value, fall back to the static field.
+	src.anthropic = ""
+	route, _ = router.Route("anthropic/claude-sonnet-5")
+	if route.APIKey != "static-fallback" {
+		t.Errorf("empty source api key = %q, want static-fallback", route.APIKey)
+	}
+}

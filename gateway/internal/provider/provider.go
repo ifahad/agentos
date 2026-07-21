@@ -5,6 +5,8 @@ package provider
 import (
 	"errors"
 	"strings"
+
+	"github.com/ifahad/agentos/gateway/internal/secret"
 )
 
 // ErrUnknownProvider is returned when the model carries no known prefix.
@@ -15,6 +17,13 @@ const (
 	DefaultAnthropicBaseURL = "https://api.anthropic.com"
 	DefaultOpenAIBaseURL    = "https://api.openai.com"
 	DefaultOllamaBaseURL    = "http://localhost:11434"
+)
+
+// Secret names the Router resolves provider keys under when a live
+// secret.Source is injected (H5 rotation). They match server.DefaultSecretNames.
+const (
+	AnthropicKeyName = "AGENTOS_ANTHROPIC_API_KEY"
+	OpenAIKeyName    = "AGENTOS_OPENAI_API_KEY"
 )
 
 // Route is a resolved upstream target for one request.
@@ -31,8 +40,36 @@ type Router struct {
 	AnthropicBaseURL string
 	OpenAIBaseURL    string
 	OllamaBaseURL    string
-	AnthropicAPIKey  string
-	OpenAIAPIKey     string
+	// AnthropicAPIKey/OpenAIAPIKey are the static fallback credentials used when
+	// no live Secrets source is injected (tests, static config).
+	AnthropicAPIKey string
+	OpenAIAPIKey    string
+	// Secrets, when non-nil, is the live secret source. Route resolves provider
+	// keys from it on every call so a rotation (POST /admin/secrets/reload or the
+	// refresh loop) takes effect upstream without a restart (H5). When it lacks a
+	// value the static field above is used as a fallback.
+	Secrets secret.Source
+}
+
+// anthropicKey resolves the Anthropic credential: the live Secrets source wins
+// when it has a value, else the static AnthropicAPIKey field.
+func (r *Router) anthropicKey() string {
+	if r.Secrets != nil {
+		if v, ok := r.Secrets.Get(AnthropicKeyName); ok && v != "" {
+			return v
+		}
+	}
+	return r.AnthropicAPIKey
+}
+
+// openaiKey resolves the OpenAI credential (see anthropicKey).
+func (r *Router) openaiKey() string {
+	if r.Secrets != nil {
+		if v, ok := r.Secrets.Get(OpenAIKeyName); ok && v != "" {
+			return v
+		}
+	}
+	return r.OpenAIAPIKey
 }
 
 // Route resolves a prefixed model like "anthropic/claude-sonnet-5" to an
@@ -53,14 +90,14 @@ func (r *Router) route(model, path string) (*Route, error) {
 		return &Route{
 			Provider: "anthropic",
 			URL:      orDefault(r.AnthropicBaseURL, DefaultAnthropicBaseURL) + path,
-			APIKey:   r.AnthropicAPIKey,
+			APIKey:   r.anthropicKey(),
 			Model:    strings.TrimPrefix(model, "anthropic/"),
 		}, nil
 	case strings.HasPrefix(model, "openai/"):
 		return &Route{
 			Provider: "openai",
 			URL:      orDefault(r.OpenAIBaseURL, DefaultOpenAIBaseURL) + path,
-			APIKey:   r.OpenAIAPIKey,
+			APIKey:   r.openaiKey(),
 			Model:    strings.TrimPrefix(model, "openai/"),
 		}, nil
 	case strings.HasPrefix(model, "ollama/"):

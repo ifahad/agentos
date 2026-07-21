@@ -79,7 +79,7 @@ func TestGuardrailsModelModeClassifierErrorFailsOpen(t *testing.T) {
 	}
 
 	// The guardrail_error entry is audit-only: it must not count as a request.
-	usage, err := mem.Usage(t.Context())
+	usage, err := mem.Usage(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}

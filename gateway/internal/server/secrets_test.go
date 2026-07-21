@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 
+	"github.com/ifahad/agentos/gateway/internal/provider"
 	"github.com/ifahad/agentos/gateway/internal/rbac"
 	"github.com/ifahad/agentos/gateway/internal/store"
 )
@@ -113,5 +116,83 @@ func TestSecretsReloadEnvBackendIsNoOp(t *testing.T) {
 	}
 	if len(status) != len(DefaultSecretNames) {
 		t.Errorf("status rows = %d, want %d", len(status), len(DefaultSecretNames))
+	}
+}
+
+// reloadableSecrets is a settable secret.Source whose Reload swaps the returned
+// values, standing in for a rotated file/age/vault secret.
+type reloadableSecrets struct {
+	mu     sync.Mutex
+	values map[string]string
+	next   map[string]string
+}
+
+func (s *reloadableSecrets) Get(name string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	v, ok := s.values[name]
+	return v, ok
+}
+func (s *reloadableSecrets) Backend() string { return "reloadable" }
+func (s *reloadableSecrets) Reload() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.values = s.next
+	return len(s.next), nil
+}
+
+// TestSecretsReloadRotatesRouterKey proves H5 through the admin endpoint: the
+// router resolves provider keys from the live source, so POST /admin/secrets/
+// reload changes the key Route() returns upstream.
+func TestSecretsReloadRotatesRouterKey(t *testing.T) {
+	src := &reloadableSecrets{
+		values: map[string]string{provider.AnthropicKeyName: "sk-ant-old"},
+		next:   map[string]string{provider.AnthropicKeyName: "sk-ant-new"},
+	}
+	router := &provider.Router{Secrets: src}
+	mem := store.NewMemory()
+	srv := New(mem, router, testAdminKey, WithSecrets(src, DefaultSecretNames))
+	ts := httptest.NewServer(srv.Handler())
+	t.Cleanup(ts.Close)
+
+	// Before reload the router serves the old key.
+	route, err := router.Route("anthropic/claude-sonnet-5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if route.APIKey != "sk-ant-old" {
+		t.Fatalf("pre-reload key = %q, want sk-ant-old", route.APIKey)
+	}
+
+	resp, _ := doRawBytes(t, http.MethodPost, ts.URL+"/admin/secrets/reload", testAdminKey, "")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reload status = %d, want 200", resp.StatusCode)
+	}
+
+	// After reload the very next Route call serves the rotated key.
+	route, _ = router.Route("anthropic/claude-sonnet-5")
+	if route.APIKey != "sk-ant-new" {
+		t.Errorf("post-reload key = %q, want sk-ant-new", route.APIKey)
+	}
+}
+
+// TestSecureCompareConstantTime checks the constant-time comparison guarding the
+// admin key and SCIM token (M1): equal strings match, everything else rejects.
+func TestSecureCompareConstantTime(t *testing.T) {
+	cases := []struct {
+		a, b string
+		want bool
+	}{
+		{"admin-secret", "admin-secret", true},
+		{"admin-secret", "admin-wrong", false},
+		{"admin-secret", "admin-secre", false}, // different length
+		{"", "admin-secret", false},            // empty configured secret fails closed
+		{"admin-secret", "", false},
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		if got := secureCompare(tc.a, tc.b); got != tc.want {
+			t.Errorf("secureCompare(%q,%q) = %v, want %v", tc.a, tc.b, got, tc.want)
+		}
 	}
 }

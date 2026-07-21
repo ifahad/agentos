@@ -343,7 +343,7 @@ func TestGuardrailsLogModeForwardsAndFlags(t *testing.T) {
 		t.Errorf("chat entry = %+v", audit[1])
 	}
 	// The flag entry must not count toward usage aggregates.
-	usage, err := mem.Usage(t.Context())
+	usage, err := mem.Usage(t.Context(), "")
 	if err != nil {
 		t.Fatal(err)
 	}

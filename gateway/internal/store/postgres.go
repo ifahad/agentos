@@ -73,6 +73,32 @@ ALTER TABLE orgs ADD COLUMN IF NOT EXISTS rate_limit_rpm INTEGER NOT NULL DEFAUL
 -- active; external_id is the IdP-assigned SCIM id (nullable).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS active      BOOLEAN NOT NULL DEFAULT true;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS external_id TEXT;
+
+-- Phase 8 tenant isolation (H4, additive & migration-safe). Usage/spend/audit
+-- become keyed on the stable per-key secret_hash and carry org_id, so two orgs
+-- sharing a key name no longer contaminate each other's spend/usage/audit.
+ALTER TABLE "usage" ADD COLUMN IF NOT EXISTS secret_hash TEXT;
+ALTER TABLE "usage" ADD COLUMN IF NOT EXISTS org_id      TEXT;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS secret_hash TEXT;
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS org_id      TEXT;
+-- Backfill the new columns from the keys table by name (best effort: rows for
+-- same-named keys were already conflated pre-migration and cannot be split).
+UPDATE "usage" u SET secret_hash = k.secret_hash, org_id = k.org_id
+    FROM keys k WHERE u.secret_hash IS NULL AND k.name = u.key_name;
+UPDATE audit_log a SET secret_hash = k.secret_hash, org_id = k.org_id
+    FROM keys k WHERE a.secret_hash IS NULL AND k.name = a.key_name;
+-- Orphan usage rows (no matching key) keep the name as a synthetic identity so
+-- the unique index below can be created without collisions (key_name was the
+-- old PK, hence unique across existing rows).
+UPDATE "usage" SET secret_hash = key_name WHERE secret_hash IS NULL;
+-- Re-key the usage aggregate on secret_hash: drop the old key_name primary key
+-- (so same-named keys in different orgs get distinct rows) and add a unique
+-- index on secret_hash for the ON CONFLICT upsert target.
+ALTER TABLE "usage" DROP CONSTRAINT IF EXISTS usage_pkey;
+CREATE UNIQUE INDEX IF NOT EXISTS usage_secret_hash_idx ON "usage" (secret_hash);
+CREATE INDEX IF NOT EXISTS usage_org_idx ON "usage" (org_id);
+CREATE INDEX IF NOT EXISTS audit_log_org_idx ON audit_log (org_id);
+CREATE INDEX IF NOT EXISTS keys_org_idx ON keys (org_id);
 `
 
 // NewPostgres connects to databaseURL and ensures the schema exists.
@@ -125,16 +151,49 @@ func (p *Postgres) CreateKeyIn(ctx context.Context, name string, budgetUSD float
 
 func (p *Postgres) Authenticate(ctx context.Context, secret string) (*Key, error) {
 	var k Key
+	hash := hashSecret(secret)
 	err := p.pool.QueryRow(ctx,
 		`SELECT name, monthly_budget_usd, spend_usd, org_id FROM keys WHERE secret_hash = $1`,
-		hashSecret(secret)).Scan(&k.Name, &k.MonthlyBudgetUSD, &k.SpendUSD, &k.OrgID)
+		hash).Scan(&k.Name, &k.MonthlyBudgetUSD, &k.SpendUSD, &k.OrgID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrInvalidKey
 	}
 	if err != nil {
 		return nil, fmt.Errorf("authenticate: %w", err)
 	}
+	k.SecretHash = hash
 	return &k, nil
+}
+
+// pgQuerier is satisfied by both *pgxpool.Pool and pgx.Tx so identity
+// resolution can run inside or outside a transaction.
+type pgQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+// resolveIdentity fills the stable secret_hash and org_id for a usage/audit row
+// from the owning key when the caller supplied only a key name (legacy path).
+// An unresolved name falls back to the name itself as a synthetic identity and
+// an empty org (root-only visibility). It never errors.
+func resolveIdentity(ctx context.Context, q pgQuerier, u Usage) (secretHash, orgID string) {
+	secretHash, orgID = u.SecretHash, u.OrgID
+	if secretHash == "" || orgID == "" {
+		var h, o string
+		if err := q.QueryRow(ctx,
+			`SELECT secret_hash, org_id FROM keys WHERE name = $1 ORDER BY created_at LIMIT 1`,
+			u.KeyName).Scan(&h, &o); err == nil {
+			if secretHash == "" {
+				secretHash = h
+			}
+			if orgID == "" {
+				orgID = o
+			}
+		}
+	}
+	if secretHash == "" {
+		secretHash = u.KeyName
+	}
+	return secretHash, orgID
 }
 
 func (p *Postgres) RecordUsage(ctx context.Context, u Usage) error {
@@ -144,44 +203,64 @@ func (p *Postgres) RecordUsage(ctx context.Context, u Usage) error {
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx,
-		`UPDATE keys SET spend_usd = spend_usd + $1 WHERE name = $2`,
-		u.CostUSD, u.KeyName); err != nil {
-		return fmt.Errorf("update spend: %w", err)
+	secretHash, orgID := resolveIdentity(ctx, tx, u)
+
+	// Attribute spend by the stable secret_hash when the caller provided one
+	// (the server hot path) so same-named keys in different orgs stay isolated
+	// (H4); legacy name-only callers keep updating by name.
+	if u.SecretHash != "" {
+		if _, err := tx.Exec(ctx,
+			`UPDATE keys SET spend_usd = spend_usd + $1 WHERE secret_hash = $2`,
+			u.CostUSD, u.SecretHash); err != nil {
+			return fmt.Errorf("update spend: %w", err)
+		}
+	} else {
+		if _, err := tx.Exec(ctx,
+			`UPDATE keys SET spend_usd = spend_usd + $1 WHERE name = $2`,
+			u.CostUSD, u.KeyName); err != nil {
+			return fmt.Errorf("update spend: %w", err)
+		}
 	}
 	if _, err := tx.Exec(ctx,
-		`INSERT INTO "usage" (key_name, requests, input_tokens, output_tokens, spend_usd)
-         VALUES ($1, 1, $2, $3, $4)
-         ON CONFLICT (key_name) DO UPDATE SET
+		`INSERT INTO "usage" (secret_hash, key_name, org_id, requests, input_tokens, output_tokens, spend_usd)
+         VALUES ($1, $2, $3, 1, $4, $5, $6)
+         ON CONFLICT (secret_hash) DO UPDATE SET
            requests = "usage".requests + 1,
            input_tokens = "usage".input_tokens + EXCLUDED.input_tokens,
            output_tokens = "usage".output_tokens + EXCLUDED.output_tokens,
-           spend_usd = "usage".spend_usd + EXCLUDED.spend_usd`,
-		u.KeyName, u.InputTokens, u.OutputTokens, u.CostUSD); err != nil {
+           spend_usd = "usage".spend_usd + EXCLUDED.spend_usd,
+           key_name = EXCLUDED.key_name,
+           org_id = COALESCE(NULLIF(EXCLUDED.org_id, ''), "usage".org_id)`,
+		secretHash, u.KeyName, orgID, u.InputTokens, u.OutputTokens, u.CostUSD); err != nil {
 		return fmt.Errorf("upsert usage: %w", err)
 	}
 	if _, err := tx.Exec(ctx, insertAuditSQL,
-		u.KeyName, u.Model, u.InputTokens, u.OutputTokens, u.CostUSD, u.LatencyMS, u.Status, kindOrChat(u.Kind)); err != nil {
+		secretHash, orgID, u.KeyName, u.Model, u.InputTokens, u.OutputTokens, u.CostUSD, u.LatencyMS, u.Status, kindOrChat(u.Kind)); err != nil {
 		return fmt.Errorf("insert audit_log: %w", err)
 	}
 	return tx.Commit(ctx)
 }
 
-const insertAuditSQL = `INSERT INTO audit_log (key_name, model, input_tokens, output_tokens, cost_usd, latency_ms, status, kind)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+const insertAuditSQL = `INSERT INTO audit_log (secret_hash, org_id, key_name, model, input_tokens, output_tokens, cost_usd, latency_ms, status, kind)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 
 func (p *Postgres) RecordAudit(ctx context.Context, u Usage) error {
+	secretHash, orgID := resolveIdentity(ctx, p.pool, u)
 	if _, err := p.pool.Exec(ctx, insertAuditSQL,
-		u.KeyName, u.Model, u.InputTokens, u.OutputTokens, u.CostUSD, u.LatencyMS, u.Status, kindOrChat(u.Kind)); err != nil {
+		secretHash, orgID, u.KeyName, u.Model, u.InputTokens, u.OutputTokens, u.CostUSD, u.LatencyMS, u.Status, kindOrChat(u.Kind)); err != nil {
 		return fmt.Errorf("insert audit_log: %w", err)
 	}
 	return nil
 }
 
-func (p *Postgres) AuditList(ctx context.Context, limit int) ([]AuditEntry, error) {
+func (p *Postgres) AuditList(ctx context.Context, orgID string, limit int) ([]AuditEntry, error) {
+	// An empty orgID ($1 = '') returns all rows (root); a non-empty orgID scopes
+	// to that org, pushing the WHERE org_id filter into the query (H4).
 	rows, err := p.pool.Query(ctx,
 		`SELECT created_at, key_name, model, input_tokens, output_tokens, cost_usd, latency_ms, status, kind
-         FROM audit_log ORDER BY id DESC LIMIT $1`, limit)
+         FROM audit_log
+         WHERE ($1 = '' OR org_id = $1)
+         ORDER BY id DESC LIMIT $2`, orgID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("query audit_log: %w", err)
 	}
@@ -198,16 +277,21 @@ func (p *Postgres) AuditList(ctx context.Context, limit int) ([]AuditEntry, erro
 	return out, rows.Err()
 }
 
-func (p *Postgres) Usage(ctx context.Context) ([]KeyUsage, error) {
+func (p *Postgres) Usage(ctx context.Context, orgID string) ([]KeyUsage, error) {
+	// One row per key (by secret_hash), so same-named keys across orgs are
+	// distinct. An empty orgID ($1 = '') returns all keys (root); otherwise the
+	// org filter is pushed down (H4). The name is still shown but is never the
+	// isolation key.
 	rows, err := p.pool.Query(ctx,
 		`SELECT k.name,
                 COALESCE(u.requests, 0),
                 COALESCE(u.input_tokens, 0),
                 COALESCE(u.output_tokens, 0),
                 COALESCE(u.spend_usd, 0)
-         FROM (SELECT DISTINCT name FROM keys) k
-         LEFT JOIN "usage" u ON u.key_name = k.name
-         ORDER BY k.name`)
+         FROM keys k
+         LEFT JOIN "usage" u ON u.secret_hash = k.secret_hash
+         WHERE ($1 = '' OR k.org_id = $1)
+         ORDER BY k.name, k.created_at`, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("query usage: %w", err)
 	}

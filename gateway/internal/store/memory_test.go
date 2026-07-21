@@ -72,7 +72,7 @@ func TestMemoryRecordUsageUpdatesSpendAndAggregates(t *testing.T) {
 		t.Errorf("spend = %v, want %v", got, want)
 	}
 
-	usage, err := m.Usage(ctx)
+	usage, err := m.Usage(ctx, "")
 	if err != nil {
 		t.Fatalf("Usage: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestMemoryAuditListNewestFirstWithKinds(t *testing.T) {
 		}
 	}
 
-	list, err := m.AuditList(ctx, 10)
+	list, err := m.AuditList(ctx, "", 10)
 	if err != nil {
 		t.Fatalf("AuditList: %v", err)
 	}
@@ -190,12 +190,12 @@ func TestMemoryAuditListNewestFirstWithKinds(t *testing.T) {
 	}
 
 	// Limit honored.
-	if short, _ := m.AuditList(ctx, 2); len(short) != 2 || short[0].Model != "m3" {
+	if short, _ := m.AuditList(ctx, "", 2); len(short) != 2 || short[0].Model != "m3" {
 		t.Errorf("limited list = %+v", short)
 	}
 
 	// RecordAudit did not touch aggregates: only the two RecordUsage calls count.
-	usage, err := m.Usage(ctx)
+	usage, err := m.Usage(ctx, "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -345,3 +345,69 @@ func (s *stubSecrets) Get(name string) (string, bool) {
 }
 
 func (s *stubSecrets) Backend() string { return s.backend }
+
+// TestTenantIsolationSameKeyNameHTTP proves H4 end-to-end through the admin
+// endpoints: two orgs each own a key named "runtime"; recording spend on org
+// B's key must leave org A's /admin/usage and /admin/audit unaffected.
+func TestTenantIsolationSameKeyNameHTTP(t *testing.T) {
+	_, mem, srv := newTestGateway(t)
+	ctx := context.Background()
+
+	orgA, tokenA := mkUser(t, mem, "a", "a@a.test", rbac.RoleAdmin, 0)
+	orgB, tokenB := mkUser(t, mem, "b", "b@b.test", rbac.RoleAdmin, 0)
+
+	if _, err := mem.CreateKeyIn(ctx, "runtime", 100, orgA, "root"); err != nil {
+		t.Fatal(err)
+	}
+	secretB, err := mem.CreateKeyIn(ctx, "runtime", 100, orgB, "root")
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyB, err := mem.Authenticate(ctx, secretB)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Spend + audit recorded against org B's "runtime" key only.
+	if err := mem.RecordUsage(ctx, store.Usage{
+		SecretHash: keyB.SecretHash, OrgID: keyB.OrgID, KeyName: "runtime",
+		Model: "m", CostUSD: 7, Status: 200,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	usageFor := func(tok string) []store.KeyUsage {
+		_, raw := doRawBytes(t, http.MethodGet, srv.URL+"/admin/usage", tok, "")
+		var u []store.KeyUsage
+		if err := json.Unmarshal(raw, &u); err != nil {
+			t.Fatalf("unmarshal usage: %v (%s)", err, raw)
+		}
+		return u
+	}
+	auditFor := func(tok string) []store.AuditEntry {
+		_, raw := doRawBytes(t, http.MethodGet, srv.URL+"/admin/audit", tok, "")
+		var a []store.AuditEntry
+		if err := json.Unmarshal(raw, &a); err != nil {
+			t.Fatalf("unmarshal audit: %v (%s)", err, raw)
+		}
+		return a
+	}
+
+	// Org A: one "runtime" row, zero spend, and no audit entries.
+	ua := usageFor(tokenA)
+	if len(ua) != 1 || ua[0].Name != "runtime" || ua[0].SpendUSD != 0 {
+		t.Errorf("org A usage = %+v, want runtime with zero spend (uncontaminated)", ua)
+	}
+	if aa := auditFor(tokenA); len(aa) != 0 {
+		t.Errorf("org A audit = %d rows, want 0", len(aa))
+	}
+
+	// Org B: the spend and audit entry are attributed here.
+	ub := usageFor(tokenB)
+	if len(ub) != 1 || ub[0].Name != "runtime" || ub[0].SpendUSD != 7 {
+		t.Errorf("org B usage = %+v, want runtime with spend 7", ub)
+	}
+	if ab := auditFor(tokenB); len(ab) != 1 || ab[0].KeyName != "runtime" {
+		t.Errorf("org B audit = %+v, want 1 runtime row", ab)
+	}
+	_ = orgA
+}

@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -240,6 +241,18 @@ func (s *Server) handleHealthz(w http.ResponseWriter, _ *http.Request) {
 	fmt.Fprint(w, "ok")
 }
 
+// secureCompare reports whether a and b are equal using a constant-time
+// comparison (crypto/subtle), so an attacker cannot recover a secret token by
+// timing byte-by-byte mismatches. ConstantTimeCompare returns 0 immediately on
+// a length mismatch, so lengths are inherently guarded. Empty a or b never
+// matches, keeping "disabled" (empty configured secret) fail-closed.
+func secureCompare(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
 // bearerToken extracts the token from an Authorization: Bearer header.
 func bearerToken(r *http.Request) (string, bool) {
 	auth := r.Header.Get("Authorization")
@@ -326,18 +339,12 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request, c *caller) 
 		writeForbidden(w, "role lacks view_usage capability")
 		return
 	}
-	usage, err := s.store.Usage(r.Context())
+	// Scope by org in the store query (empty = root sees all); the isolation is
+	// pushed down rather than filtered by key name in Go (H4).
+	usage, err := s.store.Usage(r.Context(), s.scopeOrg(c))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errProviderError, "failed to load usage")
 		return
-	}
-	if !c.root {
-		names, err := s.orgKeyNames(r.Context(), c.user.OrgID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, errProviderError, "failed to scope usage")
-			return
-		}
-		usage = filterUsage(usage, names)
 	}
 	if usage == nil {
 		usage = []store.KeyUsage{}
@@ -359,18 +366,11 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request, c *caller) 
 		}
 		limit = min(n, auditMaxLimit)
 	}
-	entries, err := s.store.AuditList(r.Context(), limit)
+	// Scope by org in the store query (empty = root sees all) (H4).
+	entries, err := s.store.AuditList(r.Context(), s.scopeOrg(c), limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, errProviderError, "failed to list audit log")
 		return
-	}
-	if !c.root {
-		names, err := s.orgKeyNames(r.Context(), c.user.OrgID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, errProviderError, "failed to scope audit")
-			return
-		}
-		entries = filterAudit(entries, names)
 	}
 	if entries == nil {
 		entries = []store.AuditEntry{}
@@ -423,18 +423,21 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 			// Model classifier failed: fail open so the safety layer cannot
 			// take down traffic, but leave a visible audit trail.
 			s.recordAudit(r, store.Usage{
+				SecretHash: key.SecretHash, OrgID: key.OrgID,
 				KeyName: key.Name, Model: model, Status: http.StatusOK,
 				Kind: store.KindGuardrailError,
 			})
 		case v.Flagged && s.guardMode == guardrail.ModeLog:
 			// log mode: audit the flag, forward the request unchanged.
 			s.recordAudit(r, store.Usage{
+				SecretHash: key.SecretHash, OrgID: key.OrgID,
 				KeyName: key.Name, Model: model, Status: http.StatusOK,
 				Kind: store.KindGuardrailFlag,
 			})
 		case v.Flagged:
 			// block and model modes reject flagged prompts.
 			s.recordAudit(r, store.Usage{
+				SecretHash: key.SecretHash, OrgID: key.OrgID,
 				KeyName: key.Name, Model: model, Status: http.StatusBadRequest,
 				Kind: store.KindGuardrailBlock,
 			})
@@ -569,6 +572,7 @@ func (s *Server) proxy(w http.ResponseWriter, r *http.Request, p proxyRequest) {
 	latencyMS := time.Since(start).Milliseconds()
 	if err != nil {
 		s.record(r, span, store.Usage{
+			SecretHash: p.key.SecretHash, OrgID: p.key.OrgID,
 			KeyName: p.key.Name, Model: p.model, LatencyMS: latencyMS,
 			Status: http.StatusBadGateway, Kind: p.kind,
 		})
@@ -582,6 +586,7 @@ func (s *Server) proxy(w http.ResponseWriter, r *http.Request, p proxyRequest) {
 		respBody, _ := io.ReadAll(resp.Body)
 		latencyMS = time.Since(start).Milliseconds()
 		s.record(r, span, store.Usage{
+			SecretHash: p.key.SecretHash, OrgID: p.key.OrgID,
 			KeyName: p.key.Name, Model: p.model, LatencyMS: latencyMS,
 			Status: resp.StatusCode, Kind: p.kind,
 		})
@@ -605,6 +610,7 @@ func (s *Server) proxy(w http.ResponseWriter, r *http.Request, p proxyRequest) {
 		latencyMS = time.Since(start).Milliseconds()
 		if err != nil {
 			s.record(r, span, store.Usage{
+				SecretHash: p.key.SecretHash, OrgID: p.key.OrgID,
 				KeyName: p.key.Name, Model: p.model, LatencyMS: latencyMS,
 				Status: http.StatusBadGateway, Kind: p.kind,
 			})
@@ -623,6 +629,8 @@ func (s *Server) proxy(w http.ResponseWriter, r *http.Request, p proxyRequest) {
 	}
 
 	s.record(r, span, store.Usage{
+		SecretHash:   p.key.SecretHash,
+		OrgID:        p.key.OrgID,
 		KeyName:      p.key.Name,
 		Model:        p.model,
 		InputTokens:  inputTokens,
@@ -752,6 +760,7 @@ func (s *Server) rateLimited(w http.ResponseWriter, r *http.Request, key *store.
 		return false
 	}
 	s.recordAudit(r, store.Usage{
+		SecretHash: key.SecretHash, OrgID: key.OrgID,
 		KeyName: key.Name, Model: model, Status: http.StatusTooManyRequests,
 		Kind: store.KindRateLimited,
 	})

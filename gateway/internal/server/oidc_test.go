@@ -24,11 +24,13 @@ import (
 // --- mock OIDC provider (RS256, real go-oidc verification path) ---
 
 type mockOIDCProvider struct {
-	server   *httptest.Server
-	key      *rsa.PrivateKey
-	clientID string
-	email    string
-	kid      string
+	server        *httptest.Server
+	key           *rsa.PrivateKey
+	clientID      string
+	email         string
+	emailVerified bool   // default true
+	sub           string // default "sub-1"
+	kid           string
 }
 
 func newMockOIDCProvider(t *testing.T, clientID, email string) *mockOIDCProvider {
@@ -37,7 +39,7 @@ func newMockOIDCProvider(t *testing.T, clientID, email string) *mockOIDCProvider
 	if err != nil {
 		t.Fatalf("rsa key: %v", err)
 	}
-	m := &mockOIDCProvider{key: key, clientID: clientID, email: email, kid: "k1"}
+	m := &mockOIDCProvider{key: key, clientID: clientID, email: email, emailVerified: true, sub: "sub-1", kid: "k1"}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", func(w http.ResponseWriter, r *http.Request) {
 		mockWriteJSON(w, map[string]any{
@@ -76,8 +78,9 @@ func (m *mockOIDCProvider) signIDToken(t *testing.T) string {
 	t.Helper()
 	header, _ := json.Marshal(map[string]any{"alg": "RS256", "typ": "JWT", "kid": m.kid})
 	claims, _ := json.Marshal(map[string]any{
-		"iss": m.server.URL, "aud": m.clientID, "sub": "sub-1",
-		"email": m.email, "exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(),
+		"iss": m.server.URL, "aud": m.clientID, "sub": m.sub,
+		"email": m.email, "email_verified": m.emailVerified,
+		"exp": time.Now().Add(time.Hour).Unix(), "iat": time.Now().Unix(),
 	})
 	input := mockB64(header) + "." + mockB64(claims)
 	sum := sha256.Sum256([]byte(input))
@@ -294,5 +297,107 @@ func TestOIDCCallbackInvalidState401(t *testing.T) {
 	}
 	if got := errorType(t, body); got != errSSOFailed {
 		t.Errorf("error type = %q, want sso_failed", got)
+	}
+}
+
+// ssoCallback drives login+callback against the mock and returns the callback
+// response plus the parsed fragment values (token/email/role), if any.
+func ssoCallback(t *testing.T, ts string) (*http.Response, url.Values) {
+	t.Helper()
+	client := noRedirectClient()
+	loginResp, err := client.Get(ts + "/auth/oidc/login")
+	if err != nil {
+		t.Fatalf("login GET: %v", err)
+	}
+	loginResp.Body.Close()
+	authURL, _ := url.Parse(loginResp.Header.Get("Location"))
+	state := authURL.Query().Get("state")
+
+	cbResp, err := client.Get(ts + "/auth/oidc/callback?code=c&state=" + url.QueryEscape(state))
+	if err != nil {
+		t.Fatalf("callback GET: %v", err)
+	}
+	defer cbResp.Body.Close()
+	loc := cbResp.Header.Get("Location")
+	if i := strings.Index(loc, "#"); i >= 0 {
+		vals, _ := url.ParseQuery(loc[i+1:])
+		return cbResp, vals
+	}
+	return cbResp, nil
+}
+
+// TestOIDCRejectsUnverifiedEmail proves H3: an ID token whose email is not
+// verified is rejected (401 sso_failed) and provisions no user.
+func TestOIDCRejectsUnverifiedEmail(t *testing.T) {
+	m := newMockOIDCProvider(t, "client-abc", "attacker@corp.test")
+	m.emailVerified = false
+	mem, ts := newOIDCGateway(t, m)
+
+	resp, _ := ssoCallback(t, ts)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 for unverified email", resp.StatusCode)
+	}
+	users, _ := mem.Users(context.Background(), store.DefaultOrgID)
+	if len(users) != 0 {
+		t.Errorf("provisioned %d users for unverified email, want 0", len(users))
+	}
+}
+
+// TestOIDCEmailMatchDifferentSubNoTakeover proves H3: a verified email that
+// matches an existing user BOUND TO A DIFFERENT SUBJECT must not adopt that
+// user's role — the login is refused, closing the account-takeover vector.
+func TestOIDCEmailMatchDifferentSubNoTakeover(t *testing.T) {
+	m := newMockOIDCProvider(t, "client-abc", "owner@corp.test")
+	m.sub = "attacker-subject"
+	mem, ts := newOIDCGateway(t, m)
+	ctx := context.Background()
+
+	// A privileged account already bound to a different IdP subject.
+	victim, _, err := mem.CreateUserWithExternalID(ctx, store.DefaultOrgID, "owner@corp.test", "owner", "victim-subject")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, vals := ssoCallback(t, ts)
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (no takeover)", resp.StatusCode)
+	}
+	if vals.Get("role") == "owner" {
+		t.Errorf("attacker adopted owner role via email match")
+	}
+	// The victim's record is untouched (role + bound subject preserved).
+	got, err := mem.UserByExternalID(ctx, store.DefaultOrgID, "victim-subject")
+	if err != nil || got.ID != victim.ID || got.Role != "owner" {
+		t.Errorf("victim mutated: %+v (err %v)", got, err)
+	}
+}
+
+// TestOIDCSameSubReturningKeepsRole proves the same-subject returning user is
+// matched on sub and keeps their role, even if the email is unchanged.
+func TestOIDCSameSubReturningKeepsRole(t *testing.T) {
+	m := newMockOIDCProvider(t, "client-abc", "admin@corp.test")
+	m.sub = "stable-sub-1"
+	mem, ts := newOIDCGateway(t, m)
+	ctx := context.Background()
+
+	existing, _, err := mem.CreateUserWithExternalID(ctx, store.DefaultOrgID, "admin@corp.test", "admin", "stable-sub-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp, vals := ssoCallback(t, ts)
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("status = %d, want 302", resp.StatusCode)
+	}
+	if vals.Get("role") != "admin" {
+		t.Errorf("role = %q, want admin (kept via sub match)", vals.Get("role"))
+	}
+	u, err := mem.AuthenticateUser(ctx, vals.Get("token"))
+	if err != nil || u.ID != existing.ID {
+		t.Errorf("token resolved to %+v (err %v), want reuse of %q", u, err, existing.ID)
+	}
+	users, _ := mem.Users(ctx, store.DefaultOrgID)
+	if len(users) != 1 {
+		t.Errorf("users = %d, want 1 (no duplicate)", len(users))
 	}
 }

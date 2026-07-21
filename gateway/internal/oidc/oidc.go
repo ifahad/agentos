@@ -152,13 +152,23 @@ func (p *Provider) sign(payload string) []byte {
 	return mac.Sum(nil)
 }
 
-// Identity is the verified subject of a successful SSO exchange.
+// ErrEmailNotVerified is returned by Exchange when the ID token's email is not
+// asserted as verified by the IdP. Matching users by an unverified (and thus
+// spoofable) email is the account-takeover vector closed in H3.
+var ErrEmailNotVerified = errors.New("oidc: id token email is not verified")
+
+// Identity is the verified subject of a successful SSO exchange. Sub is the
+// stable OIDC subject identifier — the value SSO upserts match on, never the
+// mutable email.
 type Identity struct {
 	Email string
+	Sub   string
 }
 
 // Exchange trades an authorization code for tokens, verifies the ID token, and
-// returns the caller's identity. The email claim is used, falling back to sub.
+// returns the caller's identity. It requires the email claim to be present and
+// asserted as verified (email_verified == true); an unverified or absent email
+// is rejected (H3) so a hostile IdP cannot present an arbitrary victim address.
 func (p *Provider) Exchange(ctx context.Context, code string) (*Identity, error) {
 	tok, err := p.oauth.Exchange(ctx, code)
 	if err != nil {
@@ -173,20 +183,24 @@ func (p *Provider) Exchange(ctx context.Context, code string) (*Identity, error)
 		return nil, fmt.Errorf("oidc: id token verification failed: %w", err)
 	}
 	var claims struct {
-		Email string `json:"email"`
-		Sub   string `json:"sub"`
+		Email         string `json:"email"`
+		EmailVerified bool   `json:"email_verified"`
+		Sub           string `json:"sub"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		return nil, fmt.Errorf("oidc: parse id token claims: %w", err)
 	}
-	email := claims.Email
-	if email == "" {
-		email = claims.Sub
+	if claims.Sub == "" {
+		return nil, errors.New("oidc: id token missing sub")
 	}
-	if email == "" {
-		return nil, errors.New("oidc: id token has neither email nor sub")
+	if claims.Email == "" {
+		return nil, errors.New("oidc: id token missing email")
 	}
-	return &Identity{Email: email}, nil
+	// Fail closed: a missing email_verified claim is treated as unverified.
+	if !claims.EmailVerified {
+		return nil, ErrEmailNotVerified
+	}
+	return &Identity{Email: claims.Email, Sub: claims.Sub}, nil
 }
 
 var b64 = base64.RawURLEncoding

@@ -81,7 +81,7 @@ func TestPostgresRecordUsage(t *testing.T) {
 		t.Errorf("spend = %v, want 0.000405", key.SpendUSD)
 	}
 
-	usage, err := p.Usage(ctx)
+	usage, err := p.Usage(ctx, "")
 	if err != nil {
 		t.Fatalf("Usage: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestPostgresAuditListNewestFirstWithKinds(t *testing.T) {
 		t.Fatalf("RecordUsage: %v", err)
 	}
 
-	list, err := p.AuditList(ctx, 10)
+	list, err := p.AuditList(ctx, "", 10)
 	if err != nil {
 		t.Fatalf("AuditList: %v", err)
 	}
@@ -136,12 +136,12 @@ func TestPostgresAuditListNewestFirstWithKinds(t *testing.T) {
 		t.Error("ts not populated")
 	}
 
-	if short, err := p.AuditList(ctx, 1); err != nil || len(short) != 1 || short[0].Model != "m3" {
+	if short, err := p.AuditList(ctx, "", 1); err != nil || len(short) != 1 || short[0].Model != "m3" {
 		t.Errorf("limited list = %+v (err %v)", short, err)
 	}
 
 	// RecordAudit must not touch spend or usage aggregates.
-	usage, err := p.Usage(ctx)
+	usage, err := p.Usage(ctx, "")
 	if err != nil {
 		t.Fatalf("Usage: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestPostgresKindColumnMigration(t *testing.T) {
 	}
 	t.Cleanup(p2.Close)
 
-	list, err := p2.AuditList(ctx, 10)
+	list, err := p2.AuditList(ctx, "", 10)
 	if err != nil {
 		t.Fatalf("AuditList: %v", err)
 	}
@@ -264,4 +264,67 @@ func TestPostgresUserActiveExternalIDMigration(t *testing.T) {
 	if users[0].ExternalID != "" {
 		t.Errorf("migrated user ExternalID = %q, want empty", users[0].ExternalID)
 	}
+}
+
+// TestPostgresUsageSecretHashMigration simulates a pre-Phase-8 usage table
+// (key_name primary key, no secret_hash/org_id) with an existing aggregate row
+// and verifies reconnecting adds the columns, backfills them from the keys
+// table by name, re-keys the aggregate on secret_hash, and scopes by org (H4).
+func TestPostgresUsageSecretHashMigration(t *testing.T) {
+	p := newTestPostgres(t)
+	ctx := context.Background()
+
+	if err := p.EnsureOrg(ctx, DefaultOrgID, "default", 0); err != nil {
+		t.Fatalf("EnsureOrg: %v", err)
+	}
+	secret, err := p.CreateKey(ctx, "legacy", 10)
+	if err != nil {
+		t.Fatalf("CreateKey: %v", err)
+	}
+	key, err := p.Authenticate(ctx, secret)
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+
+	// Revert the usage table to its pre-Phase-8 shape and add a name-keyed row.
+	for _, stmt := range []string{
+		`DROP INDEX IF EXISTS usage_secret_hash_idx`,
+		`DROP INDEX IF EXISTS usage_org_idx`,
+		`ALTER TABLE "usage" DROP COLUMN secret_hash, DROP COLUMN org_id`,
+		`ALTER TABLE "usage" ADD PRIMARY KEY (key_name)`,
+		`INSERT INTO "usage" (key_name, requests, input_tokens, output_tokens, spend_usd)
+             VALUES ('legacy', 5, 100, 50, 1.25)`,
+	} {
+		if _, err := p.pool.Exec(ctx, stmt); err != nil {
+			t.Fatalf("simulate pre-phase-8 usage (%s): %v", stmt, err)
+		}
+	}
+
+	// Reconnect: the schema migration backfills and re-keys the aggregate.
+	p2, err := NewPostgres(ctx, os.Getenv("AGENTOS_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("NewPostgres over pre-phase-8 usage: %v", err)
+	}
+	t.Cleanup(p2.Close)
+
+	// The row survives, still shows the aggregate, and is now joined by secret_hash.
+	all, err := p2.Usage(ctx, "")
+	if err != nil {
+		t.Fatalf("Usage: %v", err)
+	}
+	if len(all) != 1 || all[0].Name != "legacy" || all[0].Requests != 5 || all[0].SpendUSD != 1.25 {
+		t.Fatalf("migrated usage = %+v, want legacy row 5 req / 1.25 spend", all)
+	}
+	// Backfilled org_id makes org scoping work.
+	scoped, err := p2.Usage(ctx, DefaultOrgID)
+	if err != nil {
+		t.Fatalf("scoped Usage: %v", err)
+	}
+	if len(scoped) != 1 || scoped[0].Requests != 5 {
+		t.Errorf("org-scoped usage = %+v, want the migrated legacy row", scoped)
+	}
+	if other, _ := p2.Usage(ctx, "org_absent"); len(other) != 0 {
+		t.Errorf("foreign-org usage = %+v, want empty", other)
+	}
+	_ = key
 }

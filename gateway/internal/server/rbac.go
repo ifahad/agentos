@@ -36,7 +36,7 @@ func (s *Server) adminAuth(next func(http.ResponseWriter, *http.Request, *caller
 			writeError(w, http.StatusUnauthorized, errInvalidKey, "invalid admin key")
 			return
 		}
-		if s.adminKey != "" && token == s.adminKey {
+		if secureCompare(token, s.adminKey) {
 			next(w, r, &caller{root: true})
 			return
 		}
@@ -70,8 +70,21 @@ func (s *Server) orgBudgetExceeded(ctx context.Context, orgID string) bool {
 	return spend >= org.MonthlyBudgetUSD
 }
 
+// scopeOrg returns the org id used to scope usage/audit store queries: empty
+// for the root caller (sees all), else the user's org. The store pushes this
+// down as a WHERE org_id filter, so isolation no longer depends on the mutable
+// key name (H4).
+func (s *Server) scopeOrg(c *caller) string {
+	if c.root {
+		return ""
+	}
+	return c.user.OrgID
+}
+
 // scopeKeys returns all keys for a root caller, or only the caller's org's keys
-// for a user caller.
+// for a user caller. Keys already carry an authoritative org_id (unlike the old
+// name-keyed usage/audit), so this Go-side filter is not vulnerable to the H4
+// name-collision leak.
 func (s *Server) scopeKeys(c *caller, keys []store.KeyInfo) []store.KeyInfo {
 	if c.root {
 		return keys
@@ -80,43 +93,6 @@ func (s *Server) scopeKeys(c *caller, keys []store.KeyInfo) []store.KeyInfo {
 	for _, k := range keys {
 		if k.OrgID == c.user.OrgID {
 			out = append(out, k)
-		}
-	}
-	return out
-}
-
-// orgKeyNames returns the set of key names belonging to orgID.
-func (s *Server) orgKeyNames(ctx context.Context, orgID string) (map[string]bool, error) {
-	keys, err := s.store.Keys(ctx)
-	if err != nil {
-		return nil, err
-	}
-	names := make(map[string]bool)
-	for _, k := range keys {
-		if k.OrgID == orgID {
-			names[k.Name] = true
-		}
-	}
-	return names, nil
-}
-
-// filterUsage keeps only usage rows whose key belongs to the org.
-func filterUsage(usage []store.KeyUsage, names map[string]bool) []store.KeyUsage {
-	out := make([]store.KeyUsage, 0, len(usage))
-	for _, u := range usage {
-		if names[u.Name] {
-			out = append(out, u)
-		}
-	}
-	return out
-}
-
-// filterAudit keeps only audit rows whose key belongs to the org.
-func filterAudit(entries []store.AuditEntry, names map[string]bool) []store.AuditEntry {
-	out := make([]store.AuditEntry, 0, len(entries))
-	for _, e := range entries {
-		if names[e.KeyName] {
-			out = append(out, e)
 		}
 	}
 	return out

@@ -19,7 +19,7 @@ func (s *Server) scimEnabled() bool { return s.scimToken != "" }
 func (s *Server) scimAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token, ok := bearerToken(r)
-		if !ok || token != s.scimToken {
+		if !ok || !secureCompare(token, s.scimToken) {
 			writeSCIMError(w, http.StatusUnauthorized, "missing or invalid SCIM bearer token")
 			return
 		}

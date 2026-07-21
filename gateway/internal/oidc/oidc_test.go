@@ -2,6 +2,7 @@ package oidc
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -134,5 +135,32 @@ func TestFromEnvDisabledWithoutIssuer(t *testing.T) {
 	p, enabled, err := FromEnv(context.Background(), testAdminKey)
 	if err != nil || enabled || p != nil {
 		t.Errorf("FromEnv without issuer = (%v, %v, %v), want (nil, false, nil)", p, enabled, err)
+	}
+}
+
+func TestExchangeRequiresVerifiedEmail(t *testing.T) {
+	m := newMockOIDC(t, "client-abc", "alice@corp.test")
+	m.emailVerified = false // IdP asserts the email is NOT verified
+	p := newTestProvider(t, m)
+
+	if _, err := p.Exchange(context.Background(), "any-code"); !errors.Is(err, ErrEmailNotVerified) {
+		t.Errorf("Exchange with email_verified=false err = %v, want ErrEmailNotVerified", err)
+	}
+}
+
+func TestExchangeReturnsSub(t *testing.T) {
+	m := newMockOIDC(t, "client-abc", "alice@corp.test")
+	m.sub = "stable-subject-42"
+	p := newTestProvider(t, m)
+
+	id, err := p.Exchange(context.Background(), "any-code")
+	if err != nil {
+		t.Fatalf("Exchange: %v", err)
+	}
+	if id.Sub != "stable-subject-42" {
+		t.Errorf("sub = %q, want stable-subject-42", id.Sub)
+	}
+	if id.Email != "alice@corp.test" {
+		t.Errorf("email = %q", id.Email)
 	}
 }

@@ -80,6 +80,10 @@ func main() {
 		AnthropicAPIKey: anthropicKey,
 		OpenAIAPIKey:    openaiKey,
 		OllamaBaseURL:   os.Getenv("AGENTOS_OLLAMA_BASE_URL"),
+		// Resolve provider keys from the live secret source on every Route call
+		// so POST /admin/secrets/reload and the refresh loop rotate the upstream
+		// key without a restart (H5). The static fields above remain a fallback.
+		Secrets: secrets,
 	}
 
 	opts := []server.Option{server.WithSecrets(secrets, server.DefaultSecretNames)}
@@ -256,6 +260,8 @@ func buildModelGuardrail(ctx context.Context, st store.Store, router *provider.R
 			guardModel := model
 			classifier.OnUsage = func(strippedModel string, inputTokens, outputTokens int64) {
 				if err := st.RecordUsage(context.Background(), store.Usage{
+					SecretHash:   key.SecretHash,
+					OrgID:        key.OrgID,
 					KeyName:      key.Name,
 					Model:        guardModel,
 					InputTokens:  inputTokens,
