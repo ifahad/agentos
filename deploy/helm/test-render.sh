@@ -55,6 +55,7 @@ assert_contains "sandbox tmp emptyDir"         'mountPath: /tmp'
 assert_contains "sandbox mem limit"            'memory: 768Mi'
 assert_contains "console proxies gateway"      'proxy_pass http://agentos-gateway:8080/;'
 assert_contains "console proxies runtime"      'proxy_pass http://agentos-runtime:8000/;'
+assert_contains "sandbox NetworkPolicy rendered"    'kind: NetworkPolicy'
 assert_not_contains "rest-connector off by default" 'agentos-rest-connector'
 assert_not_contains "demo-crm off by default"       'agentos-demo-crm'
 assert_not_contains "no ingress by default"         'kind: Ingress'
@@ -97,6 +98,37 @@ assert_contains "ingress host"          'host: "agentos.example.com"'
 assert_contains "ingress class"         'ingressClassName: nginx'
 assert_contains "ingress tls secret"    'secretName: agentos-tls'
 assert_contains "ingress -> console svc" 'name: agentos-console'
+
+echo "== template: sandbox NetworkPolicy (egress-less topology)"
+rendered=$(helm template "$RELEASE" "$CHART_DIR" \
+    --show-only templates/sandbox-networkpolicy.yaml)
+assert_contains "netpol selects sandbox pod"      'app.kubernetes.io/component: sandbox'
+assert_contains "netpol governs Ingress"          '- Ingress'
+assert_contains "netpol governs Egress"           '- Egress'
+assert_contains "netpol ingress from runtime pod" 'app.kubernetes.io/component: runtime'
+assert_contains "netpol ingress on sandbox port"  'port: 8070'
+assert_contains "netpol egress only to kube-dns"  'k8s-app: kube-dns'
+assert_contains "netpol kube-system namespace"    'kubernetes.io/metadata.name: kube-system'
+assert_contains "netpol DNS port"                 'port: 53'
+assert_contains "netpol DNS over UDP"             'protocol: UDP'
+
+echo "== template: sandbox NetworkPolicy disabled"
+if helm template "$RELEASE" "$CHART_DIR" \
+    --set sandbox.networkPolicy.enabled=false \
+    --show-only templates/sandbox-networkpolicy.yaml >/dev/null 2>&1; then
+    echo "  FAIL: NetworkPolicy rendered despite networkPolicy.enabled=false" >&2
+    fails=$((fails + 1))
+else
+    echo "  ok: no NetworkPolicy when networkPolicy.enabled=false"
+fi
+if helm template "$RELEASE" "$CHART_DIR" \
+    --set sandbox.enabled=false \
+    --show-only templates/sandbox-networkpolicy.yaml >/dev/null 2>&1; then
+    echo "  FAIL: NetworkPolicy rendered despite sandbox.enabled=false" >&2
+    fails=$((fails + 1))
+else
+    echo "  ok: no NetworkPolicy when sandbox.enabled=false"
+fi
 
 echo "== template: rest-connector without spec must fail"
 if helm template "$RELEASE" "$CHART_DIR" --set restConnector.enabled=true >/dev/null 2>&1; then

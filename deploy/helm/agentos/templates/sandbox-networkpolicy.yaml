@@ -1,0 +1,45 @@
+{{- if and .Values.sandbox.enabled .Values.sandbox.networkPolicy.enabled }}
+# Egress-less sandbox topology (Phase 4): mirrors compose's internal
+# sandbox-net. Ingress only from the runtime pod; egress only to kube-dns
+# on port 53 (resolution of the pod's own service names) — nothing else,
+# so escaped code has no route to the internet or to other cluster services.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "agentos.fullname" . }}-sandbox
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sandbox
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "agentos.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sandbox
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only the runtime may call the sandbox HTTP API.
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "agentos.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: runtime
+      ports:
+        - protocol: TCP
+          port: 8070
+  egress:
+    # DNS only (kube-dns in kube-system); no other egress is permitted.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}

@@ -7,16 +7,25 @@ set -euo pipefail
 
 export GATEWAY=${GATEWAY:-http://localhost:8080}
 export RUNTIME=${RUNTIME:-http://localhost:18000}
-SANDBOX=${SANDBOX:-http://localhost:8070}
 export AGENTOS_ADMIN_KEY=${AGENTOS_ADMIN_KEY:-admin-local-dev}
 COMPOSE="docker compose -f deploy/compose.yaml --env-file deploy/.env"
 
 say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 fail() { echo "FAIL: $*"; exit 1; }
 
+# The sandbox lives on an internal-only network (egress-less, Phase 4) and no
+# longer publishes a host port, so reach it from inside the runtime container.
+sandbox_exec() { # $1 = JSON body
+  $COMPOSE exec -T runtime python -c "
+import sys,json,urllib.request
+body=sys.stdin.buffer.read()
+req=urllib.request.Request('http://sandbox:8070/execute',data=body,headers={'Content-Type':'application/json'})
+print(urllib.request.urlopen(req,timeout=30).read().decode())
+" <<<"$1"
+}
+
 say "sandbox executes python with isolation"
-OUT=$(curl -fsS -X POST "$SANDBOX/execute" -H 'Content-Type: application/json' \
-  -d '{"language":"python","code":"import os\nprint(6*7)\nprint(sorted(os.environ.keys()))"}')
+OUT=$(sandbox_exec '{"language":"python","code":"import os\nprint(6*7)\nprint(sorted(os.environ.keys()))"}')
 echo "$OUT" | python3 -m json.tool
 echo "$OUT" | grep -q '"stdout": *"42' || echo "$OUT" | grep -q '42' || fail "sandbox did not compute"
 # Exec-time env is PATH-only; CPython's PEP 538 locale coercion may add
@@ -32,8 +41,7 @@ echo "PASS"
 
 say "sandbox timeout enforcement"
 T0=$(date +%s)
-TOUT=$(curl -fsS -X POST "$SANDBOX/execute" -H 'Content-Type: application/json' \
-  -d '{"language":"python","code":"import time\ntime.sleep(60)","timeout_s":3}')
+TOUT=$(sandbox_exec '{"language":"python","code":"import time\ntime.sleep(60)","timeout_s":3}')
 T1=$(date +%s)
 echo "$TOUT" | grep -q '"timed_out": *true\|"timed_out":true' || fail "no timeout flag"
 [ $((T1 - T0)) -lt 15 ] || fail "timeout took too long ($((T1-T0))s)"

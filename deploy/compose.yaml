@@ -61,6 +61,11 @@ services:
       AGENTOS_AGENT_PROFILE: ${AGENTOS_AGENT_PROFILE:-react}
     ports:
       - "${AGENTOS_RUNTIME_PORT:-8000}:8000"
+    # On both networks: `default` to reach gateway/postgres/connectors, and
+    # the internal `sandbox-net` to reach the sandbox (the only route in).
+    networks:
+      - default
+      - sandbox-net
     depends_on:
       - gateway
       - sql-connector
@@ -78,8 +83,14 @@ services:
     mem_limit: 768m
     pids_limit: 256
     cpus: "1.0"
-    ports:
-      - "${AGENTOS_SANDBOX_PORT:-8070}:8070"
+    # Egress-less topology (Phase 4): the sandbox lives ONLY on the internal
+    # sandbox-net, so code running inside it has no route to the internet or
+    # to the other agentos services; only the runtime (also on sandbox-net)
+    # can reach it at http://sandbox:8070. No `ports:` mapping — Docker
+    # forbids publishing host ports from an `internal: true` network; reach
+    # it for debugging via `docker compose exec runtime curl http://sandbox:8070/...`.
+    networks:
+      - sandbox-net
 
   demo-crm:
     build: ../deploy/demo-crm
@@ -102,6 +113,13 @@ services:
     depends_on:
       - gateway
       - runtime
+
+networks:
+  # Internal-only network for the code-execution sandbox: containers on it
+  # can talk to each other, but there is no gateway to the host or internet
+  # (egress-less). Only sandbox + runtime are attached.
+  sandbox-net:
+    internal: true
 
 volumes:
   pgdata:

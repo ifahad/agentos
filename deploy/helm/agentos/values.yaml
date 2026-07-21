@@ -121,6 +121,12 @@ sandbox:
     port: 8070
   maxTimeoutSeconds: 30
   maxOutputBytes: 65536
+  # -- Egress-less topology: a NetworkPolicy restricting the sandbox pod to
+  # ingress from the runtime pod only and egress to kube-dns (port 53) only.
+  # Requires a CNI that enforces NetworkPolicy (Calico, Cilium, ...);
+  # disable only if you have an equivalent cluster-level control.
+  networkPolicy:
+    enabled: true
   # -- Defense-in-depth defaults; the pod also runs read-only with all
   # capabilities dropped (see templates/sandbox.yaml).
   resources:
