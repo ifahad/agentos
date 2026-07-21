@@ -84,6 +84,7 @@ async def lifespan(app: FastAPI):
 
         app.state.agent_builder = agent_builder
         app.state.reflection_model = build_chat_model(settings)
+        app.state.judge_model = build_chat_model(settings, model=settings.judge_model)
         app.state.current_prompt = active_prompt or SYSTEM_PROMPT
         app.state.agent = agent_builder(active_prompt)
         yield

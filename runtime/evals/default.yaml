@@ -1,6 +1,9 @@
 # Default eval suite against the seeded legacy ERP + ingested vendor-policy doc.
 # A case passes when the run completes, expect_substring appears
 # (case-insensitively) in the final answer, and expect_tool (if set) was used.
+# A case may add a judge block {criteria, threshold}: the judge model
+# (AGENTOS_JUDGE_MODEL, via the gateway) grades the answer 0..1 against the
+# criteria and the case additionally requires score >= threshold.
 cases:
   - name: top-customer-by-order-value
     input: >-
@@ -20,3 +23,15 @@ cases:
   - name: arithmetic-sanity
     input: What is 6 times 7? Reply with just the number.
     expect_substring: "42"
+  - name: top-customer-cited-judged
+    input: >-
+      Which customer generates the most revenue for us, and how do you know?
+      Explain briefly and name the data you used.
+    expect_substring: "al-faisal"
+    expect_tool: query
+    judge:
+      criteria: >-
+        The answer identifies Al-Faisal Trading Co. as the top customer AND
+        cites the source table(s) the figure came from (e.g. the orders
+        and/or customers tables of the ERP database).
+      threshold: 0.7

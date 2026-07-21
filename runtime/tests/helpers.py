@@ -130,6 +130,28 @@ class FakeChatModel:
         return AIMessage(content=reply)
 
 
+JUDGE_PASS_REPLY = '{"score": 0.9, "justification": "meets the criteria"}'
+
+
+class FakeJudge:
+    """Judge-model fake: replies in order, last entry repeats forever.
+
+    Entries may be reply strings (returned as AIMessages) or exceptions
+    (raised), so both the retry and the judge-unavailable paths are scriptable.
+    """
+
+    def __init__(self, *replies: str | Exception) -> None:
+        self.replies = list(replies)
+        self.prompts: list[str] = []
+
+    async def ainvoke(self, prompt: str) -> AIMessage:
+        self.prompts.append(prompt)
+        reply = self.replies[min(len(self.prompts) - 1, len(self.replies) - 1)]
+        if isinstance(reply, Exception):
+            raise reply
+        return AIMessage(content=reply)
+
+
 class InMemoryImprovementStore:
     """In-memory stand-in matching the ImprovementStore method surface."""
 

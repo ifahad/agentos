@@ -21,6 +21,8 @@ class Settings(BaseSettings):
         AGENTOS_AGENT_PROFILE: ``react`` (default) or ``deep`` (deepagents package).
         AGENTOS_OTEL_ENDPOINT: OTLP/HTTP base URL; empty -> tracing disabled.
         AGENTOS_SANDBOX_URL: Sandbox service base URL; empty -> run_python tool off.
+        AGENTOS_JUDGE_MODEL: Provider-prefixed model used to judge eval cases
+            that carry a ``judge`` block (routed via the gateway).
     """
 
     model_config = SettingsConfigDict(env_prefix="AGENTOS_", extra="ignore")
@@ -36,6 +38,7 @@ class Settings(BaseSettings):
     agent_profile: Literal["react", "deep"] = "react"
     otel_endpoint: str | None = None
     sandbox_url: str = ""
+    judge_model: str = "anthropic/claude-haiku-4-5"
 
     @property
     def mcp_server_urls(self) -> list[str]:

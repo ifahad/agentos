@@ -120,6 +120,7 @@ async def improve(
 ) -> dict[str, Any]:
     state = http_request.app.state
     approval_tools = getattr(state, "approval_tools", []) or []
+    judge_model = getattr(state, "judge_model", None)
     suite_cases = load_suite_or_404(DEFAULT_SUITE)
 
     baseline = await store.latest_eval_run()
@@ -128,7 +129,13 @@ async def improve(
         if agent is None:
             raise HTTPException(status_code=503, detail="agent not initialized")
         baseline = await run_and_record(
-            store, agent, suite_cases, DEFAULT_SUITE, approval_tools, "active"
+            store,
+            agent,
+            suite_cases,
+            DEFAULT_SUITE,
+            approval_tools,
+            "active",
+            judge_model=judge_model,
         )
     baseline_score = baseline["score"]
     failed_cases = [case for case in baseline.get("cases", []) if not case.get("passed")]
@@ -141,7 +148,13 @@ async def improve(
     candidate_prompt, rationale = await reflect(model, reflection_prompt)
 
     candidate_run = await run_and_record(
-        store, builder(candidate_prompt), suite_cases, DEFAULT_SUITE, approval_tools, "candidate"
+        store,
+        builder(candidate_prompt),
+        suite_cases,
+        DEFAULT_SUITE,
+        approval_tools,
+        "candidate",
+        judge_model=judge_model,
     )
     candidate_score = candidate_run["score"]
 

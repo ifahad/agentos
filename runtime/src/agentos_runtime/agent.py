@@ -23,12 +23,17 @@ SYSTEM_PROMPT = (
 )
 
 
-def build_chat_model(settings: Settings) -> ChatOpenAI:
-    """Gateway-backed chat model (the only model wiring in the runtime)."""
+def build_chat_model(settings: Settings, model: str | None = None) -> ChatOpenAI:
+    """Gateway-backed chat model (the only model wiring in the runtime).
+
+    ``model`` overrides the configured agent model; the eval judge uses this
+    to run on AGENTOS_JUDGE_MODEL through the same gateway key, so judge
+    spend shows up in the gateway's /admin/usage like every other call.
+    """
     return ChatOpenAI(
         base_url=settings.gateway_url.rstrip("/") + "/v1",
         api_key=settings.gateway_key,
-        model=settings.model,
+        model=model or settings.model,
     )
 
 

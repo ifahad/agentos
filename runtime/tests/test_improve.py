@@ -2,7 +2,13 @@
 
 import httpx
 import pytest
-from helpers import FakeChatModel, InMemoryImprovementStore, ScriptedAgent
+from helpers import (
+    JUDGE_PASS_REPLY,
+    FakeChatModel,
+    FakeJudge,
+    InMemoryImprovementStore,
+    ScriptedAgent,
+)
 
 from agentos_runtime.agent import SYSTEM_PROMPT
 from agentos_runtime.api import app
@@ -14,6 +20,7 @@ STATE_ATTRS = (
     "agent",
     "approval_tools",
     "reflection_model",
+    "judge_model",
     "current_prompt",
 )
 
@@ -22,6 +29,11 @@ GOOD_SCRIPT = {
     "pending status": ("There are 4 pending orders.", ["query"]),
     "procurement policy": ("CFO Layla Al-Harbi signs off.", ["search_knowledge"]),
     "6 times 7": ("42", []),
+    "most revenue": (
+        "Al-Faisal Trading Co. generates the most revenue, per the orders "
+        "and customers tables.",
+        ["query"],
+    ),
 }
 # Fails procurement-sign-off: no search_knowledge tool used.
 BASELINE_SCRIPT = {**GOOD_SCRIPT, "procurement policy": ("I could not find that.", [])}
@@ -46,6 +58,7 @@ def mount(agent, candidate_agent, model):
     app.state.agent = agent
     app.state.agent_builder = lambda prompt: candidate_agent
     app.state.reflection_model = model
+    app.state.judge_model = FakeJudge(JUDGE_PASS_REPLY)
     app.state.approval_tools = []
     return store
 
@@ -73,7 +86,7 @@ async def test_improve_happy_path_passes_evals(client):
     assert proposal["status"] == "passed_evals"
     assert proposal["prompt_text"] == "You are an improved analyst."
     assert proposal["rationale"] == "use the KB"
-    assert proposal["baseline_score"] == 0.75
+    assert proposal["baseline_score"] == 0.8
     assert proposal["candidate_score"] == 1.0
     # baseline auto-ran (no prior runs), then the candidate eval ran
     assert [run["prompt_source"] for run in store.eval_runs] == ["active", "candidate"]
@@ -96,7 +109,7 @@ async def test_improve_below_baseline_is_failed_evals(client):
     await store.insert_eval_run(
         "default",
         1.0,
-        4,
+        5,
         0,
         [{"name": "arithmetic-sanity", "passed": True, "output_snippet": "42"}],
         "active",
