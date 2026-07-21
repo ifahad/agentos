@@ -21,8 +21,12 @@ const classifierSystemPrompt = `You are a prompt-injection classifier guarding a
 	`exactly of the form {"injection": true|false, "reason": "<short reason>"} ` +
 	`- no prose, no code fences.`
 
-// classifyMaxTokens caps the classifier completion; the verdict JSON is tiny.
-const classifyMaxTokens = 200
+// classifyMaxTokens caps the classifier completion. The verdict JSON is tiny,
+// but reasoning-model classifiers spend hidden thinking tokens against this
+// budget before emitting the answer, so the default leaves ample headroom
+// (max_tokens is only a ceiling — a terse model still bills only what it
+// emits). Override per deployment with AGENTOS_GUARDRAILS_MAX_TOKENS.
+const classifyMaxTokens = 512
 
 // ProviderClassifier calls the classifier model straight through the
 // gateway's internal provider routing (no HTTP loopback through the gateway
@@ -31,6 +35,8 @@ type ProviderClassifier struct {
 	Router *provider.Router
 	// Client defaults to a 30s-timeout http.Client.
 	Client *http.Client
+	// MaxTokens caps the classifier completion; <= 0 uses classifyMaxTokens.
+	MaxTokens int
 	// OnUsage, when set, receives the stripped model name and token counts
 	// of each successful classifier call so spend can be accounted against a
 	// gateway virtual key (AGENTOS_GUARDRAILS_KEY).
@@ -45,6 +51,10 @@ func (c *ProviderClassifier) Classify(ctx context.Context, model, message string
 		return false, "", fmt.Errorf("route model %q: %w", model, err)
 	}
 
+	maxTokens := c.MaxTokens
+	if maxTokens <= 0 {
+		maxTokens = classifyMaxTokens
+	}
 	payload, err := json.Marshal(map[string]any{
 		"model": route.Model,
 		"messages": []map[string]string{
@@ -52,7 +62,7 @@ func (c *ProviderClassifier) Classify(ctx context.Context, model, message string
 			{"role": "user", "content": message},
 		},
 		"temperature": 0,
-		"max_tokens":  classifyMaxTokens,
+		"max_tokens":  maxTokens,
 	})
 	if err != nil {
 		return false, "", fmt.Errorf("encode classifier request: %w", err)

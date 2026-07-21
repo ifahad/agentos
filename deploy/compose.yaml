@@ -28,6 +28,9 @@ services:
       AGENTOS_OLLAMA_BASE_URL: ${AGENTOS_OLLAMA_BASE_URL:-}
       AGENTOS_BOOTSTRAP_KEYS: "runtime:${AGENTOS_RUNTIME_KEY:-agos-local-dev-runtime}:25"
       AGENTOS_GUARDRAILS_MODE: ${AGENTOS_GUARDRAILS_MODE:-off}
+      AGENTOS_GUARDRAILS_MODEL: ${AGENTOS_GUARDRAILS_MODEL:-anthropic/claude-haiku-4-5}
+      AGENTOS_GUARDRAILS_KEY: ${AGENTOS_GUARDRAILS_KEY:-}
+      AGENTOS_GUARDRAILS_TIMEOUT_S: ${AGENTOS_GUARDRAILS_TIMEOUT_S:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -59,6 +62,7 @@ services:
       AGENTOS_APPROVAL_TOOLS: ${AGENTOS_APPROVAL_TOOLS:-}
       AGENTOS_EMBED_MODEL: ${AGENTOS_EMBED_MODEL:-ollama/bge-m3}
       AGENTOS_AGENT_PROFILE: ${AGENTOS_AGENT_PROFILE:-react}
+      AGENTOS_JUDGE_MODEL: ${AGENTOS_JUDGE_MODEL:-anthropic/claude-haiku-4-5}
     ports:
       - "${AGENTOS_RUNTIME_PORT:-8000}:8000"
     # On both networks: `default` to reach gateway/postgres/connectors, and

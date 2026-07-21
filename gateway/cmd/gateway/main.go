@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/ifahad/agentos/gateway/internal/guardrail"
 	"github.com/ifahad/agentos/gateway/internal/provider"
@@ -128,6 +130,13 @@ func buildModelGuardrail(ctx context.Context, st store.Store, router *provider.R
 	}
 
 	classifier := &guardrail.ProviderClassifier{Router: router}
+	if s := os.Getenv("AGENTOS_GUARDRAILS_MAX_TOKENS"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			classifier.MaxTokens = n
+		} else {
+			log.Printf("WARNING: invalid AGENTOS_GUARDRAILS_MAX_TOKENS %q; using default", s)
+		}
+	}
 	if secret := os.Getenv("AGENTOS_GUARDRAILS_KEY"); secret != "" {
 		key, err := st.Authenticate(ctx, secret)
 		if err != nil {
@@ -152,6 +161,15 @@ func buildModelGuardrail(ctx context.Context, st store.Store, router *provider.R
 		log.Printf("WARNING: AGENTOS_GUARDRAILS_KEY is empty; classifier spend will not appear in /admin/usage")
 	}
 
+	timeout := time.Duration(0)
+	if s := os.Getenv("AGENTOS_GUARDRAILS_TIMEOUT_S"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			timeout = time.Duration(n) * time.Second
+		} else {
+			log.Printf("WARNING: invalid AGENTOS_GUARDRAILS_TIMEOUT_S %q; using default", s)
+		}
+	}
+
 	log.Printf("guardrail classifier model %q wired via provider layer", model)
-	return guardrail.NewModelScreen(heuristic, classifier, model)
+	return guardrail.NewModelScreenWithTimeout(heuristic, classifier, model, timeout)
 }

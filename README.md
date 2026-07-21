@@ -130,6 +130,37 @@ adds an OpenTelemetry collector; gateway and runtime emit spans per request,
 model call, and tool call. Forward to Langfuse/LangSmith by editing
 `deploy/otel-collector.yaml` (commented example inside).
 
+### Bundled Langfuse
+
+```bash
+docker compose -f deploy/compose.yaml -f deploy/compose.otel.yaml \
+  -f deploy/compose.langfuse.yaml up -d
+```
+
+brings up Langfuse OSS with its own dedicated Postgres and points the
+collector at it. Open http://localhost:3001, create a project, and paste its
+OTLP key pair into `.env` (`base64("pk:sk")` → `LANGFUSE_OTLP_BASIC_AUTH`);
+see `deploy/langfuse.env.example`. Native OTLP-into-UI needs Langfuse v3
+(`LANGFUSE_IMAGE=langfuse/langfuse:3` plus its ClickHouse/Redis/MinIO deps);
+the collector's debug exporter shows traces either way.
+
+## Hardening
+
+- **Egress-less sandbox** — the code-execution sandbox runs on an
+  internal-only Docker network with no outbound route; only the runtime can
+  reach it. Helm ships a matching NetworkPolicy (DNS-only egress, runtime-only
+  ingress).
+- **Model-based guardrail** — `AGENTOS_GUARDRAILS_MODE=model` runs the fast
+  heuristic first, then an LLM classifier (through the gateway, spend audited)
+  for subtler injections. Classifier outages fail **open** with a
+  `guardrail_error` audit entry, so the safety layer can't take down traffic.
+  Use a fast, non-reasoning classifier — the default `claude-haiku-4-5` is
+  ideal; reasoning models spend their token budget thinking and may return no
+  verdict (which fails open). Tune with `AGENTOS_GUARDRAILS_MODEL`,
+  `AGENTOS_GUARDRAILS_TIMEOUT_S`, and `AGENTOS_GUARDRAILS_MAX_TOKENS`.
+- **SSH connector** — legacy boxes as MCP tools with a strict command
+  allowlist and command-chaining rejection (`connectors/ssh/`, opt-in).
+
 ## Roadmap
 
 1. ~~**Core loop**: gateway + runtime + SQL connector + compose demo.~~ ✅
@@ -138,7 +169,9 @@ model call, and tool call. Forward to Langfuse/LangSmith by editing
    deepagents profile, opt-in OpenTelemetry.~~ ✅
 3. ~~**Autonomy, safely**: Rust sandbox, eval-gated self-improvement loop,
    REST/OpenAPI connector + demo CRM, Helm chart, OTel collector profile.~~ ✅
-4. Next: SOAP/SSH/browser connectors, egress-less sandbox topology,
-   LLM-judge evals, Langfuse bundled profile, model-based guardrails.
+4. ~~**Reach & hardening**: SSH connector, egress-less sandbox, model-based
+   guardrail, LLM-judge evals, bundled Langfuse profile.~~ ✅
+5. Next: SOAP/browser connectors, multi-tenant RBAC, secrets-manager
+   integration, LLM-judge in CI.
 
 License: [Apache-2.0](LICENSE)

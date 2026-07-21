@@ -17,7 +17,9 @@ const DefaultModel = "anthropic/claude-haiku-4-5"
 const (
 	// cacheSize bounds the verdict LRU cache.
 	cacheSize = 256
-	// classifyTimeout bounds one screening (both classifier attempts).
+	// classifyTimeout is the default bound for one screening (both classifier
+	// attempts). Override with AGENTOS_GUARDRAILS_TIMEOUT_S — slow local
+	// reasoning models used as classifiers may need more than the default.
 	classifyTimeout = 20 * time.Second
 )
 
@@ -45,14 +47,24 @@ type ModelScreen struct {
 // NewModelScreen builds the model-backed screener. An empty model falls back
 // to DefaultModel.
 func NewModelScreen(heuristic Guardrail, classifier Classifier, model string) *ModelScreen {
+	return NewModelScreenWithTimeout(heuristic, classifier, model, classifyTimeout)
+}
+
+// NewModelScreenWithTimeout is NewModelScreen with an explicit screening
+// timeout (bounds both classifier attempts). A non-positive timeout falls
+// back to the default.
+func NewModelScreenWithTimeout(heuristic Guardrail, classifier Classifier, model string, timeout time.Duration) *ModelScreen {
 	if model == "" {
 		model = DefaultModel
+	}
+	if timeout <= 0 {
+		timeout = classifyTimeout
 	}
 	return &ModelScreen{
 		heuristic:  heuristic,
 		classifier: classifier,
 		model:      model,
-		timeout:    classifyTimeout,
+		timeout:    timeout,
 		cache:      newLRUCache(cacheSize),
 	}
 }
