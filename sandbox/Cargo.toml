@@ -1,0 +1,23 @@
+[package]
+name = "sandbox"
+version = "0.1.0"
+edition = "2021"
+description = "AgentOS Phase 3 sandbox: isolated execution of untrusted Python code over HTTP"
+license = "MIT"
+
+[dependencies]
+axum = "0.8"
+libc = "0.2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+http-body-util = "0.1"
+tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+strip = true
