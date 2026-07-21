@@ -1,0 +1,59 @@
+# Langfuse overlay: bundled Langfuse OSS (v2, Postgres-only) + collector forwarding.
+# Use together with the base stack AND the OTel overlay:
+#   docker compose -f compose.yaml -f compose.otel.yaml -f compose.langfuse.yaml up -d
+# First run: open http://localhost:3001, create an org/project, copy the API keys,
+# set LANGFUSE_OTLP_BASIC_AUTH in .env (see langfuse.env.example), then
+#   docker compose ... restart otel-collector
+services:
+  langfuse-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse -d langfuse"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  langfuse:
+    image: ${LANGFUSE_IMAGE:-langfuse/langfuse:2}
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      NEXTAUTH_URL: http://localhost:${AGENTOS_LANGFUSE_PORT:-3001}
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-langfuse-local-dev-secret}
+      SALT: ${LANGFUSE_SALT:-langfuse-local-dev-salt}
+      TELEMETRY_ENABLED: "false"
+      # Optional headless bootstrap (skip the first-run UI wizard) — uncomment and
+      # fill in to pre-create the org/project/user and API keys deterministically:
+      # LANGFUSE_INIT_ORG_ID: agentos
+      # LANGFUSE_INIT_ORG_NAME: AgentOS
+      # LANGFUSE_INIT_PROJECT_ID: agentos-local
+      # LANGFUSE_INIT_PROJECT_NAME: agentos-local
+      # LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY}
+      # LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY}
+      # LANGFUSE_INIT_USER_EMAIL: admin@agentos.local
+      # LANGFUSE_INIT_USER_NAME: admin
+      # LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD}
+    ports:
+      - "${AGENTOS_LANGFUSE_PORT:-3001}:3000"
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+
+  otel-collector:
+    # Same mount target as compose.otel.yaml, so this replaces the base config
+    # with the Langfuse-aware one (debug + otlphttp/langfuse exporters).
+    volumes:
+      - ./otel-collector.langfuse.yaml:/etc/otel/config.yaml:ro
+    environment:
+      LANGFUSE_OTLP_ENDPOINT: ${LANGFUSE_OTLP_ENDPOINT:-http://langfuse:3000/api/public/otel}
+      LANGFUSE_OTLP_BASIC_AUTH: ${LANGFUSE_OTLP_BASIC_AUTH:-}
+    depends_on:
+      - langfuse
+
+volumes:
+  langfuse-pgdata:
