@@ -9,6 +9,8 @@ export const GATEWAY_BASE = "/api/gateway";
 export const RUNTIME_BASE = "/api/runtime";
 
 const ADMIN_KEY_STORAGE = "agentos.adminKey";
+const AUTH_ROLE_STORAGE = "agentos.authRole";
+const ORG_ID_STORAGE = "agentos.orgId";
 
 export interface RequestSpec {
   url: string;
@@ -39,9 +41,18 @@ export function buildRequest(base: string, path: string, opts: BuildOptions = {}
   return { url: `${base}${cleanPath}`, init };
 }
 
-/** Gateway /admin/* request — always carries the admin key as Bearer. */
-export function gatewayAdminRequest(path: string, adminKey: string, body?: unknown): RequestSpec {
-  return buildRequest(GATEWAY_BASE, path, { bearer: adminKey, body });
+/**
+ * Gateway /admin/* request — always carries the caller's token as Bearer. The
+ * same header carries either the root admin key or an `agu-…` user token; the
+ * gateway resolves which. Pass `{ method }` for verbs beyond GET/POST (DELETE).
+ */
+export function gatewayAdminRequest(
+  path: string,
+  adminKey: string,
+  body?: unknown,
+  opts: { method?: string } = {},
+): RequestSpec {
+  return buildRequest(GATEWAY_BASE, path, { bearer: adminKey, body, method: opts.method });
 }
 
 /** Runtime request — no auth (runtime is internal; nginx fronts it). */
@@ -49,26 +60,57 @@ export function runtimeRequest(path: string, body?: unknown): RequestSpec {
   return buildRequest(RUNTIME_BASE, path, { body });
 }
 
-// ---- Admin key persistence ----
+// ---- Credential persistence ----
+//
+// The caller authenticates with a single Bearer token that is EITHER the root
+// admin key OR an `agu-…` user token — the gateway resolves which. Alongside it
+// we persist a derived role (so the UI can gate actions) and, for user-token
+// callers, their org id (so the Users page knows which org to scope to).
 
-export function getAdminKey(): string {
+function readStorage(key: string): string {
   try {
-    return window.localStorage.getItem(ADMIN_KEY_STORAGE) ?? "";
+    return window.localStorage.getItem(key) ?? "";
   } catch {
     return "";
   }
 }
 
-export function saveAdminKey(key: string): void {
+function writeStorage(key: string, value: string): void {
   try {
-    if (key) {
-      window.localStorage.setItem(ADMIN_KEY_STORAGE, key);
+    if (value) {
+      window.localStorage.setItem(key, value);
     } else {
-      window.localStorage.removeItem(ADMIN_KEY_STORAGE);
+      window.localStorage.removeItem(key);
     }
   } catch {
-    // storage unavailable — key lives only in memory for this page load
+    // storage unavailable — value lives only in memory for this page load
   }
+}
+
+export function getAdminKey(): string {
+  return readStorage(ADMIN_KEY_STORAGE);
+}
+
+export function saveAdminKey(key: string): void {
+  writeStorage(ADMIN_KEY_STORAGE, key);
+}
+
+/** Persisted role string ("root" | "owner" | "admin" | "member" | "viewer"). */
+export function getStoredRole(): string {
+  return readStorage(AUTH_ROLE_STORAGE);
+}
+
+export function saveStoredRole(role: string): void {
+  writeStorage(AUTH_ROLE_STORAGE, role);
+}
+
+/** Persisted org id for user-token callers (empty for root). */
+export function getStoredOrgId(): string {
+  return readStorage(ORG_ID_STORAGE);
+}
+
+export function saveStoredOrgId(orgId: string): void {
+  writeStorage(ORG_ID_STORAGE, orgId);
 }
 
 // ---- Error handling ----

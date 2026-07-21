@@ -265,6 +265,7 @@ label.field > span {
 input[type="text"],
 input[type="number"],
 input[type="password"],
+select,
 textarea {
   width: 100%;
   background: var(--bg-inset);
@@ -273,6 +274,26 @@ textarea {
   color: var(--text);
   font: inherit;
   padding: 8px 10px;
+}
+
+select {
+  cursor: pointer;
+}
+
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.thread-line select {
+  width: auto;
+  padding: 5px 8px;
+}
+
+.mode-toggle {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 textarea {

@@ -36,11 +36,21 @@ export function NeedsKey({ openSettings }: { openSettings: () => void }) {
   );
 }
 
+/** Friendly inline notice for a role that lacks a capability (403 or UI-gated). */
+export function ForbiddenNotice({ message }: { message?: string }) {
+  return (
+    <div className="notice warn">
+      {message ??
+        "You don't have permission to perform this action. Sign in with a higher-privileged token in Settings."}
+    </div>
+  );
+}
+
 export function errorMessage(err: unknown): string {
   if (err instanceof ApiError) {
-    return err.status === 401
-      ? "Unauthorized — check the admin key in Settings."
-      : `${err.message} (${err.type}, HTTP ${err.status})`;
+    if (err.status === 401) return "Unauthorized — set your credentials in Settings.";
+    if (err.status === 403) return "You don't have permission to perform this action.";
+    return `${err.message} (${err.type}, HTTP ${err.status})`;
   }
   return err instanceof Error ? err.message : String(err);
 }

@@ -37,6 +37,49 @@ export interface AuditEntry {
   kind: AuditKind;
 }
 
+// ---- Gateway multi-tenant RBAC (Phase 5) ----
+
+// A user's role within an org. The root admin key is a global superuser above
+// all orgs and is not one of these values (see AuthRole in lib/rbac.ts).
+export type Role = "owner" | "admin" | "member" | "viewer";
+
+// GET /admin/orgs row (root) — base org plus its aggregate spend across keys.
+export interface Org {
+  id: string;
+  name: string;
+  monthly_budget_usd: number;
+  spend_usd: number;
+  created_at: string;
+}
+
+// GET /admin/orgs/{org_id}/users row — never carries a token.
+export interface User {
+  id: string;
+  org_id: string;
+  email: string;
+  role: Role;
+  created_at: string;
+}
+
+// POST /admin/orgs/{org_id}/users response — the user plus a one-time token
+// (`agu-…`), shown exactly once at creation and never retrievable again.
+export interface CreatedUser {
+  id: string;
+  email: string;
+  role: Role;
+  token: string;
+}
+
+// Where a provider secret is resolved from (GET /admin/secrets/status).
+export type SecretSource = "env" | "file" | "age";
+
+// GET /admin/secrets/status row (root) — presence and source only, never the value.
+export interface SecretStatus {
+  name: string;
+  present: boolean;
+  source: SecretSource;
+}
+
 // ---- Runtime ----
 
 export interface Step {

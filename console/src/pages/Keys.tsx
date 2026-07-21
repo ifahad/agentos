@@ -3,9 +3,11 @@ import type { PageProps } from "../App";
 import { CopyButton, ErrorNotice, NeedsKey, PageHead, errorMessage, useLoad } from "../components/common";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import { budgetFraction, formatUSD } from "../lib/format";
+import { can } from "../lib/rbac";
 import type { CreatedKey, KeyInfo } from "../lib/types";
 
-export function Keys({ adminKey, openSettings }: PageProps) {
+export function Keys({ adminKey, role, openSettings }: PageProps) {
+  const canCreate = can(role, "key.create");
   const { data, error, loading, reload } = useLoad(
     () =>
       adminKey
@@ -82,6 +84,7 @@ export function Keys({ adminKey, openSettings }: PageProps) {
 
       {adminKey && (
         <>
+          {canCreate && (
           <div className="panel">
             <div className="panel-head">
               <h2>Create key</h2>
@@ -114,6 +117,7 @@ export function Keys({ adminKey, openSettings }: PageProps) {
               </button>
             </div>
           </div>
+          )}
 
           <div className="panel">
             <div className="panel-head">
