@@ -66,7 +66,8 @@ async def test_runs_generates_thread_id_and_returns_steps(client, fake_agent):
     response = await client.post("/runs", json={"input": "how many rows?"})
     assert response.status_code == 200
     body = response.json()
-    assert set(body) == {"thread_id", "output", "steps"}
+    assert set(body) == {"thread_id", "output", "steps", "status"}
+    assert body["status"] == "completed"  # additive Phase 2 field
     assert len(body["thread_id"]) == 32
     int(body["thread_id"], 16)  # uuid4 hex
     assert body["output"] == "The answer is 1."

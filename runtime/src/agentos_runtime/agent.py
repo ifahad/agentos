@@ -29,10 +29,12 @@ def build_agent(
     checkpointer: BaseCheckpointSaver,
     model: BaseChatModel | None = None,
 ):
-    """Build the ReAct agent graph.
+    """Build the agent graph for the configured profile.
 
     ``model`` overrides the gateway-backed ChatOpenAI (used by tests to inject
-    a fake tool-calling model).
+    a fake tool-calling model). When AGENTOS_APPROVAL_TOOLS is non-empty the
+    react graph is compiled with ``interrupt_before=["tools"]`` so every tool
+    batch pauses for the HITL run loop (non-approval tools auto-resume there).
     """
     if model is None:
         model = ChatOpenAI(
@@ -40,11 +42,25 @@ def build_agent(
             api_key=settings.gateway_key,
             model=settings.model,
         )
+    if settings.agent_profile == "deep":
+        # deepagents compiles its own graph and exposes no interrupt_before
+        # pass-through; HITL tool approvals therefore apply to the react
+        # profile only (documented deviation).
+        from deepagents import create_deep_agent
+
+        return create_deep_agent(
+            model=model,
+            tools=list(tools),
+            system_prompt=SYSTEM_PROMPT,
+            checkpointer=checkpointer,
+        )
+    interrupt_before = ["tools"] if settings.approval_tool_names else None
     return create_react_agent(
         model,
         tools=list(tools),
         prompt=SYSTEM_PROMPT,
         checkpointer=checkpointer,
+        interrupt_before=interrupt_before,
     )
 
 
