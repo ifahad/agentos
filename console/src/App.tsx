@@ -3,6 +3,7 @@ import { SettingsModal } from "./components/SettingsModal";
 import { getAdminKey } from "./lib/api";
 import { Audit } from "./pages/Audit";
 import { Documents } from "./pages/Documents";
+import { Improve } from "./pages/Improve";
 import { Keys } from "./pages/Keys";
 import { Overview } from "./pages/Overview";
 import { Playground } from "./pages/Playground";
@@ -24,6 +25,7 @@ const ROUTES: Route[] = [
   { path: "/audit", label: "Audit", Component: Audit },
   { path: "/playground", label: "Playground", Component: Playground },
   { path: "/documents", label: "Documents", Component: Documents },
+  { path: "/improve", label: "Improve", Component: Improve },
 ];
 
 function usePath(): [string, (p: string) => void] {

@@ -369,6 +369,32 @@ button {
   background: rgba(224, 82, 82, 0.08);
 }
 
+.badge.pass,
+.badge.passed_evals {
+  color: var(--green);
+  border-color: rgba(63, 178, 111, 0.4);
+}
+
+.badge.fail {
+  color: var(--red);
+  border-color: rgba(224, 82, 82, 0.5);
+}
+
+.badge.failed_evals {
+  color: var(--amber);
+  border-color: rgba(217, 165, 58, 0.5);
+  background: rgba(217, 165, 58, 0.08);
+}
+
+.badge.approved {
+  color: var(--accent);
+  border-color: rgba(79, 140, 255, 0.4);
+}
+
+.badge.denied {
+  color: var(--text-faint);
+}
+
 .status-ok {
   color: var(--green);
 }
@@ -537,6 +563,85 @@ button {
   margin-bottom: 14px;
   color: var(--text-faint);
   font-size: 12.5px;
+}
+
+/* ---- Improve page ---- */
+
+.head-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.prompt-text {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 12px 14px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.run-result .head-group {
+  justify-content: space-between;
+}
+
+.case-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.case-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.case-output {
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.proposal {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-inset);
+  padding: 14px 16px;
+}
+
+.proposal + .proposal {
+  margin-top: 12px;
+}
+
+.proposal-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.proposal-time {
+  margin-left: auto;
+}
+
+.proposal .rationale {
+  color: var(--text-dim);
+  margin-top: 8px;
+}
+
+.proposal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.proposal .prompt-text {
+  margin-top: 12px;
 }
 
 /* ---- Modal ---- */

@@ -72,3 +72,61 @@ export type StreamEvent =
   | { event: "step"; tool: string; input: Record<string, unknown> }
   | { event: "pending_approval"; pending: PendingTool[]; thread_id?: string }
   | { event: "done"; thread_id: string; output: string; steps: Step[] };
+
+// ---- Runtime self-improvement (Phase 3) ----
+
+// Per-case result inside a POST /evals/run response.
+export interface EvalCaseResult {
+  name: string;
+  passed: boolean;
+  output_snippet: string;
+}
+
+// POST /evals/run response (score is a 0..1 fraction).
+export interface EvalRunResult {
+  run_id: number;
+  suite: string;
+  score: number;
+  passed: number;
+  failed: number;
+  cases: EvalCaseResult[];
+}
+
+// GET /evals/runs row — recent runs, no per-case detail.
+export interface EvalRunSummary {
+  id: number;
+  suite: string;
+  score: number;
+  passed: number;
+  failed: number;
+  prompt_source: string;
+  created_at: string;
+}
+
+export type ProposalStatus = "passed_evals" | "failed_evals" | "approved" | "denied";
+
+// GET /proposals row; POST /improve returns the same shape.
+export interface Proposal {
+  id: number;
+  prompt_text: string;
+  rationale: string;
+  baseline_score: number;
+  candidate_score: number;
+  status: ProposalStatus;
+  created_at: string;
+}
+
+// POST /proposals/{id}/approve response; warning set when a below-baseline
+// proposal is approved (human override).
+export interface ApproveResponse {
+  id: number;
+  status: ProposalStatus;
+  warning?: string;
+}
+
+// GET /prompts/active response.
+export interface ActivePrompt {
+  source: "default" | "proposal";
+  prompt: string;
+  proposal_id: number | null;
+}
