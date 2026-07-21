@@ -1,0 +1,62 @@
+name: agentos
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: agentos
+      POSTGRES_PASSWORD: agentos
+      POSTGRES_DB: agentos
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agentos -d agentos"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  gateway:
+    build: ../gateway
+    environment:
+      AGENTOS_ADMIN_KEY: ${AGENTOS_ADMIN_KEY:-admin-local-dev}
+      AGENTOS_DATABASE_URL: postgres://agentos:agentos@postgres:5432/agentos
+      AGENTOS_ANTHROPIC_API_KEY: ${AGENTOS_ANTHROPIC_API_KEY:-}
+      AGENTOS_OPENAI_API_KEY: ${AGENTOS_OPENAI_API_KEY:-}
+      AGENTOS_OLLAMA_BASE_URL: ${AGENTOS_OLLAMA_BASE_URL:-}
+      AGENTOS_BOOTSTRAP_KEYS: "runtime:${AGENTOS_RUNTIME_KEY:-agos-local-dev-runtime}:25"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  sql-connector:
+    build: ../connectors/sql
+    environment:
+      AGENTOS_CONNECTOR_DATABASE_URL: postgres://erp_reader:erp_reader@postgres:5432/legacy_erp
+      AGENTOS_CONNECTOR_MAX_ROWS: "200"
+    ports:
+      - "8090:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  runtime:
+    build: ../runtime
+    environment:
+      AGENTOS_GATEWAY_URL: http://gateway:8080
+      AGENTOS_GATEWAY_KEY: ${AGENTOS_RUNTIME_KEY:-agos-local-dev-runtime}
+      AGENTOS_MODEL: ${AGENTOS_MODEL:-anthropic/claude-sonnet-5}
+      AGENTOS_MCP_SERVERS: http://sql-connector:8090/mcp
+      AGENTOS_CHECKPOINT_DATABASE_URL: postgres://agentos:agentos@postgres:5432/agentos
+    ports:
+      - "8000:8000"
+    depends_on:
+      - gateway
+      - sql-connector
+
+volumes:
+  pgdata:
