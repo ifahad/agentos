@@ -8,10 +8,19 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // ErrInvalidKey is returned by Authenticate when the secret is unknown.
 var ErrInvalidKey = errors.New("invalid key")
+
+// Audit entry kinds. Records persisted before kinds existed count as chat.
+const (
+	KindChat           = "chat"
+	KindEmbeddings     = "embeddings"
+	KindGuardrailFlag  = "guardrail_flag"
+	KindGuardrailBlock = "guardrail_block"
+)
 
 // Key is an authenticated virtual key.
 type Key struct {
@@ -29,6 +38,20 @@ type Usage struct {
 	CostUSD      float64
 	LatencyMS    int64
 	Status       int
+	Kind         string // KindChat when empty
+}
+
+// AuditEntry is one row of GET /admin/audit, newest first.
+type AuditEntry struct {
+	TS           time.Time `json:"ts"`
+	KeyName      string    `json:"key_name"`
+	Model        string    `json:"model"`
+	InputTokens  int64     `json:"input_tokens"`
+	OutputTokens int64     `json:"output_tokens"`
+	CostUSD      float64   `json:"cost_usd"`
+	LatencyMS    int64     `json:"latency_ms"`
+	Status       int       `json:"status"`
+	Kind         string    `json:"kind"`
 }
 
 // KeyUsage is the per-key aggregate reported by GET /admin/usage.
@@ -53,9 +76,19 @@ type Store interface {
 	CreateKey(ctx context.Context, name string, budgetUSD float64) (secret string, err error)
 	Authenticate(ctx context.Context, secret string) (*Key, error) // ErrInvalidKey
 	RecordUsage(ctx context.Context, u Usage) error                // updates spend
+	RecordAudit(ctx context.Context, u Usage) error                // audit log only, no spend
 	Usage(ctx context.Context) ([]KeyUsage, error)
 	Keys(ctx context.Context) ([]KeyInfo, error)
+	AuditList(ctx context.Context, limit int) ([]AuditEntry, error) // newest first
 	EnsureKey(ctx context.Context, name, secret string, budgetUSD float64) error
+}
+
+// kindOrChat maps an unset kind to KindChat.
+func kindOrChat(kind string) string {
+	if kind == "" {
+		return KindChat
+	}
+	return kind
 }
 
 // newSecret generates a fresh virtual key secret of the form agos-<random>.

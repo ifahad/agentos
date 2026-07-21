@@ -74,6 +74,66 @@ func TestRoute(t *testing.T) {
 	}
 }
 
+func TestRouteEmbeddings(t *testing.T) {
+	router := &Router{
+		AnthropicAPIKey: "sk-ant-test",
+		OpenAIAPIKey:    "sk-oai-test",
+		OllamaBaseURL:   "http://ollama:11434",
+	}
+
+	tests := []struct {
+		name         string
+		model        string
+		wantProvider string
+		wantURL      string
+		wantAPIKey   string
+		wantModel    string
+		wantErr      error
+	}{
+		{
+			name:         "ollama embeddings",
+			model:        "ollama/bge-m3",
+			wantProvider: "ollama",
+			wantURL:      "http://ollama:11434/v1/embeddings",
+			wantAPIKey:   "",
+			wantModel:    "bge-m3",
+		},
+		{
+			name:         "openai embeddings",
+			model:        "openai/text-embedding-3-small",
+			wantProvider: "openai",
+			wantURL:      "https://api.openai.com/v1/embeddings",
+			wantAPIKey:   "sk-oai-test",
+			wantModel:    "text-embedding-3-small",
+		},
+		{
+			name:         "anthropic embeddings",
+			model:        "anthropic/some-embed",
+			wantProvider: "anthropic",
+			wantURL:      "https://api.anthropic.com/v1/embeddings",
+			wantAPIKey:   "sk-ant-test",
+			wantModel:    "some-embed",
+		},
+		{name: "unknown prefix", model: "mistral/embed", wantErr: ErrUnknownProvider},
+		{name: "no prefix", model: "bge-m3", wantErr: ErrUnknownProvider},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			route, err := router.RouteEmbeddings(tt.model)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("RouteEmbeddings err = %v, want %v", err, tt.wantErr)
+			}
+			if tt.wantErr != nil {
+				return
+			}
+			if route.Provider != tt.wantProvider || route.URL != tt.wantURL ||
+				route.APIKey != tt.wantAPIKey || route.Model != tt.wantModel {
+				t.Errorf("route = %+v", route)
+			}
+		})
+	}
+}
+
 func TestRouteDefaultOllamaBaseURL(t *testing.T) {
 	router := &Router{}
 	route, err := router.Route("ollama/llama3.1")

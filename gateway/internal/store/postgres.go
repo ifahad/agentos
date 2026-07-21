@@ -38,8 +38,12 @@ CREATE TABLE IF NOT EXISTS audit_log (
     cost_usd      DOUBLE PRECISION NOT NULL,
     latency_ms    BIGINT NOT NULL,
     status        INTEGER NOT NULL,
+    kind          TEXT NOT NULL DEFAULT 'chat',
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Phase 2 migration: pre-existing databases lack the kind column; existing
+-- rows are chat audits per the frozen contract.
+ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'chat';
 `
 
 // NewPostgres connects to databaseURL and ensures the schema exists.
@@ -111,13 +115,42 @@ func (p *Postgres) RecordUsage(ctx context.Context, u Usage) error {
 		u.KeyName, u.InputTokens, u.OutputTokens, u.CostUSD); err != nil {
 		return fmt.Errorf("upsert usage: %w", err)
 	}
-	if _, err := tx.Exec(ctx,
-		`INSERT INTO audit_log (key_name, model, input_tokens, output_tokens, cost_usd, latency_ms, status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		u.KeyName, u.Model, u.InputTokens, u.OutputTokens, u.CostUSD, u.LatencyMS, u.Status); err != nil {
+	if _, err := tx.Exec(ctx, insertAuditSQL,
+		u.KeyName, u.Model, u.InputTokens, u.OutputTokens, u.CostUSD, u.LatencyMS, u.Status, kindOrChat(u.Kind)); err != nil {
 		return fmt.Errorf("insert audit_log: %w", err)
 	}
 	return tx.Commit(ctx)
+}
+
+const insertAuditSQL = `INSERT INTO audit_log (key_name, model, input_tokens, output_tokens, cost_usd, latency_ms, status, kind)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`
+
+func (p *Postgres) RecordAudit(ctx context.Context, u Usage) error {
+	if _, err := p.pool.Exec(ctx, insertAuditSQL,
+		u.KeyName, u.Model, u.InputTokens, u.OutputTokens, u.CostUSD, u.LatencyMS, u.Status, kindOrChat(u.Kind)); err != nil {
+		return fmt.Errorf("insert audit_log: %w", err)
+	}
+	return nil
+}
+
+func (p *Postgres) AuditList(ctx context.Context, limit int) ([]AuditEntry, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT created_at, key_name, model, input_tokens, output_tokens, cost_usd, latency_ms, status, kind
+         FROM audit_log ORDER BY id DESC LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query audit_log: %w", err)
+	}
+	defer rows.Close()
+	var out []AuditEntry
+	for rows.Next() {
+		var e AuditEntry
+		if err := rows.Scan(&e.TS, &e.KeyName, &e.Model, &e.InputTokens, &e.OutputTokens,
+			&e.CostUSD, &e.LatencyMS, &e.Status, &e.Kind); err != nil {
+			return nil, fmt.Errorf("scan audit_log: %w", err)
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
 }
 
 func (p *Postgres) Usage(ctx context.Context) ([]KeyUsage, error) {

@@ -7,10 +7,13 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
+	"github.com/ifahad/agentos/gateway/internal/guardrail"
 	"github.com/ifahad/agentos/gateway/internal/provider"
 	"github.com/ifahad/agentos/gateway/internal/server"
 	"github.com/ifahad/agentos/gateway/internal/store"
+	"github.com/ifahad/agentos/gateway/internal/telemetry"
 )
 
 func main() {
@@ -52,7 +55,48 @@ func main() {
 		OllamaBaseURL:   os.Getenv("AGENTOS_OLLAMA_BASE_URL"),
 	}
 
-	srv := server.New(st, router, adminKey)
+	var opts []server.Option
+
+	guardMode := os.Getenv("AGENTOS_GUARDRAILS_MODE")
+	if guardMode == "" {
+		guardMode = guardrail.ModeOff
+	}
+	if !guardrail.ValidMode(guardMode) {
+		log.Fatalf("AGENTOS_GUARDRAILS_MODE must be off, log, or block (got %q)", guardMode)
+	}
+	if guardMode != guardrail.ModeOff {
+		opts = append(opts, server.WithGuardrails(guardMode, guardrail.NewHeuristicScreen()))
+		log.Printf("guardrails enabled (mode=%s)", guardMode)
+	}
+
+	if raw := os.Getenv("AGENTOS_CORS_ORIGINS"); raw != "" {
+		var origins []string
+		for _, o := range strings.Split(raw, ",") {
+			if o = strings.TrimSpace(o); o != "" {
+				origins = append(origins, o)
+			}
+		}
+		if len(origins) > 0 {
+			opts = append(opts, server.WithCORSOrigins(origins))
+			log.Printf("CORS enabled for %d origin(s)", len(origins))
+		}
+	}
+
+	if endpoint := os.Getenv("AGENTOS_OTEL_ENDPOINT"); endpoint != "" {
+		tracer, shutdown, err := telemetry.Setup(ctx, endpoint)
+		if err != nil {
+			log.Fatalf("AGENTOS_OTEL_ENDPOINT: %v", err)
+		}
+		defer func() {
+			if err := shutdown(ctx); err != nil {
+				log.Printf("otel shutdown: %v", err)
+			}
+		}()
+		opts = append(opts, server.WithTracer(tracer))
+		log.Printf("otel tracing enabled (endpoint=%s)", endpoint)
+	}
+
+	srv := server.New(st, router, adminKey, opts...)
 	log.Println("gateway listening on :8080")
 	if err := http.ListenAndServe(":8080", srv.Handler()); err != nil {
 		log.Fatalf("listen: %v", err)

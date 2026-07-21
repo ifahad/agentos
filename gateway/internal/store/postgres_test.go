@@ -102,6 +102,95 @@ func TestPostgresRecordUsage(t *testing.T) {
 	}
 }
 
+func TestPostgresAuditListNewestFirstWithKinds(t *testing.T) {
+	p := newTestPostgres(t)
+	ctx := context.Background()
+
+	if _, err := p.CreateKey(ctx, "agent", 100); err != nil {
+		t.Fatalf("CreateKey: %v", err)
+	}
+	if err := p.RecordUsage(ctx, Usage{KeyName: "agent", Model: "m1", InputTokens: 5, Status: 200}); err != nil {
+		t.Fatalf("RecordUsage: %v", err)
+	}
+	if err := p.RecordAudit(ctx, Usage{KeyName: "agent", Model: "m2", Status: 400, Kind: KindGuardrailBlock}); err != nil {
+		t.Fatalf("RecordAudit: %v", err)
+	}
+	if err := p.RecordUsage(ctx, Usage{KeyName: "agent", Model: "m3", Status: 200, Kind: KindEmbeddings}); err != nil {
+		t.Fatalf("RecordUsage: %v", err)
+	}
+
+	list, err := p.AuditList(ctx, 10)
+	if err != nil {
+		t.Fatalf("AuditList: %v", err)
+	}
+	if len(list) != 3 {
+		t.Fatalf("entries = %d, want 3", len(list))
+	}
+	if list[0].Model != "m3" || list[1].Model != "m2" || list[2].Model != "m1" {
+		t.Errorf("order = %q, %q, %q, want m3, m2, m1", list[0].Model, list[1].Model, list[2].Model)
+	}
+	if list[0].Kind != KindEmbeddings || list[1].Kind != KindGuardrailBlock || list[2].Kind != KindChat {
+		t.Errorf("kinds = %q, %q, %q", list[0].Kind, list[1].Kind, list[2].Kind)
+	}
+	if list[0].TS.IsZero() {
+		t.Error("ts not populated")
+	}
+
+	if short, err := p.AuditList(ctx, 1); err != nil || len(short) != 1 || short[0].Model != "m3" {
+		t.Errorf("limited list = %+v (err %v)", short, err)
+	}
+
+	// RecordAudit must not touch spend or usage aggregates.
+	usage, err := p.Usage(ctx)
+	if err != nil {
+		t.Fatalf("Usage: %v", err)
+	}
+	if len(usage) != 1 || usage[0].Requests != 2 {
+		t.Errorf("usage = %+v, want 2 requests", usage)
+	}
+}
+
+// TestPostgresKindColumnMigration simulates a Phase 1 database (audit_log
+// without the kind column, with existing rows) and verifies reconnecting
+// adds the column and backfills existing rows as chat.
+func TestPostgresKindColumnMigration(t *testing.T) {
+	p := newTestPostgres(t)
+	ctx := context.Background()
+
+	if _, err := p.pool.Exec(ctx, `ALTER TABLE audit_log DROP COLUMN kind`); err != nil {
+		t.Fatalf("drop kind column: %v", err)
+	}
+	if _, err := p.pool.Exec(ctx,
+		`INSERT INTO audit_log (key_name, model, input_tokens, output_tokens, cost_usd, latency_ms, status)
+         VALUES ('agent', 'openai/gpt-4o-mini', 10, 5, 0.001, 42, 200)`); err != nil {
+		t.Fatalf("insert phase 1 row: %v", err)
+	}
+
+	p2, err := NewPostgres(ctx, os.Getenv("AGENTOS_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("NewPostgres over phase 1 schema: %v", err)
+	}
+	t.Cleanup(p2.Close)
+
+	list, err := p2.AuditList(ctx, 10)
+	if err != nil {
+		t.Fatalf("AuditList: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("entries = %d, want 1", len(list))
+	}
+	if list[0].Kind != KindChat {
+		t.Errorf("pre-existing row kind = %q, want %q", list[0].Kind, KindChat)
+	}
+
+	// A second reconnect must also be a no-op (ADD COLUMN IF NOT EXISTS).
+	p3, err := NewPostgres(ctx, os.Getenv("AGENTOS_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("NewPostgres re-run: %v", err)
+	}
+	p3.Close()
+}
+
 func TestPostgresEnsureKeyIdempotent(t *testing.T) {
 	p := newTestPostgres(t)
 	ctx := context.Background()

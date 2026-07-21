@@ -36,27 +36,37 @@ type Router struct {
 }
 
 // Route resolves a prefixed model like "anthropic/claude-sonnet-5" to an
-// upstream URL, credential, and stripped model name.
+// upstream chat-completions URL, credential, and stripped model name.
 func (r *Router) Route(model string) (*Route, error) {
+	return r.route(model, "/v1/chat/completions")
+}
+
+// RouteEmbeddings resolves a prefixed model like "ollama/bge-m3" to an
+// upstream embeddings URL with the same prefix rules as Route.
+func (r *Router) RouteEmbeddings(model string) (*Route, error) {
+	return r.route(model, "/v1/embeddings")
+}
+
+func (r *Router) route(model, path string) (*Route, error) {
 	switch {
 	case strings.HasPrefix(model, "anthropic/"):
 		return &Route{
 			Provider: "anthropic",
-			URL:      orDefault(r.AnthropicBaseURL, DefaultAnthropicBaseURL) + "/v1/chat/completions",
+			URL:      orDefault(r.AnthropicBaseURL, DefaultAnthropicBaseURL) + path,
 			APIKey:   r.AnthropicAPIKey,
 			Model:    strings.TrimPrefix(model, "anthropic/"),
 		}, nil
 	case strings.HasPrefix(model, "openai/"):
 		return &Route{
 			Provider: "openai",
-			URL:      orDefault(r.OpenAIBaseURL, DefaultOpenAIBaseURL) + "/v1/chat/completions",
+			URL:      orDefault(r.OpenAIBaseURL, DefaultOpenAIBaseURL) + path,
 			APIKey:   r.OpenAIAPIKey,
 			Model:    strings.TrimPrefix(model, "openai/"),
 		}, nil
 	case strings.HasPrefix(model, "ollama/"):
 		return &Route{
 			Provider: "ollama",
-			URL:      orDefault(r.OllamaBaseURL, DefaultOllamaBaseURL) + "/v1/chat/completions",
+			URL:      orDefault(r.OllamaBaseURL, DefaultOllamaBaseURL) + path,
 			Model:    strings.TrimPrefix(model, "ollama/"),
 		}, nil
 	default:

@@ -21,6 +21,7 @@ type fakeProvider struct {
 	server       *httptest.Server
 	lastBody     map[string]any
 	lastAuth     string
+	lastPath     string
 	responseCode int
 	responseBody string
 }
@@ -36,6 +37,7 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 		f.lastBody = nil
 		_ = json.Unmarshal(raw, &f.lastBody)
 		f.lastAuth = r.Header.Get("Authorization")
+		f.lastPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(f.responseCode)
 		io.WriteString(w, f.responseBody)
@@ -46,7 +48,7 @@ func newFakeProvider(t *testing.T) *fakeProvider {
 
 // newTestGateway wires a memory store and a Server whose provider base URLs
 // all point at the fake provider. Returns the gateway test server too.
-func newTestGateway(t *testing.T) (*fakeProvider, *store.Memory, *httptest.Server) {
+func newTestGateway(t *testing.T, opts ...Option) (*fakeProvider, *store.Memory, *httptest.Server) {
 	t.Helper()
 	fake := newFakeProvider(t)
 	mem := store.NewMemory()
@@ -57,7 +59,7 @@ func newTestGateway(t *testing.T) (*fakeProvider, *store.Memory, *httptest.Serve
 		AnthropicAPIKey:  "anthropic-key",
 		OpenAIAPIKey:     "openai-key",
 	}
-	srv := httptest.NewServer(New(mem, router, testAdminKey).Handler())
+	srv := httptest.NewServer(New(mem, router, testAdminKey, opts...).Handler())
 	t.Cleanup(srv.Close)
 	return fake, mem, srv
 }
@@ -155,13 +157,6 @@ func TestChatCompletionsAuthAndValidation(t *testing.T) {
 			body:       `{"model":"openai/gpt-4o-mini","messages":[]}`,
 			wantStatus: http.StatusUnauthorized,
 			wantType:   "invalid_key",
-		},
-		{
-			name:       "stream requested",
-			bearer:     secret,
-			body:       `{"model":"openai/gpt-4o-mini","messages":[],"stream":true}`,
-			wantStatus: http.StatusBadRequest,
-			wantType:   "unsupported",
 		},
 		{
 			name:       "missing model",

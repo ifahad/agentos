@@ -6,10 +6,11 @@
 # after upgrading from Phase 1 — the postgres volume must be re-initialized).
 set -euo pipefail
 
-GATEWAY=${GATEWAY:-http://localhost:8080}
-RUNTIME=${RUNTIME:-http://localhost:18000}
+export GATEWAY=${GATEWAY:-http://localhost:8080}
+export RUNTIME=${RUNTIME:-http://localhost:18000}
 CONSOLE=${CONSOLE:-http://localhost:3000}
-ADMIN_KEY=${AGENTOS_ADMIN_KEY:-admin-local-dev}
+export AGENTOS_ADMIN_KEY=${AGENTOS_ADMIN_KEY:-admin-local-dev}
+ADMIN_KEY=$AGENTOS_ADMIN_KEY
 COMPOSE="docker compose -f deploy/compose.yaml --env-file deploy/.env"
 
 say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }

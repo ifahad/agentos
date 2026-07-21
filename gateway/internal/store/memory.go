@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"sync"
+	"time"
 )
 
 type memoryKey struct {
@@ -17,7 +18,7 @@ type Memory struct {
 	mu    sync.Mutex
 	keys  map[string]*memoryKey // secret hash -> key
 	usage map[string]*KeyUsage  // key name -> aggregate
-	audit []Usage
+	audit []AuditEntry          // oldest first
 }
 
 // NewMemory returns an empty in-memory store.
@@ -66,8 +67,46 @@ func (m *Memory) RecordUsage(_ context.Context, u Usage) error {
 	agg.InputTokens += u.InputTokens
 	agg.OutputTokens += u.OutputTokens
 	agg.SpendUSD += u.CostUSD
-	m.audit = append(m.audit, u)
+	m.appendAudit(u)
 	return nil
+}
+
+func (m *Memory) RecordAudit(_ context.Context, u Usage) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.appendAudit(u)
+	return nil
+}
+
+// appendAudit stamps and stores one audit entry; callers hold m.mu.
+func (m *Memory) appendAudit(u Usage) {
+	m.audit = append(m.audit, AuditEntry{
+		TS:           time.Now().UTC(),
+		KeyName:      u.KeyName,
+		Model:        u.Model,
+		InputTokens:  u.InputTokens,
+		OutputTokens: u.OutputTokens,
+		CostUSD:      u.CostUSD,
+		LatencyMS:    u.LatencyMS,
+		Status:       u.Status,
+		Kind:         kindOrChat(u.Kind),
+	})
+}
+
+func (m *Memory) AuditList(_ context.Context, limit int) ([]AuditEntry, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if limit > len(m.audit) {
+		limit = len(m.audit)
+	}
+	if limit < 0 {
+		limit = 0
+	}
+	out := make([]AuditEntry, 0, limit)
+	for i := len(m.audit) - 1; i >= 0 && len(out) < limit; i-- {
+		out = append(out, m.audit[i])
+	}
+	return out, nil
 }
 
 func (m *Memory) Usage(_ context.Context) ([]KeyUsage, error) {
@@ -113,11 +152,23 @@ func (m *Memory) EnsureKey(_ context.Context, name, secret string, budgetUSD flo
 	return nil
 }
 
-// Audit returns a copy of the recorded audit entries (memory store only).
+// Audit returns a copy of the recorded audit entries, oldest first
+// (memory store only, used by tests).
 func (m *Memory) Audit() []Usage {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	out := make([]Usage, len(m.audit))
-	copy(out, m.audit)
+	for i, e := range m.audit {
+		out[i] = Usage{
+			KeyName:      e.KeyName,
+			Model:        e.Model,
+			InputTokens:  e.InputTokens,
+			OutputTokens: e.OutputTokens,
+			CostUSD:      e.CostUSD,
+			LatencyMS:    e.LatencyMS,
+			Status:       e.Status,
+			Kind:         e.Kind,
+		}
+	}
 	return out
 }

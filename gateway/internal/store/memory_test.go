@@ -148,6 +148,62 @@ func TestMemoryEnsureKeyIdempotent(t *testing.T) {
 	}
 }
 
+func TestMemoryAuditListNewestFirstWithKinds(t *testing.T) {
+	ctx := context.Background()
+	m := NewMemory()
+
+	// Kind defaults to chat for legacy entries; RecordAudit skips aggregates.
+	entries := []struct {
+		auditOnly bool
+		u         Usage
+	}{
+		{false, Usage{KeyName: "agent", Model: "m1", InputTokens: 10, Status: 200}},
+		{true, Usage{KeyName: "agent", Model: "m2", Status: 200, Kind: KindGuardrailFlag}},
+		{false, Usage{KeyName: "agent", Model: "m3", Status: 200, Kind: KindEmbeddings}},
+	}
+	for _, e := range entries {
+		record := m.RecordUsage
+		if e.auditOnly {
+			record = m.RecordAudit
+		}
+		if err := record(ctx, e.u); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	list, err := m.AuditList(ctx, 10)
+	if err != nil {
+		t.Fatalf("AuditList: %v", err)
+	}
+	if len(list) != 3 {
+		t.Fatalf("entries = %d, want 3", len(list))
+	}
+	// Newest first.
+	if list[0].Model != "m3" || list[1].Model != "m2" || list[2].Model != "m1" {
+		t.Errorf("order = %q, %q, %q, want m3, m2, m1", list[0].Model, list[1].Model, list[2].Model)
+	}
+	if list[0].Kind != KindEmbeddings || list[1].Kind != KindGuardrailFlag || list[2].Kind != KindChat {
+		t.Errorf("kinds = %q, %q, %q", list[0].Kind, list[1].Kind, list[2].Kind)
+	}
+	if list[2].TS.IsZero() {
+		t.Error("ts not stamped")
+	}
+
+	// Limit honored.
+	if short, _ := m.AuditList(ctx, 2); len(short) != 2 || short[0].Model != "m3" {
+		t.Errorf("limited list = %+v", short)
+	}
+
+	// RecordAudit did not touch aggregates: only the two RecordUsage calls count.
+	usage, err := m.Usage(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(usage) != 1 || usage[0].Requests != 2 {
+		t.Errorf("usage = %+v, want 2 requests", usage)
+	}
+}
+
 func almostEqual(a, b float64) bool {
 	d := a - b
 	if d < 0 {
