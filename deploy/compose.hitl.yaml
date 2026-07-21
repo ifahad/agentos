@@ -1,0 +1,9 @@
+# Governance overlay: human-in-the-loop tool approval + guardrail blocking.
+#   docker compose -f compose.yaml -f compose.hitl.yaml up -d
+services:
+  runtime:
+    environment:
+      AGENTOS_APPROVAL_TOOLS: query
+  gateway:
+    environment:
+      AGENTOS_GUARDRAILS_MODE: block

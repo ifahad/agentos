@@ -2,7 +2,7 @@ name: agentos
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_USER: agentos
       POSTGRES_PASSWORD: agentos
@@ -27,6 +27,7 @@ services:
       AGENTOS_OPENAI_API_KEY: ${AGENTOS_OPENAI_API_KEY:-}
       AGENTOS_OLLAMA_BASE_URL: ${AGENTOS_OLLAMA_BASE_URL:-}
       AGENTOS_BOOTSTRAP_KEYS: "runtime:${AGENTOS_RUNTIME_KEY:-agos-local-dev-runtime}:25"
+      AGENTOS_GUARDRAILS_MODE: ${AGENTOS_GUARDRAILS_MODE:-off}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -54,11 +55,22 @@ services:
       AGENTOS_MODEL: ${AGENTOS_MODEL:-anthropic/claude-sonnet-5}
       AGENTOS_MCP_SERVERS: http://sql-connector:8090/mcp
       AGENTOS_CHECKPOINT_DATABASE_URL: postgres://agentos:agentos@postgres:5432/agentos
+      AGENTOS_APPROVAL_TOOLS: ${AGENTOS_APPROVAL_TOOLS:-}
+      AGENTOS_EMBED_MODEL: ${AGENTOS_EMBED_MODEL:-ollama/bge-m3}
+      AGENTOS_AGENT_PROFILE: ${AGENTOS_AGENT_PROFILE:-react}
     ports:
       - "${AGENTOS_RUNTIME_PORT:-8000}:8000"
     depends_on:
       - gateway
       - sql-connector
+
+  console:
+    build: ../console
+    ports:
+      - "${AGENTOS_CONSOLE_PORT:-3000}:80"
+    depends_on:
+      - gateway
+      - runtime
 
 volumes:
   pgdata:

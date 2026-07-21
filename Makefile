@@ -1,8 +1,8 @@
 GO ?= $(HOME)/.local/go/bin/go
 
-.PHONY: test test-go test-python up down logs smoke fmt
+.PHONY: test test-go test-python test-console up down logs smoke smoke2 fmt
 
-test: test-go test-python
+test: test-go test-python test-console
 
 test-go:
 	cd gateway && $(GO) vet ./... && $(GO) test ./...
@@ -10,6 +10,9 @@ test-go:
 
 test-python:
 	cd runtime && uv run ruff check . && uv run pytest
+
+test-console:
+	cd console && npm test -- --run && npm run build
 
 up:
 	docker compose -f deploy/compose.yaml --env-file deploy/.env up -d --build
@@ -22,6 +25,9 @@ logs:
 
 smoke:
 	bash scripts/smoke.sh
+
+smoke2:
+	bash scripts/smoke2.sh
 
 fmt:
 	cd gateway && $(HOME)/.local/go/bin/gofmt -w .
