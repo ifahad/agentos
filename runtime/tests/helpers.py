@@ -11,6 +11,12 @@ from langchain_core.tools import tool
 
 from agentos_runtime.config import Settings
 
+# Shared runtime auth token for tests. conftest.py exports it into the
+# environment so the app-wide auth dependency accepts it; AUTH_HEADERS is what
+# every test client sends. See tests/conftest.py.
+RUNTIME_AUTH_TOKEN = "test-runtime-token"
+AUTH_HEADERS = {"Authorization": f"Bearer {RUNTIME_AUTH_TOKEN}"}
+
 QUERY_RESULT = '{"columns": ["n"], "rows": [[1]], "row_count": 1, "truncated": false}'
 
 

@@ -2,6 +2,7 @@
 
 import httpx
 import pytest
+from helpers import AUTH_HEADERS
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 from agentos_runtime.api import app
@@ -52,7 +53,9 @@ def fake_agent():
 @pytest.fixture
 async def client(fake_agent):
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=AUTH_HEADERS
+    ) as c:
         yield c
 
 
@@ -93,7 +96,8 @@ async def test_runs_agent_error_returns_502(client, fake_agent):
     fake_agent.error = RuntimeError("provider exploded")
     response = await client.post("/runs", json={"input": "boom"})
     assert response.status_code == 502
-    assert response.json() == {"detail": "provider exploded"}
+    # M1: the real exception is logged server-side, never echoed to the client.
+    assert response.json() == {"detail": "internal error"}
 
 
 async def test_runs_missing_input_is_422(client):
@@ -103,6 +107,8 @@ async def test_runs_missing_input_is_422(client):
 
 async def test_runs_without_agent_is_503():
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=AUTH_HEADERS
+    ) as c:
         response = await c.post("/runs", json={"input": "hi"})
     assert response.status_code == 503

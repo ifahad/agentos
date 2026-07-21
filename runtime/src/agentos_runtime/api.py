@@ -1,6 +1,9 @@
 """FastAPI service exposing the agent as the Runtime HTTP API."""
 
 import json
+import logging
+import os
+import secrets
 import uuid
 from contextlib import asynccontextmanager
 from typing import Annotated, Any
@@ -32,6 +35,44 @@ from agentos_runtime.otel import record_tool_spans, run_span, setup_tracing
 from agentos_runtime.sandbox import sandbox_tools
 from agentos_runtime.store import ImprovementStore
 
+logger = logging.getLogger(__name__)
+
+INTERNAL_ERROR = "internal error"
+INVALID_TOKEN = "invalid runtime token"
+# GET /healthz stays open so container/orchestrator probes need no credential.
+OPEN_PATHS = frozenset({"/healthz"})
+
+
+def _expected_auth_token(request: Request) -> str:
+    """The runtime token the caller must present.
+
+    Prefers the value validated at startup (``app.state.runtime_auth_token``,
+    set fail-closed in :func:`lifespan`) and falls back to the environment so
+    the dependency works in tests that mount ``app`` without the lifespan.
+    """
+    state_token = getattr(request.app.state, "runtime_auth_token", "") or ""
+    return state_token or os.environ.get("AGENTOS_RUNTIME_AUTH_TOKEN", "")
+
+
+async def require_auth(request: Request) -> None:
+    """App-wide dependency enforcing ``Authorization: Bearer <token>`` (finding C1).
+
+    Applies to every route except ``GET /healthz``. Compares the presented
+    token to the configured token with :func:`secrets.compare_digest`
+    (constant-time). Any missing/malformed/mismatched token -> 401.
+    """
+    if request.url.path in OPEN_PATHS:
+        return
+    expected = _expected_auth_token(request)
+    header = request.headers.get("authorization", "")
+    scheme, _, presented = header.partition(" ")
+    if (
+        not expected
+        or scheme.lower() != "bearer"
+        or not secrets.compare_digest(presented, expected)
+    ):
+        raise HTTPException(status_code=401, detail=INVALID_TOKEN)
+
 
 class RunRequest(BaseModel):
     input: str
@@ -62,6 +103,8 @@ class DocumentRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = Settings()
+    # Fail closed: refuse to start without a runtime auth token (finding C1).
+    app.state.runtime_auth_token = settings.require_runtime_auth_token()
     tools = await load_mcp_tools(settings)
     if settings.context_engine_enabled and settings.checkpoint_database_url:
         app.state.context_engine = build_context_engine(settings)
@@ -90,7 +133,11 @@ async def lifespan(app: FastAPI):
         yield
 
 
-app = FastAPI(title="agentos-runtime", lifespan=lifespan)
+app = FastAPI(
+    title="agentos-runtime",
+    lifespan=lifespan,
+    dependencies=[Depends(require_auth)],  # every route except GET /healthz
+)
 app.include_router(evals.router)
 app.include_router(improve.router)
 app.include_router(prompts.router)
@@ -167,7 +214,8 @@ async def runs(
                 values = await agent.ainvoke(input_state, config=config)
                 outcome = RunOutcome(status="completed", values=values, pending=[])
         except Exception as exc:  # noqa: BLE001 - agent failures surface as 502
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            logger.exception("run failed for thread %s", thread_id)
+            raise HTTPException(status_code=502, detail=INTERNAL_ERROR) from exc
         if outcome.status == "pending_approval":
             return JSONResponse(
                 status_code=202, content=_pending_body(thread_id, outcome.pending)
@@ -197,7 +245,8 @@ async def approve(
                 await deny_pending(agent, config, pending)
             outcome = await run_until_settled(agent, None, config, approval_tools)
         except Exception as exc:  # noqa: BLE001 - agent failures surface as 502
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
+            logger.exception("approve/resume failed for thread %s", thread_id)
+            raise HTTPException(status_code=502, detail=INTERNAL_ERROR) from exc
         if outcome.status == "pending_approval":
             return JSONResponse(
                 status_code=202, content=_pending_body(thread_id, outcome.pending)
@@ -263,8 +312,9 @@ async def runs_stream(
                     )
                     return
                 input_state = None  # auto-resume past non-approval interrupt
-        except Exception as exc:  # noqa: BLE001 - surface agent failure in-stream
-            yield _sse({"event": "error", "message": str(exc)})
+        except Exception:  # noqa: BLE001 - surface agent failure in-stream
+            logger.exception("stream failed for thread %s", thread_id)
+            yield _sse({"event": "error", "message": INTERNAL_ERROR})
             return
         yield _sse(
             {"event": "done", "thread_id": thread_id, "output": output, "steps": steps}
@@ -306,7 +356,8 @@ async def add_document(
     try:
         chunks = await engine.add_document(request.name, request.text)
     except Exception as exc:  # noqa: BLE001 - embed/store failures surface as 502
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.exception("add_document failed for %s", request.name)
+        raise HTTPException(status_code=502, detail=INTERNAL_ERROR) from exc
     return {"name": request.name, "chunks": chunks}
 
 
@@ -317,4 +368,5 @@ async def list_documents(
     try:
         return await engine.list_documents()
     except Exception as exc:  # noqa: BLE001 - store failures surface as 502
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+        logger.exception("list_documents failed")
+        raise HTTPException(status_code=502, detail=INTERNAL_ERROR) from exc

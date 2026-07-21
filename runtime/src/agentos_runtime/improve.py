@@ -10,6 +10,7 @@ least the baseline.
 """
 
 import json
+import logging
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -24,7 +25,10 @@ from agentos_runtime.evals import (
 from agentos_runtime.messages import message_text
 from agentos_runtime.store import ImprovementStore, get_store
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_SUITE = "default"
+REFLECTION_MODEL_ERROR = "reflection model error"
 
 REFLECTION_TEMPLATE = """\
 You are improving the system prompt of an enterprise data-analyst agent.
@@ -91,8 +95,9 @@ async def reflect(model: Any, reflection_prompt: str) -> tuple[str, str]:
     for _ in range(2):
         try:
             response = await model.ainvoke(reflection_prompt)
-        except Exception as exc:  # noqa: BLE001 - model failures surface as 502
-            detail = str(exc)
+        except Exception:  # noqa: BLE001 - model failures surface as 502
+            logger.exception("reflection model call failed")
+            detail = REFLECTION_MODEL_ERROR
             continue
         parsed = parse_reflection(message_text(response))
         if parsed is not None:

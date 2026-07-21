@@ -2,7 +2,13 @@
 
 import httpx
 import pytest
-from helpers import JUDGE_PASS_REPLY, FakeJudge, InMemoryImprovementStore, ScriptedAgent
+from helpers import (
+    AUTH_HEADERS,
+    JUDGE_PASS_REPLY,
+    FakeJudge,
+    InMemoryImprovementStore,
+    ScriptedAgent,
+)
 from langchain_core.messages import AIMessage, HumanMessage
 
 from agentos_runtime.api import app
@@ -46,7 +52,9 @@ CASE_KEYS = {"name", "passed", "output_snippet", "judge_score", "judge_justifica
 @pytest.fixture
 async def client():
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=AUTH_HEADERS
+    ) as c:
         yield c
     for attr in STATE_ATTRS:
         if hasattr(app.state, attr):

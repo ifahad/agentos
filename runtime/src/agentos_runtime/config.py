@@ -9,6 +9,9 @@ class Settings(BaseSettings):
     """Service settings.
 
     Environment variables:
+        AGENTOS_RUNTIME_AUTH_TOKEN: Shared bearer token every caller must present
+            on every route except ``GET /healthz``. Unset/empty -> the app refuses
+            to start (fail-closed).
         AGENTOS_GATEWAY_URL: Base URL of the LLM gateway (e.g. http://gateway:8080).
         AGENTOS_GATEWAY_KEY: Gateway API key (``agos-...``).
         AGENTOS_MODEL: Provider-prefixed model name.
@@ -27,6 +30,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="AGENTOS_", extra="ignore")
 
+    runtime_auth_token: str = ""
     gateway_url: str
     gateway_key: str
     model: str = "anthropic/claude-sonnet-5"
@@ -39,6 +43,18 @@ class Settings(BaseSettings):
     otel_endpoint: str | None = None
     sandbox_url: str = ""
     judge_model: str = "anthropic/claude-haiku-4-5"
+
+    def require_runtime_auth_token(self) -> str:
+        """Return the configured runtime auth token or fail closed.
+
+        Called at startup so the service refuses to boot when
+        AGENTOS_RUNTIME_AUTH_TOKEN is unset/empty, rather than serving an
+        unauthenticated API (finding C1).
+        """
+        token = self.runtime_auth_token.strip()
+        if not token:
+            raise RuntimeError("AGENTOS_RUNTIME_AUTH_TOKEN must be set")
+        return token
 
     @property
     def mcp_server_urls(self) -> list[str]:

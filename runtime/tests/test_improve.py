@@ -3,6 +3,7 @@
 import httpx
 import pytest
 from helpers import (
+    AUTH_HEADERS,
     JUDGE_PASS_REPLY,
     FakeChatModel,
     FakeJudge,
@@ -45,7 +46,9 @@ REFLECTION_JSON = '{"prompt": "You are an improved analyst.", "rationale": "use 
 @pytest.fixture
 async def client():
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=AUTH_HEADERS
+    ) as c:
         yield c
     for attr in STATE_ATTRS:
         if hasattr(app.state, attr):
@@ -145,4 +148,5 @@ async def test_improve_502_when_model_keeps_failing(client):
     mount(ScriptedAgent(GOOD_SCRIPT), ScriptedAgent(GOOD_SCRIPT), model)
     response = await client.post("/improve", json={})
     assert response.status_code == 502
-    assert response.json() == {"detail": "gateway down"}
+    # M1: the model exception is logged server-side, not echoed to the client.
+    assert response.json() == {"detail": "reflection model error"}

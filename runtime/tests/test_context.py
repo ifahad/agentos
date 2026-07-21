@@ -5,7 +5,7 @@ from collections import Counter
 
 import httpx
 import pytest
-from helpers import make_settings
+from helpers import AUTH_HEADERS, make_settings
 from llama_index.core.base.embeddings.base import BaseEmbedding
 from llama_index.core.vector_stores.types import VectorStoreQueryResult
 
@@ -110,7 +110,9 @@ async def test_search_knowledge_tool_formats_sources():
     tool = make_search_tool(engine)
     assert tool.name == "search_knowledge"
     result = await tool.ainvoke({"query": "gamma"})
-    assert "[source: handbook]" in result
+    # H6: retrieved chunks are fenced as untrusted data, not instructions.
+    assert '<<UNTRUSTED_DOCUMENT source="handbook">>' in result
+    assert "<<END_UNTRUSTED_DOCUMENT>>" in result
     assert "gamma rules" in result
 
 
@@ -125,7 +127,9 @@ async def client():
     engine, _ = make_engine()
     app.state.context_engine = engine
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=AUTH_HEADERS
+    ) as c:
         yield c
     del app.state.context_engine
 
@@ -141,7 +145,9 @@ async def test_documents_endpoints(client):
 
 async def test_documents_503_when_engine_disabled():
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=AUTH_HEADERS
+    ) as c:
         assert (await c.get("/documents")).status_code == 503
         assert (
             await c.post("/documents", json={"name": "x", "text": "y"})

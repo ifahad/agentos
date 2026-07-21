@@ -4,7 +4,7 @@ import json
 
 import httpx
 import pytest
-from helpers import lookup, make_settings, query, query_then_answer
+from helpers import AUTH_HEADERS, lookup, make_settings, query, query_then_answer
 from langgraph.checkpoint.memory import InMemorySaver
 
 from agentos_runtime.agent import build_agent
@@ -22,7 +22,9 @@ def mount_agent(approval_tools: list[str], model=None):
 @pytest.fixture
 async def client():
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
+    async with httpx.AsyncClient(
+        transport=transport, base_url="http://test", headers=AUTH_HEADERS
+    ) as c:
         yield c
     for attr in ("agent", "approval_tools"):
         if hasattr(app.state, attr):

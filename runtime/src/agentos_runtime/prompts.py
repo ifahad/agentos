@@ -19,6 +19,32 @@ from agentos_runtime.store import ImprovementStore, get_store
 DECIDABLE_STATUSES = ("passed_evals", "failed_evals")
 BELOW_BASELINE_WARNING = "candidate scored below baseline"
 
+# Deny-list of override markers screened when a proposal is approved (finding
+# C3). A proposal is an advisory refinement of the persona, never a way to
+# replace the safety frame; a candidate containing any of these (case-
+# insensitive) is rejected before it can be activated. The immutable
+# SAFETY_PREAMBLE is prepended at build time regardless, so this is a second
+# layer of defense.
+PROMPT_OVERRIDE_MARKERS = (
+    "ignore previous",
+    "ignore all instructions",
+    "disregard",
+    "system prompt",
+    "auto-approve",
+    "exfiltrate",
+    "bypass",
+)
+OVERRIDE_MARKER_REJECTION = "proposal prompt contains a disallowed override marker"
+
+
+def reject_override_markers(prompt_text: str) -> None:
+    """Raise 400 if a candidate prompt contains an override marker."""
+    lowered = prompt_text.lower()
+    for marker in PROMPT_OVERRIDE_MARKERS:
+        if marker in lowered:
+            raise HTTPException(status_code=400, detail=OVERRIDE_MARKER_REJECTION)
+
+
 router = APIRouter()
 
 
@@ -65,6 +91,7 @@ async def decide_proposal(
         await store.update_proposal_status(proposal_id, "denied")
         return {**proposal, "status": "denied"}
 
+    reject_override_markers(proposal["prompt_text"])
     await store.update_proposal_status(proposal_id, "approved")
     await store.set_active_prompt(proposal["prompt_text"], proposal_id)
     state = http_request.app.state
