@@ -35,6 +35,9 @@ smoke3:
 smoke4:
 	bash scripts/smoke4.sh
 
+smoke5:
+	bash scripts/smoke5.sh
+
 test-rust:
 	cd sandbox && $(HOME)/.cargo/bin/cargo fmt --check && $(HOME)/.cargo/bin/cargo clippy --all-targets -- -D warnings && $(HOME)/.cargo/bin/cargo test
 

@@ -31,6 +31,10 @@ services:
       AGENTOS_GUARDRAILS_MODEL: ${AGENTOS_GUARDRAILS_MODEL:-anthropic/claude-haiku-4-5}
       AGENTOS_GUARDRAILS_KEY: ${AGENTOS_GUARDRAILS_KEY:-}
       AGENTOS_GUARDRAILS_TIMEOUT_S: ${AGENTOS_GUARDRAILS_TIMEOUT_S:-}
+      AGENTOS_BOOTSTRAP_ORG: ${AGENTOS_BOOTSTRAP_ORG:-default}
+      AGENTOS_SECRETS_BACKEND: ${AGENTOS_SECRETS_BACKEND:-env}
+      AGENTOS_SECRETS_FILE: ${AGENTOS_SECRETS_FILE:-}
+      AGENTOS_SECRETS_AGE_KEY: ${AGENTOS_SECRETS_AGE_KEY:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -109,6 +113,28 @@ services:
       - "${AGENTOS_REST_PORT:-8091}:8091"
     depends_on:
       - demo-crm
+
+  # Opt-in connectors (Phase 5). Start with:
+  #   docker compose --profile connectors up -d
+  # or individually: docker compose up -d soap-connector
+  soap-connector:
+    build: ../connectors/soap
+    profiles: ["connectors", "soap"]
+    environment:
+      # Point at your legacy WSDL; the demo default is a public sample.
+      AGENTOS_SOAP_WSDL_URL: ${AGENTOS_SOAP_WSDL_URL:-http://demo-crm:8095/soap?wsdl}
+      AGENTOS_SOAP_ALLOW_OPERATIONS: ${AGENTOS_SOAP_ALLOW_OPERATIONS:-}
+    ports:
+      - "${AGENTOS_SOAP_PORT:-8093}:8093"
+
+  browser-connector:
+    build: ../connectors/browser
+    profiles: ["connectors", "browser"]
+    environment:
+      AGENTOS_BROWSER_ALLOW_DOMAINS: ${AGENTOS_BROWSER_ALLOW_DOMAINS:-}
+      AGENTOS_BROWSER_TIMEOUT_S: ${AGENTOS_BROWSER_TIMEOUT_S:-20}
+    ports:
+      - "${AGENTOS_BROWSER_PORT:-8094}:8094"
 
   console:
     build: ../console
