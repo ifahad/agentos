@@ -37,18 +37,32 @@ echo "PASS"
 say "rate limit: org capped at 2 rpm returns 429 with Retry-After"
 KEY=$(curl -fsS -X POST "$GATEWAY/admin/keys" -H "Authorization: Bearer $UTOKEN" -H 'Content-Type: application/json' \
   -d '{"name":"p6-key","monthly_budget_usd":5}' | JQ "d['key']")
-codes=""
-for i in 1 2 3 4; do
-  c=$(curl -s -o /tmp/agentos-rl.json -D /tmp/agentos-rl.hdr -w '%{http_code}' -X POST "$GATEWAY/v1/chat/completions" \
-    -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
-    -d '{"model":"'"$MODEL"'","messages":[{"role":"user","content":"ping '"$i"'"}]}' || true)
-  codes="$codes $c"
+# Fire the burst CONCURRENTLY: the rate-limit check is pre-flight, so
+# simultaneous arrivals deplete the 2-token bucket and the excess get an
+# instant 429 (before slow inference). A sequential loop would let the bucket
+# refill between slow model calls and never trip.
+rm -f /tmp/agentos-rl.*
+for i in 1 2 3 4 5 6; do
+  ( curl -s -o "/tmp/agentos-rl.body.$i" -D "/tmp/agentos-rl.hdr.$i" -w '%{http_code}' \
+      -X POST "$GATEWAY/v1/chat/completions" \
+      -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+      -d '{"model":"'"$MODEL"'","messages":[{"role":"user","content":"ping '"$i"'"}]}' \
+      > "/tmp/agentos-rl.code.$i" 2>/dev/null || true ) &
 done
-echo "response codes:$codes"
-echo "$codes" | grep -q 429 || fail "expected a 429 within the burst (got:$codes)"
-grep -qi '^Retry-After:' /tmp/agentos-rl.hdr || fail "429 missing Retry-After header"
-grep -q 'rate_limited' /tmp/agentos-rl.json || fail "wrong error type on 429"
-echo "PASS (rate limited with Retry-After: $(grep -i '^Retry-After:' /tmp/agentos-rl.hdr | tr -d '\r'))"
+wait
+codes=$(cat /tmp/agentos-rl.code.* | tr '\n' ' ')
+echo "concurrent response codes: $codes"
+n429=$(grep -l . /tmp/agentos-rl.code.* 2>/dev/null | xargs grep -l '429' 2>/dev/null | wc -l | tr -d ' ')
+[ "${n429:-0}" -ge 1 ] || fail "expected >=1 concurrent 429 (got: $codes)"
+# find one 429 response and check its headers/body
+for i in 1 2 3 4 5 6; do
+  if [ "$(cat /tmp/agentos-rl.code.$i 2>/dev/null)" = "429" ]; then
+    grep -qi '^Retry-After:' "/tmp/agentos-rl.hdr.$i" || fail "429 missing Retry-After header"
+    grep -q 'rate_limited' "/tmp/agentos-rl.body.$i" || fail "wrong error type on 429"
+    echo "PASS ($n429 of 6 rate-limited; Retry-After: $(grep -i '^Retry-After:' /tmp/agentos-rl.hdr.$i | tr -d '\r'))"
+    break
+  fi
+done
 
 say "bring up mock OIDC + mock Vault"
 $MOCKS up -d mock-oidc mock-vault >/dev/null 2>&1

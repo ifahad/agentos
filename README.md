@@ -172,9 +172,20 @@ the collector's debug exporter shows traces either way.
   The root admin key stays a global superuser. Fully backward compatible —
   existing keys live in a bootstrapped `default` org (unlimited).
 - **Secrets backend** — provider keys resolve through `AGENTOS_SECRETS_BACKEND`:
-  `env` (default), `file` (hot-reloaded JSON), or `age` (age-encrypted file
-  decrypted in memory — no plaintext on disk). `GET /admin/secrets/status`
-  reports presence and source, never values.
+  `env` (default), `file` (hot-reloaded JSON), `age` (age-encrypted file
+  decrypted in memory), or `vault` (HashiCorp Vault KV v2 over its HTTP API).
+  `GET /admin/secrets/status` reports presence and source, never values.
+- **OIDC SSO** — set `AGENTOS_OIDC_ISSUER` (+ client id/secret/redirect) and
+  the console shows "Sign in with SSO". The gateway runs a real OIDC
+  authorization-code flow (JWKS/RS256 ID-token verification, HMAC-signed
+  state), then mints an `agu-…` user token for the identity. Off by default.
+- **whoami** — `GET /admin/whoami` returns the caller's identity (root, or
+  user id/org/email/role); the console uses it to drive role-aware UI without
+  manual entry.
+- **Per-tenant rate limits** — each org has a `rate_limit_rpm` (token bucket,
+  0 = unlimited); over-limit chat/embeddings calls get 429 `rate_limited` with
+  a `Retry-After` header. Set per org (`PATCH /admin/orgs/{id}`) or globally
+  (`AGENTOS_RATE_LIMIT_RPM`).
 
 ## Connectors
 
@@ -205,7 +216,9 @@ suite against a deterministic mock model and fails under 0.8 — label a PR
 5. ~~**Enterprise reach & governance**: multi-tenant RBAC, secrets backend
    (env/file/age), SOAP + browser connectors, CI with an LLM-judge eval
    gate.~~ ✅
-6. Next: SAML/OIDC SSO, live Vault/cloud-KMS secrets backend, per-tenant
-   rate limits, a `whoami` endpoint for token-scoped console UX.
+6. ~~**Enterprise identity**: OIDC SSO, Vault secrets backend, per-tenant rate
+   limits, `whoami` endpoint.~~ ✅
+7. Next: SAML, SCIM user provisioning, distributed rate-limit store, secret
+   rotation webhooks, cloud-KMS backends.
 
 License: [Apache-2.0](LICENSE)
