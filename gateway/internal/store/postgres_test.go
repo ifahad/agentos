@@ -225,3 +225,43 @@ func TestPostgresEnsureKeyIdempotent(t *testing.T) {
 		t.Errorf("keys = %d, want 1 (no duplicate)", len(keys))
 	}
 }
+
+// TestPostgresUserActiveExternalIDMigration simulates a Phase 5/6 users table
+// lacking the Phase 7 active/external_id columns, with an existing row, and
+// verifies reconnecting adds the columns and backfills the row as active.
+func TestPostgresUserActiveExternalIDMigration(t *testing.T) {
+	p := newTestPostgres(t)
+	ctx := context.Background()
+
+	if _, err := p.pool.Exec(ctx, `ALTER TABLE users DROP COLUMN active, DROP COLUMN external_id`); err != nil {
+		t.Fatalf("drop phase 7 columns: %v", err)
+	}
+	if err := p.EnsureOrg(ctx, DefaultOrgID, "default", 0); err != nil {
+		t.Fatalf("EnsureOrg: %v", err)
+	}
+	if _, err := p.pool.Exec(ctx,
+		`INSERT INTO users (id, org_id, email, role, token_hash) VALUES ('usr_legacy', $1, 'legacy@acme.test', 'member', 'deadbeef')`,
+		DefaultOrgID); err != nil {
+		t.Fatalf("insert phase 6 user: %v", err)
+	}
+
+	p2, err := NewPostgres(ctx, os.Getenv("AGENTOS_TEST_DATABASE_URL"))
+	if err != nil {
+		t.Fatalf("NewPostgres over phase 6 schema: %v", err)
+	}
+	t.Cleanup(p2.Close)
+
+	users, err := p2.Users(ctx, DefaultOrgID)
+	if err != nil {
+		t.Fatalf("Users: %v", err)
+	}
+	if len(users) != 1 {
+		t.Fatalf("users = %d, want 1", len(users))
+	}
+	if !users[0].Active {
+		t.Errorf("migrated user Active = false, want true (backfilled)")
+	}
+	if users[0].ExternalID != "" {
+		t.Errorf("migrated user ExternalID = %q, want empty", users[0].ExternalID)
+	}
+}

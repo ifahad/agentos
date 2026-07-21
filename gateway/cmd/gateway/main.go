@@ -14,6 +14,7 @@ import (
 	"github.com/ifahad/agentos/gateway/internal/guardrail"
 	"github.com/ifahad/agentos/gateway/internal/oidc"
 	"github.com/ifahad/agentos/gateway/internal/provider"
+	"github.com/ifahad/agentos/gateway/internal/ratelimit"
 	"github.com/ifahad/agentos/gateway/internal/secret"
 	"github.com/ifahad/agentos/gateway/internal/server"
 	"github.com/ifahad/agentos/gateway/internal/store"
@@ -29,6 +30,7 @@ func main() {
 	ctx := context.Background()
 
 	var st store.Store
+	var pgStore *store.Postgres // non-nil only with the postgres store; used by the distributed limiter
 	if dsn := os.Getenv("AGENTOS_DATABASE_URL"); dsn != "" {
 		pg, err := store.NewPostgres(ctx, dsn)
 		if err != nil {
@@ -36,6 +38,7 @@ func main() {
 		}
 		defer pg.Close()
 		st = pg
+		pgStore = pg
 		log.Println("using postgres store")
 	} else {
 		st = store.NewMemory()
@@ -125,6 +128,52 @@ func main() {
 		}
 	}
 
+	// Rate-limit backend selection (Phase 7). Default "memory" is the Phase 6
+	// in-process limiter (unchanged). "postgres" shares one bucket per org across
+	// gateway replicas via atomic SQL, and requires the Postgres store.
+	rlBackend := os.Getenv("AGENTOS_RATELIMIT_BACKEND")
+	if rlBackend == "" {
+		rlBackend = "memory"
+	}
+	switch rlBackend {
+	case "memory":
+		// default in-process limiter; nothing to wire
+	case "postgres":
+		if pgStore == nil {
+			log.Fatal("AGENTOS_RATELIMIT_BACKEND=postgres requires the Postgres store (set AGENTOS_DATABASE_URL)")
+		}
+		pgLimiter, err := ratelimit.NewPostgres(ctx, pgStore.Pool())
+		if err != nil {
+			log.Fatalf("postgres rate-limit backend: %v", err)
+		}
+		opts = append(opts, server.WithRateLimiter(pgLimiter))
+		log.Println("rate-limit backend: postgres (distributed)")
+	default:
+		log.Fatalf("AGENTOS_RATELIMIT_BACKEND must be memory or postgres (got %q)", rlBackend)
+	}
+
+	// SCIM 2.0 provisioning (Phase 7). Enabled only when AGENTOS_SCIM_TOKEN is
+	// set; unset leaves every /scim/v2/* route 404 (unchanged behavior).
+	if scimToken := os.Getenv("AGENTOS_SCIM_TOKEN"); scimToken != "" {
+		scimOrg := os.Getenv("AGENTOS_SCIM_DEFAULT_ORG")
+		if scimOrg == "" {
+			scimOrg = store.DefaultOrgID
+		}
+		scimRole := os.Getenv("AGENTOS_SCIM_DEFAULT_ROLE")
+		if scimRole == "" {
+			scimRole = "member"
+		}
+		// Ensure the SCIM landing org exists so provisioning never 500s on a
+		// missing org. The default org is already bootstrapped above.
+		if scimOrg != store.DefaultOrgID {
+			if err := st.EnsureOrg(ctx, scimOrg, scimOrg, 0); err != nil {
+				log.Fatalf("ensure SCIM default org: %v", err)
+			}
+		}
+		opts = append(opts, server.WithSCIM(scimToken, scimOrg, scimRole))
+		log.Printf("SCIM provisioning enabled (default org=%s, role=%s)", scimOrg, scimRole)
+	}
+
 	// OpenID Connect SSO (Phase 6). Enabled only when AGENTOS_OIDC_ISSUER is
 	// set; misconfiguration (discovery failure, missing client id/secret) is
 	// fatal at startup.
@@ -152,6 +201,21 @@ func main() {
 	}
 
 	srv := server.New(st, router, adminKey, opts...)
+
+	// Optional background secret refresh (Phase 7). 0 (default) = off. When > 0
+	// and the backend is Reloadable, a goroutine re-fetches on the interval so a
+	// rotated key takes effect without a restart.
+	if raw := os.Getenv("AGENTOS_SECRETS_REFRESH_S"); raw != "" {
+		secs, err := strconv.Atoi(raw)
+		if err != nil || secs < 0 {
+			log.Fatalf("AGENTOS_SECRETS_REFRESH_S must be a non-negative integer (got %q)", raw)
+		}
+		if secs > 0 {
+			srv.StartSecretsRefresh(ctx, time.Duration(secs)*time.Second)
+			log.Printf("secrets refresh enabled: every %ds", secs)
+		}
+	}
+
 	log.Println("gateway listening on :8080")
 	if err := http.ListenAndServe(":8080", srv.Handler()); err != nil {
 		log.Fatalf("listen: %v", err)

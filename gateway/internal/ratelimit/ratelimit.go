@@ -1,8 +1,9 @@
-// Package ratelimit provides an in-memory, per-key token-bucket rate limiter
-// used for per-tenant (per-org) request limits (Phase 6). Buckets are held in
-// process — a distributed store is future work. The limiter is safe for
-// concurrent use and accepts an injectable clock so its refill behavior can be
-// unit-tested deterministically.
+// Package ratelimit provides per-tenant (per-org) request rate limiting
+// (Phase 6). The default in-memory token bucket keeps buckets in process; a
+// Postgres-backed bucket (Phase 7) shares one bucket across gateway replicas
+// via an atomic SQL upsert. Both satisfy the Limiter interface and are safe for
+// concurrent use; the in-memory limiter accepts an injectable clock so its
+// refill behavior can be unit-tested deterministically.
 package ratelimit
 
 import (
@@ -11,6 +12,15 @@ import (
 	"time"
 )
 
+// Limiter enforces a per-key (per-org) request rate. Allow attempts to consume
+// one request against the key's bucket sized for rpm. An rpm <= 0 means
+// unlimited: Allow permits and returns a zero Retry-After. Otherwise a denied
+// call returns allowed=false and a positive retryAfter. Implementations: the
+// in-memory Memory bucket (default) and the Postgres distributed bucket.
+type Limiter interface {
+	Allow(key string, rpm int) (allowed bool, retryAfter time.Duration)
+}
+
 // bucket is one org's token bucket.
 type bucket struct {
 	tokens float64   // current whole/fractional tokens available
@@ -18,24 +28,24 @@ type bucket struct {
 	last   time.Time // last refill timestamp
 }
 
-// Limiter holds a token bucket per key (org id). A key's effective rpm is
-// supplied on each call, so an org's limit can change at runtime.
-type Limiter struct {
+// Memory holds an in-process token bucket per key (org id). A key's effective
+// rpm is supplied on each call, so an org's limit can change at runtime.
+type Memory struct {
 	mu      sync.Mutex
 	buckets map[string]*bucket
 	now     func() time.Time
 }
 
-// New returns a Limiter driven by the real wall clock.
-func New() *Limiter { return NewWithClock(time.Now) }
+// New returns an in-memory Limiter driven by the real wall clock.
+func New() *Memory { return NewWithClock(time.Now) }
 
-// NewWithClock returns a Limiter whose refill math uses the supplied clock.
-// Tests inject a controllable now to make token refill deterministic.
-func NewWithClock(now func() time.Time) *Limiter {
+// NewWithClock returns an in-memory Limiter whose refill math uses the supplied
+// clock. Tests inject a controllable now to make token refill deterministic.
+func NewWithClock(now func() time.Time) *Memory {
 	if now == nil {
 		now = time.Now
 	}
-	return &Limiter{buckets: make(map[string]*bucket), now: now}
+	return &Memory{buckets: make(map[string]*bucket), now: now}
 }
 
 // Allow attempts to consume one token from key's bucket sized for rpm.
@@ -45,7 +55,7 @@ func NewWithClock(now func() time.Time) *Limiter {
 // burst capacity of rpm. When a token is available it is consumed and allowed
 // is true; when the bucket is empty allowed is false and retryAfter is the time
 // until the next whole token refills (always > 0).
-func (l *Limiter) Allow(key string, rpm int) (allowed bool, retryAfter time.Duration) {
+func (l *Memory) Allow(key string, rpm int) (allowed bool, retryAfter time.Duration) {
 	if rpm <= 0 {
 		return true, 0
 	}

@@ -260,7 +260,11 @@ func (m *Memory) OrgSpend(_ context.Context, orgID string) (float64, error) {
 	return total, nil
 }
 
-func (m *Memory) CreateUser(_ context.Context, orgID, email, role string) (*User, string, error) {
+func (m *Memory) CreateUser(ctx context.Context, orgID, email, role string) (*User, string, error) {
+	return m.CreateUserWithExternalID(ctx, orgID, email, role, "")
+}
+
+func (m *Memory) CreateUserWithExternalID(_ context.Context, orgID, email, role, externalID string) (*User, string, error) {
 	if err := validateRole(role); err != nil {
 		return nil, "", err
 	}
@@ -277,7 +281,7 @@ func (m *Memory) CreateUser(_ context.Context, orgID, email, role string) (*User
 	if _, ok := m.orgs[orgID]; !ok {
 		return nil, "", ErrOrgNotFound
 	}
-	u := User{ID: id, OrgID: orgID, Email: email, Role: role, CreatedAt: time.Now().UTC()}
+	u := User{ID: id, OrgID: orgID, Email: email, Role: role, Active: true, ExternalID: externalID, CreatedAt: time.Now().UTC()}
 	m.users[id] = &memoryUser{user: u, tokenHash: hashSecret(token)}
 	cp := u
 	return &cp, token, nil
@@ -289,11 +293,51 @@ func (m *Memory) AuthenticateUser(_ context.Context, token string) (*User, error
 	defer m.mu.Unlock()
 	for _, mu := range m.users {
 		if mu.tokenHash == h {
+			if !mu.user.Active {
+				return nil, ErrUserInactive
+			}
 			cp := mu.user
 			return &cp, nil
 		}
 	}
 	return nil, ErrInvalidToken
+}
+
+func (m *Memory) SetUserActive(_ context.Context, userID string, active bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mu, ok := m.users[userID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	mu.user.Active = active
+	return nil
+}
+
+func (m *Memory) SetUserExternalID(_ context.Context, userID, externalID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mu, ok := m.users[userID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	mu.user.ExternalID = externalID
+	return nil
+}
+
+func (m *Memory) UserByExternalID(_ context.Context, orgID, externalID string) (*User, error) {
+	if externalID == "" {
+		return nil, ErrUserNotFound
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, mu := range m.users {
+		if mu.user.OrgID == orgID && mu.user.ExternalID == externalID {
+			cp := mu.user
+			return &cp, nil
+		}
+	}
+	return nil, ErrUserNotFound
 }
 
 func (m *Memory) UserByEmail(_ context.Context, orgID, email string) (*User, error) {

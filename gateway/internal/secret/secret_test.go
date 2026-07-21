@@ -161,3 +161,77 @@ func TestAgeSourceMisconfig(t *testing.T) {
 		t.Error("NewAge wrong identity: want decrypt error")
 	}
 }
+
+func TestFileSourceReloadImmediate(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "secrets.json")
+	if err := os.WriteFile(path, []byte(`{"AGENTOS_ANTHROPIC_API_KEY":"sk-1"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s, err := NewFile(path)
+	if err != nil {
+		t.Fatalf("NewFile: %v", err)
+	}
+	r, ok := s.(Reloadable)
+	if !ok {
+		t.Fatal("file source does not implement Reloadable")
+	}
+
+	// Rewrite the file WITHOUT bumping mtime beyond the current second; Reload
+	// must re-read unconditionally and observe the change.
+	if err := os.WriteFile(path, []byte(`{"AGENTOS_ANTHROPIC_API_KEY":"sk-2","AGENTOS_OPENAI_API_KEY":"sk-oai"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	changed, err := r.Reload()
+	if err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+	// One value changed (anthropic), one added (openai) → 2.
+	if changed != 2 {
+		t.Errorf("changed = %d, want 2", changed)
+	}
+	if v, ok := s.Get("AGENTOS_ANTHROPIC_API_KEY"); !ok || v != "sk-2" {
+		t.Errorf("after Reload Get = %q, %v; want sk-2", v, ok)
+	}
+	if v, ok := s.Get("AGENTOS_OPENAI_API_KEY"); !ok || v != "sk-oai" {
+		t.Errorf("after Reload Get(new) = %q, %v; want sk-oai", v, ok)
+	}
+
+	// No change → 0.
+	changed, err = r.Reload()
+	if err != nil || changed != 0 {
+		t.Errorf("second Reload changed = %d, err = %v; want 0, nil", changed, err)
+	}
+}
+
+func TestEnvSourceNotReloadable(t *testing.T) {
+	if _, ok := NewEnv().(Reloadable); ok {
+		t.Error("env source should not be Reloadable")
+	}
+}
+
+func TestAgeSourceReloadable(t *testing.T) {
+	id, err := age.GenerateX25519Identity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "secrets.age")
+	writeAgeFile(t, path, id.Recipient(), `{"AGENTOS_ANTHROPIC_API_KEY":"sk-age-1"}`)
+	s, err := NewAge(path, id.String())
+	if err != nil {
+		t.Fatalf("NewAge: %v", err)
+	}
+	r, ok := s.(Reloadable)
+	if !ok {
+		t.Fatal("age source does not implement Reloadable")
+	}
+	// Re-encrypt with a rotated value; Reload must re-decrypt and pick it up.
+	writeAgeFile(t, path, id.Recipient(), `{"AGENTOS_ANTHROPIC_API_KEY":"sk-age-2"}`)
+	changed, err := r.Reload()
+	if err != nil || changed != 1 {
+		t.Fatalf("Reload changed = %d, err = %v; want 1, nil", changed, err)
+	}
+	if v, _ := s.Get("AGENTOS_ANTHROPIC_API_KEY"); v != "sk-age-2" {
+		t.Errorf("after Reload Get = %q, want sk-age-2", v)
+	}
+}

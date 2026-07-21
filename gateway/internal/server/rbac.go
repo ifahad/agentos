@@ -361,11 +361,9 @@ type secretStatus struct {
 	Source  string `json:"source"`
 }
 
-func (s *Server) handleSecretsStatus(w http.ResponseWriter, _ *http.Request, c *caller) {
-	if !c.root {
-		writeForbidden(w, "only the root admin key may view secrets status")
-		return
-	}
+// secretsStatus builds the GET /admin/secrets/status rows: presence and active
+// backend per configured secret name. Values are never included.
+func (s *Server) secretsStatus() []secretStatus {
 	out := make([]secretStatus, 0, len(s.secretNames))
 	for _, name := range s.secretNames {
 		// "present" means a usable value: a set-but-empty var (e.g. compose
@@ -373,5 +371,13 @@ func (s *Server) handleSecretsStatus(w http.ResponseWriter, _ *http.Request, c *
 		value, ok := s.secrets.Get(name)
 		out = append(out, secretStatus{Name: name, Present: ok && value != "", Source: s.secrets.Backend()})
 	}
-	writeJSON(w, http.StatusOK, out)
+	return out
+}
+
+func (s *Server) handleSecretsStatus(w http.ResponseWriter, _ *http.Request, c *caller) {
+	if !c.root {
+		writeForbidden(w, "only the root admin key may view secrets status")
+		return
+	}
+	writeJSON(w, http.StatusOK, s.secretsStatus())
 }

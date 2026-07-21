@@ -23,21 +23,30 @@ func NewAge(path, ageKey string) (Source, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse AGENTOS_SECRETS_AGE_KEY: %w", err)
 	}
-	ciphertext, err := os.ReadFile(path)
-	if err != nil {
-		return nil, fmt.Errorf("read age secrets file %q: %w", path, err)
+	// decryptAge re-reads and re-decrypts the file; used both at startup and on
+	// Reload (Phase 7 rotation) so a re-encrypted file takes effect live.
+	decryptAge := func() (map[string]string, error) {
+		ciphertext, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read age secrets file %q: %w", path, err)
+		}
+		r, err := age.Decrypt(bytes.NewReader(ciphertext), identity)
+		if err != nil {
+			return nil, fmt.Errorf("decrypt age secrets file %q: %w", path, err)
+		}
+		plaintext, err := io.ReadAll(r)
+		if err != nil {
+			return nil, fmt.Errorf("read decrypted secrets: %w", err)
+		}
+		values, err := parseSecretsJSON(plaintext)
+		if err != nil {
+			return nil, fmt.Errorf("parse decrypted secrets: %w", err)
+		}
+		return values, nil
 	}
-	r, err := age.Decrypt(bytes.NewReader(ciphertext), identity)
+	values, err := decryptAge()
 	if err != nil {
-		return nil, fmt.Errorf("decrypt age secrets file %q: %w", path, err)
+		return nil, err
 	}
-	plaintext, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("read decrypted secrets: %w", err)
-	}
-	values, err := parseSecretsJSON(plaintext)
-	if err != nil {
-		return nil, fmt.Errorf("parse decrypted secrets: %w", err)
-	}
-	return &staticSource{values: values, backend: BackendAge}, nil
+	return &staticSource{values: values, backend: BackendAge, refetch: decryptAge}, nil
 }

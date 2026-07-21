@@ -32,35 +32,44 @@ func newVaultWithClient(addr, token, kvPath string, client *http.Client) (Source
 	}
 	url := strings.TrimRight(addr, "/") + "/v1/" + strings.TrimLeft(kvPath, "/")
 
-	req, err := http.NewRequest(http.MethodGet, url, nil)
-	if err != nil {
-		return nil, fmt.Errorf("build vault request: %w", err)
-	}
-	req.Header.Set("X-Vault-Token", token)
+	// fetchVault performs one KV v2 GET; used at startup and on Reload (Phase 7
+	// rotation) so a re-GET picks up a rotated secret without a restart.
+	fetchVault := func() (map[string]string, error) {
+		req, err := http.NewRequest(http.MethodGet, url, nil)
+		if err != nil {
+			return nil, fmt.Errorf("build vault request: %w", err)
+		}
+		req.Header.Set("X-Vault-Token", token)
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("reach vault at %q: %w", url, err)
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read vault response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("vault returned status %d for %q: %s", resp.StatusCode, url, strings.TrimSpace(string(body)))
-	}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("reach vault at %q: %w", url, err)
+		}
+		defer resp.Body.Close()
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, fmt.Errorf("read vault response: %w", err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("vault returned status %d for %q: %s", resp.StatusCode, url, strings.TrimSpace(string(body)))
+		}
 
-	var env struct {
-		Data struct {
-			Data map[string]string `json:"data"`
-		} `json:"data"`
+		var env struct {
+			Data struct {
+				Data map[string]string `json:"data"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal(body, &env); err != nil {
+			return nil, fmt.Errorf("parse vault KV v2 response from %q: %w", url, err)
+		}
+		if env.Data.Data == nil {
+			return nil, fmt.Errorf("vault response from %q missing data.data object", url)
+		}
+		return env.Data.Data, nil
 	}
-	if err := json.Unmarshal(body, &env); err != nil {
-		return nil, fmt.Errorf("parse vault KV v2 response from %q: %w", url, err)
+	values, err := fetchVault()
+	if err != nil {
+		return nil, err
 	}
-	if env.Data.Data == nil {
-		return nil, fmt.Errorf("vault response from %q missing data.data object", url)
-	}
-	return &staticSource{values: env.Data.Data, backend: BackendVault}, nil
+	return &staticSource{values: values, backend: BackendVault, refetch: fetchVault}, nil
 }

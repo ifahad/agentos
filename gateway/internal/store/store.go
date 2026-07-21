@@ -25,6 +25,11 @@ var ErrOrgNotFound = errors.New("org not found")
 // ErrUserNotFound is returned when a user id does not exist in the given org.
 var ErrUserNotFound = errors.New("user not found")
 
+// ErrUserInactive is returned by AuthenticateUser when a user exists but has
+// been deactivated (SCIM active=false). Its agu- token stops working while the
+// account is retained and can be reactivated.
+var ErrUserInactive = errors.New("user inactive")
+
 // Multi-tenant defaults from the frozen contract. Pre-existing keys belong to
 // the bootstrapped default org and are attributed to the root superuser.
 const (
@@ -44,6 +49,9 @@ const (
 	// KindRateLimited marks a request rejected by the per-tenant rate limiter
 	// (Phase 6). No spend is recorded; only the rejection is audited.
 	KindRateLimited = "rate_limited"
+	// KindSecretReload marks a forced secret-source reload via
+	// POST /admin/secrets/reload (Phase 7). Audited for the root actor.
+	KindSecretReload = "secret_reload"
 )
 
 // Key is an authenticated virtual key.
@@ -68,11 +76,18 @@ type Org struct {
 
 // User is a member of an org, authenticated by an agu- token.
 type User struct {
-	ID        string    `json:"id"`
-	OrgID     string    `json:"org_id"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	CreatedAt time.Time `json:"created_at"`
+	ID    string `json:"id"`
+	OrgID string `json:"org_id"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
+	// Active is false when the user has been deactivated (SCIM active=false).
+	// Deactivated users fail AuthenticateUser but are retained. Pre-Phase-7
+	// users default to active=true. (Phase 7)
+	Active bool `json:"active"`
+	// ExternalID is the IdP-assigned SCIM external id, empty when the user was
+	// not provisioned via SCIM. (Phase 7)
+	ExternalID string    `json:"external_id"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 // Usage records one proxied request for accounting and audit.
@@ -144,8 +159,14 @@ type Store interface {
 	// UpdateOrg patches an org's monthly budget and/or rate limit (Phase 6). A
 	// nil field is left unchanged. Returns the updated org, or ErrOrgNotFound.
 	UpdateOrg(ctx context.Context, id string, monthlyBudgetUSD *float64, rateLimitRPM *int) (*Org, error)
+	// CreateUser is the Phase 5/6 back-compat wrapper: it provisions a user with
+	// no external id by delegating to CreateUserWithExternalID. Existing callers
+	// keep compiling unchanged. New users are active.
 	CreateUser(ctx context.Context, orgID, email, role string) (user *User, token string, err error)
-	AuthenticateUser(ctx context.Context, token string) (*User, error) // ErrInvalidToken
+	// CreateUserWithExternalID provisions a user carrying a SCIM external id
+	// (empty means none). Used by the SCIM upsert path. (Phase 7)
+	CreateUserWithExternalID(ctx context.Context, orgID, email, role, externalID string) (user *User, token string, err error)
+	AuthenticateUser(ctx context.Context, token string) (*User, error) // ErrInvalidToken, ErrUserInactive
 	// UserByEmail finds a user by email within an org (Phase 6 SSO upsert).
 	// Returns ErrUserNotFound when no such user exists.
 	UserByEmail(ctx context.Context, orgID, email string) (*User, error)
@@ -155,6 +176,17 @@ type Store interface {
 	IssueUserToken(ctx context.Context, userID string) (token string, err error)
 	Users(ctx context.Context, orgID string) ([]User, error)
 	DeleteUser(ctx context.Context, orgID, userID string) error // ErrUserNotFound
+
+	// SCIM provisioning additions (Phase 7).
+	// SetUserActive activates or deactivates a user by id. A deactivated user's
+	// agu- token stops authenticating. Returns ErrUserNotFound for an unknown id.
+	SetUserActive(ctx context.Context, userID string, active bool) error
+	// SetUserExternalID sets (or clears, with "") a user's SCIM external id.
+	// Returns ErrUserNotFound for an unknown id.
+	SetUserExternalID(ctx context.Context, userID, externalID string) error
+	// UserByExternalID finds a user by SCIM external id within an org. Returns
+	// ErrUserNotFound when no such user exists.
+	UserByExternalID(ctx context.Context, orgID, externalID string) (*User, error)
 }
 
 // kindOrChat maps an unset kind to KindChat.

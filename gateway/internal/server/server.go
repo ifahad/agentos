@@ -61,9 +61,12 @@ type Server struct {
 	tracer      trace.Tracer
 	secrets     secret.Source
 	secretNames []string
-	oidc        *oidc.Provider     // nil = SSO disabled
-	limiter     *ratelimit.Limiter // per-org token buckets
-	defaultRPM  int                // AGENTOS_RATE_LIMIT_RPM; 0 = unlimited
+	oidc        *oidc.Provider    // nil = SSO disabled
+	limiter     ratelimit.Limiter // per-org buckets (in-memory or postgres)
+	defaultRPM  int               // AGENTOS_RATE_LIMIT_RPM; 0 = unlimited
+	scimToken   string            // AGENTOS_SCIM_TOKEN; "" disables SCIM
+	scimOrg     string            // SCIM default org (AGENTOS_SCIM_DEFAULT_ORG)
+	scimRole    string            // SCIM default role (AGENTOS_SCIM_DEFAULT_ROLE)
 }
 
 // DefaultSecretNames are the provider keys reported by GET /admin/secrets/status.
@@ -123,12 +126,29 @@ func WithRateLimits(defaultRPM int) Option {
 	return func(s *Server) { s.defaultRPM = defaultRPM }
 }
 
-// WithRateLimiter injects a specific limiter (used by tests to supply an
-// injected clock). Without it New installs a wall-clock limiter.
-func WithRateLimiter(l *ratelimit.Limiter) Option {
+// WithRateLimiter injects a specific limiter — a deterministic-clock in-memory
+// limiter (tests) or the Postgres distributed limiter (multi-replica). Without
+// it New installs a wall-clock in-memory limiter, reproducing Phase 6 behavior.
+func WithRateLimiter(l ratelimit.Limiter) Option {
 	return func(s *Server) {
 		if l != nil {
 			s.limiter = l
+		}
+	}
+}
+
+// WithSCIM enables SCIM 2.0 provisioning. token guards every /scim/v2/* route
+// (empty leaves SCIM disabled → those routes 404). defaultOrg and defaultRole
+// are where new users land; empty values fall back to the org_default org and
+// the member role.
+func WithSCIM(token, defaultOrg, defaultRole string) Option {
+	return func(s *Server) {
+		s.scimToken = token
+		if defaultOrg != "" {
+			s.scimOrg = defaultOrg
+		}
+		if defaultRole != "" {
+			s.scimRole = defaultRole
 		}
 	}
 }
@@ -145,6 +165,8 @@ func New(st store.Store, router *provider.Router, adminKey string, opts ...Optio
 		secrets:     secret.NewEnv(),
 		secretNames: DefaultSecretNames,
 		limiter:     ratelimit.New(),
+		scimOrg:     store.DefaultOrgID,
+		scimRole:    rbac.RoleMember,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -170,9 +192,15 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /admin/orgs/{org_id}/users", s.adminAuth(s.handleListUsers))
 	mux.HandleFunc("DELETE /admin/orgs/{org_id}/users/{user_id}", s.adminAuth(s.handleDeleteUser))
 	mux.HandleFunc("GET /admin/secrets/status", s.adminAuth(s.handleSecretsStatus))
+	mux.HandleFunc("POST /admin/secrets/reload", s.adminAuth(s.handleSecretsReload))
 	mux.HandleFunc("GET /auth/oidc/status", s.handleOIDCStatus)
 	mux.HandleFunc("GET /auth/oidc/login", s.handleOIDCLogin)
 	mux.HandleFunc("GET /auth/oidc/callback", s.handleOIDCCallback)
+	// SCIM 2.0 provisioning routes are registered only when enabled; when
+	// disabled these paths fall through to the mux's 404 (frozen contract).
+	if s.scimEnabled() {
+		s.registerSCIMRoutes(mux)
+	}
 	if len(s.corsOrigins) > 0 {
 		return s.withCORS(mux)
 	}

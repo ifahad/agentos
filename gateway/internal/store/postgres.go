@@ -68,6 +68,11 @@ ALTER TABLE keys ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT 'root
 -- Phase 6 per-tenant rate limits (additive, migration-safe). 0 = unlimited,
 -- so pre-existing orgs keep Phase 1–5 behavior.
 ALTER TABLE orgs ADD COLUMN IF NOT EXISTS rate_limit_rpm INTEGER NOT NULL DEFAULT 0;
+
+-- Phase 7 SCIM provisioning (additive, migration-safe). Pre-existing users are
+-- active; external_id is the IdP-assigned SCIM id (nullable).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS active      BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS external_id TEXT;
 `
 
 // NewPostgres connects to databaseURL and ensures the schema exists.
@@ -86,6 +91,12 @@ func NewPostgres(ctx context.Context, databaseURL string) (*Postgres, error) {
 // Close releases the connection pool.
 func (p *Postgres) Close() {
 	p.pool.Close()
+}
+
+// Pool exposes the underlying pgx pool so sibling packages (e.g. the Postgres
+// rate-limit backend) can share this store's connection to AGENTOS_DATABASE_URL.
+func (p *Postgres) Pool() *pgxpool.Pool {
+	return p.pool
 }
 
 func (p *Postgres) CreateKey(ctx context.Context, name string, budgetUSD float64) (string, error) {
@@ -335,6 +346,10 @@ func (p *Postgres) OrgSpend(ctx context.Context, orgID string) (float64, error) 
 }
 
 func (p *Postgres) CreateUser(ctx context.Context, orgID, email, role string) (*User, string, error) {
+	return p.CreateUserWithExternalID(ctx, orgID, email, role, "")
+}
+
+func (p *Postgres) CreateUserWithExternalID(ctx context.Context, orgID, email, role, externalID string) (*User, string, error) {
 	if err := validateRole(role); err != nil {
 		return nil, "", err
 	}
@@ -349,35 +364,45 @@ func (p *Postgres) CreateUser(ctx context.Context, orgID, email, role string) (*
 	if err != nil {
 		return nil, "", err
 	}
-	u := &User{ID: id, OrgID: orgID, Email: email, Role: role}
+	u := &User{ID: id, OrgID: orgID, Email: email, Role: role, Active: true, ExternalID: externalID}
+	// NULLIF stores an empty external id as SQL NULL; COALESCE reads it back as "".
 	err = p.pool.QueryRow(ctx,
-		`INSERT INTO users (id, org_id, email, role, token_hash) VALUES ($1, $2, $3, $4, $5) RETURNING created_at`,
-		id, orgID, email, role, hashSecret(token)).Scan(&u.CreatedAt)
+		`INSERT INTO users (id, org_id, email, role, token_hash, active, external_id)
+         VALUES ($1, $2, $3, $4, $5, true, NULLIF($6, '')) RETURNING created_at`,
+		id, orgID, email, role, hashSecret(token), externalID).Scan(&u.CreatedAt)
 	if err != nil {
 		return nil, "", fmt.Errorf("insert user: %w", err)
 	}
 	return u, token, nil
 }
 
+const selectUserCols = `id, org_id, email, role, active, COALESCE(external_id, ''), created_at`
+
+func scanUser(row pgx.Row, u *User) error {
+	return row.Scan(&u.ID, &u.OrgID, &u.Email, &u.Role, &u.Active, &u.ExternalID, &u.CreatedAt)
+}
+
 func (p *Postgres) AuthenticateUser(ctx context.Context, token string) (*User, error) {
 	var u User
-	err := p.pool.QueryRow(ctx,
-		`SELECT id, org_id, email, role, created_at FROM users WHERE token_hash = $1`,
-		hashSecret(token)).Scan(&u.ID, &u.OrgID, &u.Email, &u.Role, &u.CreatedAt)
+	err := scanUser(p.pool.QueryRow(ctx,
+		`SELECT `+selectUserCols+` FROM users WHERE token_hash = $1`, hashSecret(token)), &u)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrInvalidToken
 	}
 	if err != nil {
 		return nil, fmt.Errorf("authenticate user: %w", err)
 	}
+	if !u.Active {
+		return nil, ErrUserInactive
+	}
 	return &u, nil
 }
 
 func (p *Postgres) UserByEmail(ctx context.Context, orgID, email string) (*User, error) {
 	var u User
-	err := p.pool.QueryRow(ctx,
-		`SELECT id, org_id, email, role, created_at FROM users WHERE org_id = $1 AND email = $2 ORDER BY created_at LIMIT 1`,
-		orgID, email).Scan(&u.ID, &u.OrgID, &u.Email, &u.Role, &u.CreatedAt)
+	err := scanUser(p.pool.QueryRow(ctx,
+		`SELECT `+selectUserCols+` FROM users WHERE org_id = $1 AND email = $2 ORDER BY created_at LIMIT 1`,
+		orgID, email), &u)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrUserNotFound
 	}
@@ -385,6 +410,45 @@ func (p *Postgres) UserByEmail(ctx context.Context, orgID, email string) (*User,
 		return nil, fmt.Errorf("user by email: %w", err)
 	}
 	return &u, nil
+}
+
+func (p *Postgres) UserByExternalID(ctx context.Context, orgID, externalID string) (*User, error) {
+	if externalID == "" {
+		return nil, ErrUserNotFound
+	}
+	var u User
+	err := scanUser(p.pool.QueryRow(ctx,
+		`SELECT `+selectUserCols+` FROM users WHERE org_id = $1 AND external_id = $2 ORDER BY created_at LIMIT 1`,
+		orgID, externalID), &u)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrUserNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("user by external id: %w", err)
+	}
+	return &u, nil
+}
+
+func (p *Postgres) SetUserActive(ctx context.Context, userID string, active bool) error {
+	tag, err := p.pool.Exec(ctx, `UPDATE users SET active = $2 WHERE id = $1`, userID, active)
+	if err != nil {
+		return fmt.Errorf("set user active: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) SetUserExternalID(ctx context.Context, userID, externalID string) error {
+	tag, err := p.pool.Exec(ctx, `UPDATE users SET external_id = NULLIF($2, '') WHERE id = $1`, userID, externalID)
+	if err != nil {
+		return fmt.Errorf("set user external id: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+	return nil
 }
 
 func (p *Postgres) IssueUserToken(ctx context.Context, userID string) (string, error) {
@@ -405,7 +469,7 @@ func (p *Postgres) IssueUserToken(ctx context.Context, userID string) (string, e
 
 func (p *Postgres) Users(ctx context.Context, orgID string) ([]User, error) {
 	rows, err := p.pool.Query(ctx,
-		`SELECT id, org_id, email, role, created_at FROM users WHERE org_id = $1 ORDER BY id`, orgID)
+		`SELECT `+selectUserCols+` FROM users WHERE org_id = $1 ORDER BY id`, orgID)
 	if err != nil {
 		return nil, fmt.Errorf("query users: %w", err)
 	}
@@ -413,7 +477,7 @@ func (p *Postgres) Users(ctx context.Context, orgID string) ([]User, error) {
 	var out []User
 	for rows.Next() {
 		var u User
-		if err := rows.Scan(&u.ID, &u.OrgID, &u.Email, &u.Role, &u.CreatedAt); err != nil {
+		if err := scanUser(rows, &u); err != nil {
 			return nil, fmt.Errorf("scan user: %w", err)
 		}
 		out = append(out, u)

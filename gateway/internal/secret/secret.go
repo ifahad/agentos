@@ -25,6 +25,15 @@ type Source interface {
 	Backend() string
 }
 
+// Reloadable is an optional interface a Source may implement to re-fetch its
+// secrets on demand (Phase 7 rotation): file re-reads, age re-decrypts, vault
+// re-GETs. The env backend is inherently live and does not implement it. Reload
+// must be safe for concurrent use with Get. It returns the number of secret
+// names whose value changed so callers can log rotation activity.
+type Reloadable interface {
+	Reload() (changed int, err error)
+}
+
 // envSource reads os.Getenv — the default, byte-for-byte Phase 1–4 behavior.
 type envSource struct{}
 
@@ -89,6 +98,36 @@ func (s *fileSource) Get(name string) (string, bool) {
 
 func (s *fileSource) Backend() string { return s.backend }
 
+// Reload re-reads the file unconditionally (regardless of mtime) and reports
+// how many secret values changed. On a read/parse error the last-good map is
+// kept and the error is returned.
+func (s *fileSource) Reload() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	before := s.values
+	if err := s.reload(); err != nil {
+		return 0, err
+	}
+	return countChanged(before, s.values), nil
+}
+
+// countChanged reports how many keys differ (added, removed, or altered value)
+// between two secret maps.
+func countChanged(before, after map[string]string) int {
+	changed := 0
+	for k, v := range after {
+		if ov, ok := before[k]; !ok || ov != v {
+			changed++
+		}
+	}
+	for k := range before {
+		if _, ok := after[k]; !ok {
+			changed++
+		}
+	}
+	return changed
+}
+
 // parseSecretsJSON decodes a flat JSON object of string values.
 func parseSecretsJSON(raw []byte) (map[string]string, error) {
 	values := map[string]string{}
@@ -101,19 +140,44 @@ func parseSecretsJSON(raw []byte) (map[string]string, error) {
 	return values, nil
 }
 
-// staticSource serves a fixed map (used by the age backend after in-memory
-// decryption at startup).
+// staticSource serves an in-memory map (used by the age and vault backends,
+// which materialize their secrets at startup). An optional refetch closure lets
+// it re-fetch on Reload: age re-decrypts its file, vault re-GETs. When refetch
+// is nil the source is not Reloadable.
 type staticSource struct {
+	mu      sync.Mutex
 	values  map[string]string
 	backend string
+	refetch func() (map[string]string, error)
 }
 
 func (s *staticSource) Get(name string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	v, ok := s.values[name]
 	return v, ok
 }
 
 func (s *staticSource) Backend() string { return s.backend }
+
+// Reload re-fetches the secrets via the backend's refetch closure and reports
+// how many values changed. Sources built without a refetch closure are not
+// Reloadable and this method is never surfaced (the type assertion in the
+// server checks for it), but if called it is a no-op returning 0.
+func (s *staticSource) Reload() (int, error) {
+	if s.refetch == nil {
+		return 0, nil
+	}
+	next, err := s.refetch()
+	if err != nil {
+		return 0, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := countChanged(s.values, next)
+	s.values = next
+	return changed, nil
+}
 
 // FromEnv builds the Source selected by AGENTOS_SECRETS_BACKEND (default env),
 // reading AGENTOS_SECRETS_FILE and AGENTOS_SECRETS_AGE_KEY as needed. It
