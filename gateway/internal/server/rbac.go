@@ -313,8 +313,10 @@ func (s *Server) handleSecretsStatus(w http.ResponseWriter, _ *http.Request, c *
 	}
 	out := make([]secretStatus, 0, len(s.secretNames))
 	for _, name := range s.secretNames {
-		_, present := s.secrets.Get(name)
-		out = append(out, secretStatus{Name: name, Present: present, Source: s.secrets.Backend()})
+		// "present" means a usable value: a set-but-empty var (e.g. compose
+		// passing ${VAR:-}) is reported absent, matching how routing treats it.
+		value, ok := s.secrets.Get(name)
+		out = append(out, secretStatus{Name: name, Present: ok && value != "", Source: s.secrets.Backend()})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

@@ -164,6 +164,34 @@ the collector's debug exporter shows traces either way.
 - **SSH connector** — legacy boxes as MCP tools with a strict command
   allowlist and command-chaining rejection (`connectors/ssh/`, opt-in).
 
+## Multi-tenancy & secrets
+
+- **RBAC** — orgs, users, and roles (`owner`/`admin`/`member`/`viewer`) with
+  `agu-…` user tokens. The admin API scopes keys, usage, and audit to the
+  caller's org; org budgets cap aggregate spend (402 `org_budget_exceeded`).
+  The root admin key stays a global superuser. Fully backward compatible —
+  existing keys live in a bootstrapped `default` org (unlimited).
+- **Secrets backend** — provider keys resolve through `AGENTOS_SECRETS_BACKEND`:
+  `env` (default), `file` (hot-reloaded JSON), or `age` (age-encrypted file
+  decrypted in memory — no plaintext on disk). `GET /admin/secrets/status`
+  reports presence and source, never values.
+
+## Connectors
+
+SQL and REST connectors start with the stack. SOAP (`connectors/soap/`) and
+browser/computer-use (`connectors/browser/`, Playwright) are opt-in:
+
+```bash
+docker compose --profile connectors up -d   # + soap + browser
+```
+
+## CI
+
+GitHub Actions runs the full test matrix (Go, Python, Rust, console, Helm) on
+every push, plus an **eval gate** (`evals.yml`) that scores the runtime eval
+suite against a deterministic mock model and fails under 0.8 — label a PR
+`run-evals` to run it, or wire real provider secrets to grade real models.
+
 ## Roadmap
 
 1. ~~**Core loop**: gateway + runtime + SQL connector + compose demo.~~ ✅
@@ -174,7 +202,10 @@ the collector's debug exporter shows traces either way.
    REST/OpenAPI connector + demo CRM, Helm chart, OTel collector profile.~~ ✅
 4. ~~**Reach & hardening**: SSH connector, egress-less sandbox, model-based
    guardrail, LLM-judge evals, bundled Langfuse profile.~~ ✅
-5. Next: SOAP/browser connectors, multi-tenant RBAC, secrets-manager
-   integration, LLM-judge in CI.
+5. ~~**Enterprise reach & governance**: multi-tenant RBAC, secrets backend
+   (env/file/age), SOAP + browser connectors, CI with an LLM-judge eval
+   gate.~~ ✅
+6. Next: SAML/OIDC SSO, live Vault/cloud-KMS secrets backend, per-tenant
+   rate limits, a `whoami` endpoint for token-scoped console UX.
 
 License: [Apache-2.0](LICENSE)
