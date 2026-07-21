@@ -20,6 +20,7 @@ class Settings(BaseSettings):
         AGENTOS_CONTEXT_ENGINE: ``on``/``off``; empty -> on iff checkpoint DB set.
         AGENTOS_AGENT_PROFILE: ``react`` (default) or ``deep`` (deepagents package).
         AGENTOS_OTEL_ENDPOINT: OTLP/HTTP base URL; empty -> tracing disabled.
+        AGENTOS_SANDBOX_URL: Sandbox service base URL; empty -> run_python tool off.
     """
 
     model_config = SettingsConfigDict(env_prefix="AGENTOS_", extra="ignore")
@@ -34,6 +35,7 @@ class Settings(BaseSettings):
     context_engine: Literal["on", "off", ""] = ""
     agent_profile: Literal["react", "deep"] = "react"
     otel_endpoint: str | None = None
+    sandbox_url: str = ""
 
     @property
     def mcp_server_urls(self) -> list[str]:

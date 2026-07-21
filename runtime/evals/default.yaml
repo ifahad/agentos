@@ -1,0 +1,22 @@
+# Default eval suite against the seeded legacy ERP + ingested vendor-policy doc.
+# A case passes when the run completes, expect_substring appears
+# (case-insensitively) in the final answer, and expect_tool (if set) was used.
+cases:
+  - name: top-customer-by-order-value
+    input: >-
+      Which customer has the highest total order value across all their
+      orders? Give the customer name.
+    expect_substring: "al-faisal"
+    expect_tool: query
+  - name: pending-orders-count
+    input: How many orders are currently in pending status? Answer with the number.
+    expect_substring: "4"
+  - name: procurement-sign-off
+    input: >-
+      According to our procurement policy, who signs off on purchase orders
+      above 250000 SAR?
+    expect_substring: "al-harbi"
+    expect_tool: search_knowledge
+  - name: arithmetic-sanity
+    input: What is 6 times 7? Reply with just the number.
+    expect_substring: "42"

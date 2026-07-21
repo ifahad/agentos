@@ -10,7 +10,14 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMessage
 from pydantic import BaseModel
 
-from agentos_runtime.agent import build_agent, get_checkpointer, load_mcp_tools
+from agentos_runtime import evals, improve, prompts
+from agentos_runtime.agent import (
+    SYSTEM_PROMPT,
+    build_agent,
+    build_chat_model,
+    get_checkpointer,
+    load_mcp_tools,
+)
 from agentos_runtime.config import Settings
 from agentos_runtime.context import build_context_engine, make_search_tool
 from agentos_runtime.hitl import (
@@ -20,7 +27,10 @@ from agentos_runtime.hitl import (
     pending_tool_calls,
     run_until_settled,
 )
+from agentos_runtime.messages import extract_output, message_text
 from agentos_runtime.otel import record_tool_spans, run_span, setup_tracing
+from agentos_runtime.sandbox import sandbox_tools
+from agentos_runtime.store import ImprovementStore
 
 
 class RunRequest(BaseModel):
@@ -56,14 +66,33 @@ async def lifespan(app: FastAPI):
     if settings.context_engine_enabled and settings.checkpoint_database_url:
         app.state.context_engine = build_context_engine(settings)
         tools = [*tools, make_search_tool(app.state.context_engine)]
+    tools = [*tools, *sandbox_tools(settings)]
     app.state.approval_tools = settings.approval_tool_names
     app.state.tracer = setup_tracing(settings)
     async with get_checkpointer(settings) as checkpointer:
-        app.state.agent = build_agent(settings, tools, checkpointer)
+        active_prompt: str | None = None
+        if settings.checkpoint_database_url:
+            store = ImprovementStore(settings.checkpoint_database_url)
+            app.state.improve_store = store
+            active = await store.get_active_prompt()
+            active_prompt = active["prompt_text"] if active else None
+        else:
+            app.state.improve_store = None
+
+        def agent_builder(prompt: str | None):
+            return build_agent(settings, tools, checkpointer, prompt=prompt)
+
+        app.state.agent_builder = agent_builder
+        app.state.reflection_model = build_chat_model(settings)
+        app.state.current_prompt = active_prompt or SYSTEM_PROMPT
+        app.state.agent = agent_builder(active_prompt)
         yield
 
 
 app = FastAPI(title="agentos-runtime", lifespan=lifespan)
+app.include_router(evals.router)
+app.include_router(improve.router)
+app.include_router(prompts.router)
 
 
 def get_agent(request: Request):
@@ -82,26 +111,6 @@ def get_context_engine(request: Request):
     if engine is None:
         raise HTTPException(status_code=503, detail="context engine disabled")
     return engine
-
-
-def _message_text(message: BaseMessage) -> str:
-    content = message.content
-    if isinstance(content, str):
-        return content
-    parts: list[str] = []
-    for block in content:
-        if isinstance(block, str):
-            parts.append(block)
-        elif isinstance(block, dict) and block.get("type") == "text":
-            parts.append(block.get("text", ""))
-    return "".join(parts)
-
-
-def _extract_output(messages: list[BaseMessage]) -> str:
-    for message in reversed(messages):
-        if isinstance(message, AIMessage):
-            return _message_text(message)
-    return ""
 
 
 def _extract_steps(messages: list[BaseMessage]) -> list[Step]:
@@ -127,7 +136,7 @@ def _run_response(thread_id: str, outcome: RunOutcome, tracer: Any | None) -> Ru
     record_tool_spans(tracer, steps)
     return RunResponse(
         thread_id=thread_id,
-        output=_extract_output(messages),
+        output=extract_output(messages),
         steps=steps,
         status="completed",
     )
@@ -227,7 +236,7 @@ async def runs_stream(
                         for message in node_output.get("messages") or []:
                             if not isinstance(message, AIMessage):
                                 continue
-                            output = _message_text(message) or output
+                            output = message_text(message) or output
                             for tool_call in message.tool_calls or []:
                                 step = {
                                     "tool": tool_call["name"],
@@ -280,7 +289,7 @@ async def get_thread(
             role = "assistant"
         else:
             continue
-        entry: dict[str, Any] = {"role": role, "content": _message_text(message)}
+        entry: dict[str, Any] = {"role": role, "content": message_text(message)}
         if isinstance(message, AIMessage) and message.tool_calls:
             entry["tool_calls"] = [
                 {"tool": tc["name"], "input": dict(tc["args"])} for tc in message.tool_calls
