@@ -20,6 +20,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/ifahad/agentos/connectors/soap/internal/safehttp"
 	"github.com/ifahad/agentos/connectors/soap/internal/wsdl"
 )
 
@@ -55,8 +56,14 @@ type Config struct {
 	// Timeout is the upstream request timeout. <= 0 falls back to
 	// DefaultTimeoutSeconds.
 	Timeout time.Duration
-	// Client is the upstream HTTP client; nil gets a Timeout-bounded default.
+	// Client is the upstream HTTP client; nil gets a Timeout-bounded default
+	// hardened with a redirect policy (see safehttp.NewClient).
 	Client *http.Client
+	// IsDisallowedHost screens the initial endpoint host and every redirect
+	// target for private/loopback/link-local addresses. nil defaults to
+	// safehttp.IsDisallowedHost; tests inject an override so loopback httptest
+	// servers still work.
+	IsDisallowedHost func(host string) bool
 }
 
 // Tools holds the exposed operations and shared dependencies of the
@@ -96,8 +103,11 @@ func New(def *wsdl.Definition, cfg Config) *Tools {
 	if cfg.Timeout <= 0 {
 		cfg.Timeout = DefaultTimeoutSeconds * time.Second
 	}
+	if cfg.IsDisallowedHost == nil {
+		cfg.IsDisallowedHost = safehttp.IsDisallowedHost
+	}
 	if cfg.Client == nil {
-		cfg.Client = &http.Client{Timeout: cfg.Timeout}
+		cfg.Client = safehttp.NewClient(cfg.Timeout, cfg.AuthHeaderName, cfg.IsDisallowedHost)
 	}
 	return &Tools{cfg: cfg, ops: FilterOps(def.Operations, cfg.AllowOperations)}
 }
@@ -170,6 +180,9 @@ func (t *Tools) CallHandler(op wsdl.Operation) server.ToolHandlerFunc {
 		httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, t.cfg.Endpoint, strings.NewReader(envelope))
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("build request: %v", err)), nil
+		}
+		if host := httpReq.URL.Hostname(); t.cfg.IsDisallowedHost(host) {
+			return mcp.NewToolResultError(fmt.Sprintf("upstream host %q is not permitted", host)), nil
 		}
 		httpReq.Header.Set("Content-Type", soapContentType)
 		httpReq.Header.Set("SOAPAction", `"`+op.SOAPAction+`"`)

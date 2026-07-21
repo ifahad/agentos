@@ -178,8 +178,18 @@ func newEcho(t *testing.T, handler http.HandlerFunc) *echoServer {
 
 func newTools(e *echoServer, cfg Config) *Tools {
 	cfg.Endpoint = e.srv.URL
+	if cfg.IsDisallowedHost == nil {
+		// httptest servers listen on loopback, which the real screen rejects;
+		// allow everything here so the non-redirect tests exercise loopback.
+		cfg.IsDisallowedHost = func(string) bool { return false }
+	}
 	return New(testDef(), cfg)
 }
+
+// allowLoopback permits 127.0.0.1/localhost (the httptest servers) while
+// rejecting any other host, so the redirect policy can be exercised against a
+// private-IP target without real network access.
+func allowLoopback(host string) bool { return host != "127.0.0.1" && host != "localhost" }
 
 const addResponse = `<?xml version="1.0" encoding="utf-8"?>
 <soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
@@ -378,12 +388,115 @@ func TestCallSOAPFaultReturnedNotErrored(t *testing.T) {
 
 func TestCallUpstreamUnreachable(t *testing.T) {
 	// Point at a closed server to force a transport error → tool error result.
-	tr := New(testDef(), Config{Endpoint: "http://127.0.0.1:1"})
+	// Allow loopback so the closed-port transport error (not the host screen)
+	// is what produces the error.
+	tr := New(testDef(), Config{Endpoint: "http://127.0.0.1:1", IsDisallowedHost: func(string) bool { return false }})
 	res, err := tr.CallHandler(testOps[0])(context.Background(), callReq(map[string]any{"intA": "1", "intB": "2"}))
 	if err != nil {
 		t.Fatalf("call: %v", err)
 	}
 	if !res.IsError {
 		t.Fatal("expected a tool error for an unreachable upstream")
+	}
+}
+
+func TestRedirectCrossHostDropsAuthHeader(t *testing.T) {
+	var finalGotHeader string
+	final := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		finalGotHeader = r.Header.Get("X-Api-Key")
+		w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+		_, _ = w.Write([]byte(addResponse))
+	}))
+	defer final.Close()
+	// Use localhost so the redirect target host differs from 127.0.0.1 (both
+	// resolve to loopback, so the request still reaches the final server).
+	finalURL := strings.Replace(final.URL, "127.0.0.1", "localhost", 1)
+
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, finalURL+"/final", http.StatusTemporaryRedirect)
+	}))
+	defer redirector.Close()
+
+	tr := New(testDef(), Config{
+		Endpoint:         redirector.URL,
+		AuthHeaderName:   "X-Api-Key",
+		AuthHeaderValue:  "sekret",
+		IsDisallowedHost: allowLoopback,
+	})
+	res, err := tr.CallHandler(testOps[0])(context.Background(), callReq(map[string]any{"intA": "3", "intB": "4"}))
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if status, _, _ := decodeCall(t, res); status != http.StatusOK {
+		t.Errorf("status = %d, want 200", status)
+	}
+	if finalGotHeader != "" {
+		t.Errorf("auth header leaked across the cross-host redirect: %q", finalGotHeader)
+	}
+}
+
+func TestRedirectSameHostKeepsAuthHeader(t *testing.T) {
+	var finalGotHeader string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/final" {
+			finalGotHeader = r.Header.Get("X-Api-Key")
+			w.Header().Set("Content-Type", "text/xml; charset=utf-8")
+			_, _ = w.Write([]byte(addResponse))
+			return
+		}
+		http.Redirect(w, r, "/final", http.StatusTemporaryRedirect)
+	}))
+	defer srv.Close()
+
+	tr := New(testDef(), Config{
+		Endpoint:         srv.URL,
+		AuthHeaderName:   "X-Api-Key",
+		AuthHeaderValue:  "sekret",
+		IsDisallowedHost: allowLoopback,
+	})
+	res, err := tr.CallHandler(testOps[0])(context.Background(), callReq(map[string]any{"intA": "3", "intB": "4"}))
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if status, _, _ := decodeCall(t, res); status != http.StatusOK {
+		t.Errorf("status = %d, want 200", status)
+	}
+	if finalGotHeader != "sekret" {
+		t.Errorf("same-host redirect dropped the auth header: %q", finalGotHeader)
+	}
+}
+
+func TestRedirectToPrivateIPRefused(t *testing.T) {
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://169.254.169.254/latest/meta-data/", http.StatusTemporaryRedirect)
+	}))
+	defer redirector.Close()
+
+	tr := New(testDef(), Config{
+		Endpoint:         redirector.URL,
+		AuthHeaderName:   "X-Api-Key",
+		AuthHeaderValue:  "sekret",
+		IsDisallowedHost: allowLoopback,
+	})
+	res, err := tr.CallHandler(testOps[0])(context.Background(), callReq(map[string]any{"intA": "3", "intB": "4"}))
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("expected an error result for a redirect to a private/link-local IP")
+	}
+}
+
+func TestInitialHostDisallowed(t *testing.T) {
+	tr := New(testDef(), Config{
+		Endpoint:         "http://169.254.169.254/soap",
+		IsDisallowedHost: func(host string) bool { return host == "169.254.169.254" },
+	})
+	res, err := tr.CallHandler(testOps[0])(context.Background(), callReq(map[string]any{"intA": "1", "intB": "2"}))
+	if err != nil {
+		t.Fatalf("call: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("expected an error result for a disallowed initial host")
 	}
 }

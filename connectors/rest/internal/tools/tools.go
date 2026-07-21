@@ -17,6 +17,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
+	"github.com/ifahad/agentos/connectors/rest/internal/safehttp"
 	"github.com/ifahad/agentos/connectors/rest/internal/spec"
 )
 
@@ -37,8 +38,14 @@ type Config struct {
 	// MaxBodyBytes caps the upstream response body. <= 0 falls back to
 	// DefaultMaxBodyBytes.
 	MaxBodyBytes int
-	// Client is the upstream HTTP client; nil gets a 30 s-timeout default.
+	// Client is the upstream HTTP client; nil gets a 30 s-timeout default
+	// hardened with a redirect policy (see safehttp.NewClient).
 	Client *http.Client
+	// IsDisallowedHost screens the initial upstream host and every redirect
+	// target for private/loopback/link-local addresses. nil defaults to
+	// safehttp.IsDisallowedHost; tests inject an override so loopback httptest
+	// servers still work.
+	IsDisallowedHost func(host string) bool
 }
 
 // Tools holds the included operations and shared dependencies of the
@@ -69,8 +76,11 @@ func New(doc *spec.Document, cfg Config) *Tools {
 	if cfg.MaxBodyBytes <= 0 {
 		cfg.MaxBodyBytes = DefaultMaxBodyBytes
 	}
+	if cfg.IsDisallowedHost == nil {
+		cfg.IsDisallowedHost = safehttp.IsDisallowedHost
+	}
 	if cfg.Client == nil {
-		cfg.Client = &http.Client{Timeout: 30 * time.Second}
+		cfg.Client = safehttp.NewClient(30*time.Second, cfg.AuthHeaderName, cfg.IsDisallowedHost)
 	}
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
 	return &Tools{cfg: cfg, ops: FilterOps(doc.Operations, cfg.AllowMutations)}
@@ -145,6 +155,9 @@ func (t *Tools) CallHandler(op spec.Operation) server.ToolHandlerFunc {
 		httpReq, err := http.NewRequestWithContext(ctx, op.Method, target, nil)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("build request: %v", err)), nil
+		}
+		if host := httpReq.URL.Hostname(); t.cfg.IsDisallowedHost(host) {
+			return mcp.NewToolResultError(fmt.Sprintf("upstream host %q is not permitted", host)), nil
 		}
 		if t.cfg.AuthHeaderName != "" {
 			httpReq.Header.Set(t.cfg.AuthHeaderName, t.cfg.AuthHeaderValue)
