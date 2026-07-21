@@ -35,6 +35,9 @@ smoke3:
 smoke4:
 	bash scripts/smoke4.sh
 
+smoke7:
+	bash scripts/smoke7.sh
+
 smoke6:
 	bash scripts/smoke6.sh
 
