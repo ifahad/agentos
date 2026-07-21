@@ -20,6 +20,9 @@ const (
 	KindEmbeddings     = "embeddings"
 	KindGuardrailFlag  = "guardrail_flag"
 	KindGuardrailBlock = "guardrail_block"
+	// KindGuardrailError marks a failed model-classifier call: the request
+	// was allowed (fail open) but the blind spot is audited.
+	KindGuardrailError = "guardrail_error"
 )
 
 // Key is an authenticated virtual key.

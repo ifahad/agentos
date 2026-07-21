@@ -10,18 +10,24 @@ const (
 	ModeOff   = "off"
 	ModeLog   = "log"
 	ModeBlock = "block"
+	ModeModel = "model"
 )
 
-// ValidMode reports whether mode is one of off|log|block.
+// ValidMode reports whether mode is one of off|log|block|model.
 func ValidMode(mode string) bool {
-	return mode == ModeOff || mode == ModeLog || mode == ModeBlock
+	return mode == ModeOff || mode == ModeLog || mode == ModeBlock || mode == ModeModel
 }
 
 // Verdict is the result of screening one request.
 type Verdict struct {
 	Flagged bool
-	// Reason names the matched rule, e.g. "ignore-instructions".
+	// Reason names the matched rule, e.g. "ignore-instructions", or carries
+	// the model classifier's justification / error detail.
 	Reason string
+	// Errored marks a failed model-classifier call. The gateway fails open:
+	// the request is allowed and audited with kind guardrail_error so the
+	// blind spot stays visible.
+	Errored bool
 }
 
 // Guardrail screens the latest user message of a chat request.

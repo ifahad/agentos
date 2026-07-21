@@ -6,12 +6,12 @@ import (
 )
 
 func TestValidMode(t *testing.T) {
-	for _, mode := range []string{ModeOff, ModeLog, ModeBlock} {
+	for _, mode := range []string{ModeOff, ModeLog, ModeBlock, ModeModel} {
 		if !ValidMode(mode) {
 			t.Errorf("ValidMode(%q) = false, want true", mode)
 		}
 	}
-	for _, mode := range []string{"", "on", "audit", "OFF "} {
+	for _, mode := range []string{"", "on", "audit", "OFF ", "MODEL", "model ", "heuristic"} {
 		if ValidMode(mode) {
 			t.Errorf("ValidMode(%q) = true, want false", mode)
 		}

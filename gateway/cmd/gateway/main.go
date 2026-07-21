@@ -62,9 +62,15 @@ func main() {
 		guardMode = guardrail.ModeOff
 	}
 	if !guardrail.ValidMode(guardMode) {
-		log.Fatalf("AGENTOS_GUARDRAILS_MODE must be off, log, or block (got %q)", guardMode)
+		log.Fatalf("AGENTOS_GUARDRAILS_MODE must be off, log, block, or model (got %q)", guardMode)
 	}
-	if guardMode != guardrail.ModeOff {
+	switch guardMode {
+	case guardrail.ModeOff:
+		// guardrails disabled
+	case guardrail.ModeModel:
+		opts = append(opts, server.WithGuardrails(guardMode, buildModelGuardrail(ctx, st, router)))
+		log.Printf("guardrails enabled (mode=%s)", guardMode)
+	default:
 		opts = append(opts, server.WithGuardrails(guardMode, guardrail.NewHeuristicScreen()))
 		log.Printf("guardrails enabled (mode=%s)", guardMode)
 	}
@@ -101,4 +107,51 @@ func main() {
 	if err := http.ListenAndServe(":8080", srv.Handler()); err != nil {
 		log.Fatalf("listen: %v", err)
 	}
+}
+
+// buildModelGuardrail wires the AGENTOS_GUARDRAILS_MODE=model screener:
+// heuristic first, then a classifier model called straight through the
+// provider layer. When the classifier model has no usable provider key the
+// gateway warns and screens heuristic-only. AGENTOS_GUARDRAILS_KEY, when it
+// names a known virtual key, attributes classifier spend in /admin/usage.
+func buildModelGuardrail(ctx context.Context, st store.Store, router *provider.Router) guardrail.Guardrail {
+	heuristic := guardrail.NewHeuristicScreen()
+	model := os.Getenv("AGENTOS_GUARDRAILS_MODEL")
+	if model == "" {
+		model = guardrail.DefaultModel
+	}
+
+	route, err := router.Route(model)
+	if err != nil || (route.Provider != "ollama" && route.APIKey == "") {
+		log.Printf("WARNING: guardrail classifier model %q is not configured (no provider key); screening is heuristic-only", model)
+		return heuristic
+	}
+
+	classifier := &guardrail.ProviderClassifier{Router: router}
+	if secret := os.Getenv("AGENTOS_GUARDRAILS_KEY"); secret != "" {
+		key, err := st.Authenticate(ctx, secret)
+		if err != nil {
+			log.Printf("WARNING: AGENTOS_GUARDRAILS_KEY is not a known virtual key; classifier spend will not appear in /admin/usage")
+		} else {
+			guardModel := model
+			classifier.OnUsage = func(strippedModel string, inputTokens, outputTokens int64) {
+				if err := st.RecordUsage(context.Background(), store.Usage{
+					KeyName:      key.Name,
+					Model:        guardModel,
+					InputTokens:  inputTokens,
+					OutputTokens: outputTokens,
+					CostUSD:      provider.Cost(strippedModel, inputTokens, outputTokens),
+					Status:       http.StatusOK,
+					Kind:         store.KindChat,
+				}); err != nil {
+					log.Printf("record guardrail classifier usage: %v", err)
+				}
+			}
+		}
+	} else {
+		log.Printf("WARNING: AGENTOS_GUARDRAILS_KEY is empty; classifier spend will not appear in /admin/usage")
+	}
+
+	log.Printf("guardrail classifier model %q wired via provider layer", model)
+	return guardrail.NewModelScreen(heuristic, classifier, model)
 }

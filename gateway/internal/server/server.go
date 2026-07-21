@@ -265,21 +265,29 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if s.guard != nil && s.guardMode != guardrail.ModeOff {
-		if v := s.guard.Screen(latestUserMessage(body)); v.Flagged {
-			if s.guardMode == guardrail.ModeBlock {
-				s.recordAudit(r, store.Usage{
-					KeyName: key.Name, Model: model, Status: http.StatusBadRequest,
-					Kind: store.KindGuardrailBlock,
-				})
-				writeError(w, http.StatusBadRequest, errGuardrailBlocked,
-					fmt.Sprintf("prompt flagged by guardrail rule %q", v.Reason))
-				return
-			}
+		switch v := s.guard.Screen(latestUserMessage(body)); {
+		case v.Errored:
+			// Model classifier failed: fail open so the safety layer cannot
+			// take down traffic, but leave a visible audit trail.
+			s.recordAudit(r, store.Usage{
+				KeyName: key.Name, Model: model, Status: http.StatusOK,
+				Kind: store.KindGuardrailError,
+			})
+		case v.Flagged && s.guardMode == guardrail.ModeLog:
 			// log mode: audit the flag, forward the request unchanged.
 			s.recordAudit(r, store.Usage{
 				KeyName: key.Name, Model: model, Status: http.StatusOK,
 				Kind: store.KindGuardrailFlag,
 			})
+		case v.Flagged:
+			// block and model modes reject flagged prompts.
+			s.recordAudit(r, store.Usage{
+				KeyName: key.Name, Model: model, Status: http.StatusBadRequest,
+				Kind: store.KindGuardrailBlock,
+			})
+			writeError(w, http.StatusBadRequest, errGuardrailBlocked,
+				fmt.Sprintf("prompt flagged by guardrail rule %q", v.Reason))
+			return
 		}
 	}
 
