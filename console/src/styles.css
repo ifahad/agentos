@@ -421,6 +421,11 @@ button {
   color: var(--text-faint);
 }
 
+.badge.inactive {
+  color: var(--text-faint);
+  border-color: var(--border);
+}
+
 .status-ok {
   color: var(--green);
 }

@@ -24,6 +24,7 @@ export type Action =
   | "key.view" // GET    /admin/keys, /admin/usage
   | "usage.view" // GET    /admin/audit
   | "secret.view" // GET    /admin/secrets/status            (root only)
+  | "provisioning.view" // GET /admin/orgs/{id}/users (SCIM view) (root only)
   | "agent.run"; // runtime POST /runs
 
 export const ROLES: Role[] = ["owner", "admin", "member", "viewer"];
@@ -38,6 +39,7 @@ export const ALL_ACTIONS: Action[] = [
   "key.view",
   "usage.view",
   "secret.view",
+  "provisioning.view",
   "agent.run",
 ];
 
@@ -46,8 +48,9 @@ export const ALL_ACTIONS: Action[] = [
 //   admin  — manage users (below owner), keys, view
 //   member — create/list own keys, run agents, view own usage
 //   viewer — read-only usage/audit
-// org.create / org.view / secret.view are root-exclusive and therefore appear
-// in no role's list; root is handled separately in can() as a blanket superuser.
+// org.create / org.view / secret.view / provisioning.view are root-exclusive and
+// therefore appear in no role's list; root is handled separately in can() as a
+// blanket superuser.
 const ROLE_ACTIONS: Record<Role, Action[]> = {
   owner: ["user.invite", "user.remove", "user.view", "key.create", "key.view", "usage.view", "agent.run"],
   admin: ["user.invite", "user.remove", "user.view", "key.create", "key.view", "usage.view", "agent.run"],

@@ -11,6 +11,7 @@ import {
 } from "../components/common";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import { formatTimestamp } from "../lib/format";
+import { activeBadge } from "../lib/provisioning";
 import { ROLES, can, roleLabel } from "../lib/rbac";
 import type { CreatedUser, Org, Role, User } from "../lib/types";
 
@@ -204,6 +205,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
                   <tr>
                     <th>Email</th>
                     <th>Role</th>
+                    <th>Status</th>
                     <th>Created</th>
                     {canRemove && <th></th>}
                   </tr>
@@ -214,6 +216,12 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
                       <td>{u.email}</td>
                       <td>
                         <span className="badge">{u.role}</span>
+                      </td>
+                      <td>
+                        {(() => {
+                          const b = activeBadge(u.active);
+                          return <span className={b.className}>{b.label}</span>;
+                        })()}
                       </td>
                       <td className="dim mono">{formatTimestamp(u.created_at)}</td>
                       {canRemove && (
@@ -231,7 +239,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
                   ))}
                   {users.length === 0 && !usersLoad.loading && (
                     <tr>
-                      <td colSpan={canRemove ? 4 : 3} className="empty">
+                      <td colSpan={canRemove ? 5 : 4} className="empty">
                         {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
                       </td>
                     </tr>

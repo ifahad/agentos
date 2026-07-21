@@ -25,6 +25,7 @@ import { Keys } from "./pages/Keys";
 import { Orgs } from "./pages/Orgs";
 import { Overview } from "./pages/Overview";
 import { Playground } from "./pages/Playground";
+import { Provisioning } from "./pages/Provisioning";
 import { Secrets } from "./pages/Secrets";
 import { Users } from "./pages/Users";
 
@@ -53,6 +54,12 @@ const ROUTES: Route[] = [
   { path: "/orgs", label: "Orgs", Component: Orgs, visible: (r) => can(r, "org.view") },
   { path: "/users", label: "Users", Component: Users, visible: (r) => can(r, "user.view") },
   { path: "/secrets", label: "Secrets", Component: Secrets, visible: (r) => can(r, "secret.view") },
+  {
+    path: "/provisioning",
+    label: "Provisioning",
+    Component: Provisioning,
+    visible: (r) => can(r, "provisioning.view"),
+  },
 ];
 
 function usePath(): [string, (p: string) => void] {

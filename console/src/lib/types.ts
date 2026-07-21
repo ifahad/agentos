@@ -62,13 +62,17 @@ export type WhoAmI =
   | { root: true }
   | { root: false; user_id: string; org_id: string; email: string; role: Role };
 
-// GET /admin/orgs/{org_id}/users row — never carries a token.
+// GET /admin/orgs/{org_id}/users row — never carries a token. Phase 7 adds
+// `active` (deactivated users fail AuthenticateUser) and `external_id` (the
+// SCIM id when the user is IdP-provisioned); both are additive.
 export interface User {
   id: string;
   org_id: string;
   email: string;
   role: Role;
   created_at: string;
+  active: boolean;
+  external_id?: string;
 }
 
 // POST /admin/orgs/{org_id}/users response — the user plus a one-time token

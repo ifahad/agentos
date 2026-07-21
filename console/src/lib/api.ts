@@ -75,6 +75,15 @@ export function oidcStatusRequest(): RequestSpec {
   return buildRequest(GATEWAY_BASE, "/auth/oidc/status");
 }
 
+/**
+ * POST /admin/secrets/reload (root only) — forces the active secret source to
+ * re-fetch and returns the fresh /admin/secrets/status array. Sent with an
+ * empty JSON body so it is a POST.
+ */
+export function reloadSecretsRequest(adminKey: string): RequestSpec {
+  return gatewayAdminRequest("/admin/secrets/reload", adminKey, {});
+}
+
 // ---- Credential persistence ----
 //
 // The caller authenticates with a single Bearer token that is EITHER the root
