@@ -90,18 +90,23 @@ guardrails, and audit apply unchanged and per member.
 Replace the switch in `provider.go` with a registry keyed by model prefix,
 seeded with built-in defaults for `anthropic`, `openai`, and `ollama` (exact
 current behaviour, so nothing regresses) and extended from
-`AGENTOS_PROVIDERS_FILE` (default `deploy/providers.yaml`).
+`AGENTOS_PROVIDERS_FILE` (default `deploy/providers.json`). The format is **JSON**, not YAML: the gateway has no YAML dependency and the `file` secrets backend already establishes hot-reloaded JSON as the config idiom. The runtime's `council.yaml` stays YAML because pyyaml is already a runtime dependency (eval suites use it).
 
-```yaml
-providers:
-  - name: moonshot                      # model string: "moonshot/kimi-k3"
-    base_url: https://api.moonshot.ai
-    key_name: AGENTOS_MOONSHOT_API_KEY  # resolved via secret.Source
-    enabled: false                      # operator must confirm endpoint+pricing
-    chat_path: /v1/chat/completions     # optional override
-    max_attempts: 2                     # optional per-provider retry cap
-    prices:                             # USD per 1M tokens
-      kimi-k3: { in: 1.0, out: 4.0 }
+```jsonc
+{
+  "_comment": "PLACEHOLDERS. Confirm each vendor's current endpoint, model id, and pricing before setting enabled:true.",
+  "providers": [
+    {
+      "name": "moonshot",                       // model string: "moonshot/kimi-k3"
+      "base_url": "https://api.moonshot.ai",
+      "key_name": "AGENTOS_MOONSHOT_API_KEY",   // resolved via secret.Source
+      "enabled": false,                         // operator confirms endpoint+pricing
+      "chat_path": "/v1/chat/completions",      // optional override
+      "max_attempts": 2,                        // optional per-provider retry cap
+      "prices": { "kimi-k3": { "in": 1.0, "out": 4.0 } }   // USD per 1M tokens
+    }
+  ]
+}
 ```
 
 - **Key resolution** reuses the existing live-`secret.Source`-wins-over-static
@@ -116,16 +121,20 @@ providers:
 
 **Security — operator-supplied base URLs are attacker-adjacent config.** Each
 `base_url` is validated at load: scheme must be `https` (or `http` only for
-explicit loopback/`ollama`-style local hosts), and the host is checked with the
-existing `safehttp.IsDisallowedHost` so a registry entry cannot point the
+explicit loopback/`ollama`-style local hosts), and the host is checked with
+`safehttp.IsDisallowedHost` so a registry entry cannot point the
 gateway at link-local/private metadata endpoints (the SSRF class already fixed
-for REST/SOAP in the security pass). Invalid entries are rejected at load with a
+for REST/SOAP in the security pass). `safehttp` currently lives under each
+connector's `internal/` in a separate Go module, so it is unimportable from the
+gateway; the gateway gets its own copy at `gateway/internal/safehttp/` (the
+package is already duplicated between the REST and SOAP connectors, so this
+follows existing precedent). Invalid entries are rejected at load with a
 logged reason; the gateway still starts on its built-in providers.
 
 Prices are **config, not code**, precisely because published pricing and model
 IDs for these vendors change and are not verifiable from this environment. The
-shipped `providers.yaml` carries the five vendors with placeholder prices,
-`enabled: false`, and a comment requiring the operator to confirm current
+shipped `providers.json` carries the five vendors with placeholder prices,
+`enabled: false`, and a `_comment` requiring the operator to confirm current
 endpoint/model/pricing before enabling.
 
 ## 2. Gateway: bounded retry and fallback
@@ -312,7 +321,7 @@ is checked against that same summed cost.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `AGENTOS_PROVIDERS_FILE` | `deploy/providers.yaml` | provider registry path |
+| `AGENTOS_PROVIDERS_FILE` | `deploy/providers.json` | provider registry path |
 | `AGENTOS_COUNCIL_CONFIG` | `runtime/council.yaml` | member registry path |
 | `AGENTOS_COUNCIL_HEARTBEAT_S` | `0` (off) | autonomous loop interval |
 | `AGENTOS_COUNCIL_MAX_SPEND_USD` | `5` | default per-objective ceiling |
@@ -365,7 +374,7 @@ DeepSeek-V4 Pro, and MiniMax M3 are **not verified** in this environment (no
 provider keys are configured, and `ollama/deepseek-v4-pro:cloud` returns
 `requires a subscription`). Everything vendor-specific is therefore
 configuration with placeholders and `enabled: false`. The shipped
-`providers.yaml` states this in a header comment. The council mechanism itself
+`providers.json` states this in its `_comment` field. The council mechanism itself
 is proven live on local models.
 
 ## Implementation sequence
