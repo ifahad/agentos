@@ -1,21 +1,37 @@
-import { useState } from "react";
+import { useState, type DragEvent } from "react";
 import type { PageProps } from "../App";
 import { ErrorNotice, PageHead, errorMessage, useLoad } from "../components/common";
 import { apiFetch, runtimeRequest } from "../lib/api";
 import { formatInt } from "../lib/format";
 import type { DocumentInfo } from "../lib/types";
+import {
+  Button,
+  EmptyState,
+  Input,
+  Panel,
+  PanelHead,
+  Skeleton,
+  Table,
+  Tbody,
+  Textarea,
+  Tr,
+  useToast,
+} from "../ui";
+import "./Documents.css";
 
+// Toasts come from the global <ToastProvider> mounted in App.
 export function Documents(_props: PageProps) {
   const { data, error, loading, reload } = useLoad(
     () => apiFetch<DocumentInfo[]>(runtimeRequest("/documents")),
     [],
   );
+  const toast = useToast();
 
   const [name, setName] = useState("");
   const [text, setText] = useState("");
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
-  const [lastAdded, setLastAdded] = useState<DocumentInfo | null>(null);
+  const [dragging, setDragging] = useState(false);
 
   const add = async () => {
     if (!name.trim() || !text.trim()) {
@@ -28,15 +44,41 @@ export function Documents(_props: PageProps) {
       const res = await apiFetch<DocumentInfo>(
         runtimeRequest("/documents", { name: name.trim(), text }),
       );
-      setLastAdded(res);
+      toast.success(
+        `Ingested ${res.name} as ${formatInt(res.chunks)} chunk${res.chunks === 1 ? "" : "s"}.`,
+      );
       setName("");
       setText("");
       reload();
     } catch (err) {
-      setAddError(errorMessage(err));
+      const msg = errorMessage(err);
+      setAddError(msg);
+      toast.error(msg);
     } finally {
       setAdding(false);
     }
+  };
+
+  const onDragOver = (e: DragEvent) => {
+    e.preventDefault();
+    setDragging(true);
+  };
+
+  const onDragLeave = () => setDragging(false);
+
+  const onDrop = (e: DragEvent) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("text/") && !/\.(txt|md|markdown)$/i.test(file.name)) {
+      toast.error("Only plain-text files (.txt, .md) can be dropped here.");
+      return;
+    }
+    void file.text().then((content) => {
+      setText(content);
+      setName((n) => n || file.name.replace(/\.[^.]+$/, ""));
+    });
   };
 
   const docs = data ?? [];
@@ -49,74 +91,83 @@ export function Documents(_props: PageProps) {
       />
       <ErrorNotice error={error} />
 
-      {lastAdded && (
-        <div className="notice">
-          Ingested <span className="mono">{lastAdded.name}</span> as{" "}
-          {formatInt(lastAdded.chunks)} chunk{lastAdded.chunks === 1 ? "" : "s"}.
-        </div>
-      )}
-
-      <div className="panel">
-        <div className="panel-head">
-          <h2>Add document</h2>
-        </div>
+      <Panel
+        className={`doc-drop${dragging ? " dragging" : ""}`}
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+      >
+        <PanelHead title="Add document" />
         <div className="panel-body">
           <ErrorNotice error={addError} />
-          <label className="field">
-            <span>Name</span>
-            <input
-              type="text"
-              value={name}
-              placeholder="q3-runbook"
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          <label className="field">
-            <span>Text</span>
-            <textarea
-              rows={8}
-              value={text}
-              placeholder="Paste the document text to ingest…"
-              onChange={(e) => setText(e.target.value)}
-            />
-          </label>
-          <button className="btn primary" onClick={() => void add()} disabled={adding}>
+          <Input
+            label="Name"
+            type="text"
+            value={name}
+            placeholder="q3-runbook"
+            onChange={(e) => setName(e.target.value)}
+          />
+          <Textarea
+            label="Text"
+            rows={8}
+            value={text}
+            placeholder="Paste the document text to ingest…"
+            onChange={(e) => setText(e.target.value)}
+          />
+          <p className="doc-hint">
+            You can also drop a .txt or .md file anywhere on this panel to fill the form.
+          </p>
+          <Button variant="primary" onClick={() => void add()} disabled={adding}>
             {adding ? "Ingesting…" : "Ingest document"}
-          </button>
+          </Button>
+          {adding && <div className="doc-progress" aria-hidden />}
         </div>
-      </div>
+      </Panel>
 
-      <div className="panel">
-        <div className="panel-head">
-          <h2>Ingested documents</h2>
-          {loading && <span className="spin">loading…</span>}
-        </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th className="num">Chunks</th>
-              </tr>
-            </thead>
+      <Panel>
+        <PanelHead title="Ingested documents" />
+        <Table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th className="num">Chunks</th>
+            </tr>
+          </thead>
+          {loading && docs.length === 0 ? (
             <tbody>
-              {docs.map((d) => (
-                <tr key={d.name}>
-                  <td className="mono">{d.name}</td>
-                  <td className="num">{formatInt(d.chunks)}</td>
-                </tr>
-              ))}
-              {docs.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={2} className="empty">
-                    No documents ingested yet.
+              {Array.from({ length: 4 }, (_, i) => (
+                <tr key={i}>
+                  <td>
+                    <Skeleton width="55%" />
+                  </td>
+                  <td className="num">
+                    <Skeleton width={40} style={{ marginLeft: "auto" }} />
                   </td>
                 </tr>
-              )}
+              ))}
             </tbody>
-          </table>
-        </div>
-      </div>
+          ) : (
+            <Tbody staggerKey={docs.length}>
+              {docs.map((d) => (
+                <Tr key={d.name}>
+                  <td className="mono">{d.name}</td>
+                  <td className="num">{formatInt(d.chunks)}</td>
+                </Tr>
+              ))}
+              {docs.length === 0 && (
+                <Tr animate={false}>
+                  <td colSpan={2}>
+                    <EmptyState
+                      title="No documents ingested yet"
+                      description="Ingest a document above to give the agent searchable knowledge."
+                    />
+                  </td>
+                </Tr>
+              )}
+            </Tbody>
+          )}
+        </Table>
+      </Panel>
     </>
   );
 }

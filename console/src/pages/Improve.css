@@ -1,0 +1,105 @@
+/* Improve page — proposal cards, run-result stream. Tokens from styles.css. */
+
+.improve-run-result {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--inset);
+  padding: 14px 16px;
+}
+
+.improve-run-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.improve-run-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.improve-case-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+}
+
+.improve-case-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.improve-case-output {
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+/* Proposal cards: settle subtly once decided (approved/denied). The dim lives
+   on the inner body wrapper — the Card root's opacity is framer-controlled. */
+.improve-proposal {
+  background: var(--inset);
+}
+
+.improve-proposal + .improve-proposal {
+  margin-top: 12px;
+}
+
+.improve-proposal-body {
+  transition: opacity var(--dur-med) var(--ease);
+}
+
+.improve-proposal-body.decided {
+  opacity: 0.72;
+}
+
+.improve-proposal:hover .improve-proposal-body.decided {
+  opacity: 0.92;
+}
+
+.improve-proposal-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.improve-proposal-time {
+  margin-left: auto;
+}
+
+.improve-proposal .rationale {
+  color: var(--text-dim);
+  margin: 8px 0 0;
+}
+
+.improve-proposal-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.improve-proposal .prompt-text {
+  margin-top: 12px;
+}
+
+.improve-badge-swap {
+  display: inline-flex;
+}
+
+.improve-prompt-reveal {
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .improve-proposal-body {
+    transition: none;
+  }
+}

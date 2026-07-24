@@ -1,0 +1,22 @@
+/* Audit page — guardrail badge emphasis flash.
+   Fires once when a guardrail flag/block badge first renders (on mount and
+   whenever the table data reloads, since rows remount for the stagger). */
+
+.audit-badge-flash .badge {
+  animation: audit-badge-flash 900ms var(--ease) 200ms 1 both;
+}
+
+@keyframes audit-badge-flash {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, currentColor 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, currentColor 0%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audit-badge-flash .badge {
+    animation: none;
+  }
+}

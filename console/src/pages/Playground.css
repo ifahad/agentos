@@ -1,0 +1,160 @@
+/* ---- Playground step stream ---- */
+/* Base .timeline/.event tokens live in styles.css. This file adds the stream
+   presentation: staggered-entrance layout, live pulse dot, thinking shimmer,
+   and the expandable tool-call treatment. Keyframes are pg- prefixed to avoid
+   collisions with other pages. */
+
+.pg-stream {
+  max-width: 720px;
+}
+
+/* Event tags become flex rows so pulse dots align with the label. */
+.event .event-tag {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Live accent pulse — accompanies the stream while a run is in flight. */
+.pg-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pg-live-pulse 1.6s ease-out infinite;
+  flex: none;
+}
+
+.pg-live-dot--amber {
+  background: var(--amber);
+  animation-name: pg-live-pulse-amber;
+}
+
+@keyframes pg-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(91, 140, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0);
+  }
+}
+
+@keyframes pg-live-pulse-amber {
+  0% {
+    box-shadow: 0 0 0 0 rgba(210, 162, 74, 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(210, 162, 74, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(210, 162, 74, 0);
+  }
+}
+
+/* Thinking step — shimmer placeholder while the agent composes. Resolves into
+   the output event via a fade (AnimatePresence exit). */
+.pg-thinking {
+  border-left: 3px solid var(--accent);
+}
+
+.pg-shimmer {
+  height: 13px;
+  border-radius: 4px;
+  margin-top: 4px;
+  background: linear-gradient(90deg, var(--inset) 25%, #1a1f27 50%, var(--inset) 75%);
+  background-size: 200% 100%;
+  animation: pg-shimmer 1.4s linear infinite;
+}
+
+.pg-shimmer.w70 {
+  width: 70%;
+}
+
+.pg-shimmer.w45 {
+  width: 45%;
+}
+
+@keyframes pg-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* Expandable tool call — inset panel, chevron rotates on open, body height
+   animates via framer-motion (AnimatePresence). */
+.pg-tool {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--inset);
+}
+
+.pg-tool-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 12px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  text-align: left;
+  border-radius: 6px;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.pg-tool-toggle:hover {
+  color: var(--text);
+}
+
+.pg-chevron {
+  display: inline-block;
+  color: var(--text-faint);
+  transition: transform var(--dur-fast) var(--ease);
+  flex: none;
+}
+
+.pg-chevron.open {
+  transform: rotate(90deg);
+}
+
+.pg-tool-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  min-width: 0;
+}
+
+.pg-tool-body {
+  overflow: hidden;
+}
+
+.pg-tool-pre {
+  padding: 4px 12px 10px;
+  color: var(--text-dim);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-live-dot,
+  .pg-shimmer {
+    animation: none;
+  }
+
+  .pg-chevron,
+  .pg-tool-toggle {
+    transition: none;
+  }
+}

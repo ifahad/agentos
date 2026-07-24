@@ -4,9 +4,11 @@ import { ErrorNotice, ForbiddenNotice, NeedsKey, PageHead, errorMessage, useLoad
 import { ApiError, apiFetch, gatewayAdminRequest, reloadSecretsRequest } from "../lib/api";
 import { can } from "../lib/rbac";
 import type { SecretStatus } from "../lib/types";
+import { Badge, Button, Panel, PanelHead, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
 
 export function Secrets({ adminKey, role, openSettings }: PageProps) {
   const allowed = can(role, "secret.view");
+  const toast = useToast();
 
   const { data, error, loading, reload } = useLoad(
     () =>
@@ -17,25 +19,21 @@ export function Secrets({ adminKey, role, openSettings }: PageProps) {
   );
 
   const [reloading, setReloading] = useState(false);
-  const [reloaded, setReloaded] = useState(false);
-  const [reloadError, setReloadError] = useState<string | null>(null);
   const [forbidden, setForbidden] = useState(false);
 
   const reloadSecrets = async () => {
     setReloading(true);
-    setReloaded(false);
-    setReloadError(null);
     setForbidden(false);
     try {
       // The endpoint returns the fresh status array; refetch to reflect it.
       await apiFetch<SecretStatus[]>(reloadSecretsRequest(adminKey));
       reload();
-      setReloaded(true);
+      toast.success("Secrets reloaded.");
     } catch (err) {
       if (err instanceof ApiError && err.status === 403) {
         setForbidden(true);
       } else {
-        setReloadError(errorMessage(err));
+        toast.error(errorMessage(err));
       }
     } finally {
       setReloading(false);
@@ -55,55 +53,67 @@ export function Secrets({ adminKey, role, openSettings }: PageProps) {
       <ErrorNotice error={error} />
 
       {adminKey && allowed && (
-        <div className="panel">
-          <div className="panel-head">
-            <h2>Secret status</h2>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {reloaded && <span className="status-ok">reloaded</span>}
-              <button className="btn small" onClick={() => void reloadSecrets()} disabled={reloading || loading}>
-                {reloading ? "Reloading…" : "Reload secrets"}
-              </button>
-              <button className="btn small" onClick={reload} disabled={loading}>
-                {loading ? "Loading…" : "Refresh"}
-              </button>
-            </div>
-          </div>
+        <Panel>
+          <PanelHead
+            title="Secret status"
+            actions={
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Button small onClick={() => void reloadSecrets()} disabled={reloading || loading}>
+                  {reloading ? "Reloading…" : "Reload secrets"}
+                </Button>
+                <Button small onClick={reload} disabled={loading}>
+                  {loading ? "Loading…" : "Refresh"}
+                </Button>
+              </div>
+            }
+          />
           {forbidden && <ForbiddenNotice message="Reloading secrets is available to the root admin only." />}
-          <ErrorNotice error={reloadError} />
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name</th>
-                  <th>Present</th>
-                  <th>Source</th>
-                </tr>
-              </thead>
-              <tbody>
-                {secrets.map((s) => (
-                  <tr key={s.name}>
-                    <td className="mono">{s.name}</td>
+          <Table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Present</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <Tbody staggerKey={secrets.length}>
+              {loading && secrets.length === 0 &&
+                [0, 1, 2].map((i) => (
+                  <Tr animate={false} key={`skeleton-${i}`}>
                     <td>
-                      <span className={`badge ${s.present ? "pass" : "fail"}`}>
-                        {s.present ? "present" : "missing"}
-                      </span>
+                      <Skeleton width={200} />
                     </td>
                     <td>
-                      <span className="badge">{s.source}</span>
+                      <Skeleton width={64} height={18} style={{ borderRadius: 999 }} />
                     </td>
-                  </tr>
+                    <td>
+                      <Skeleton width={72} height={18} style={{ borderRadius: 999 }} />
+                    </td>
+                  </Tr>
                 ))}
-                {secrets.length === 0 && !loading && (
-                  <tr>
-                    <td colSpan={3} className="empty">
-                      No secrets reported.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+              {secrets.map((s) => (
+                <Tr key={s.name}>
+                  <td className="mono">{s.name}</td>
+                  <td>
+                    <Badge variant={s.present ? "pass" : "fail"}>
+                      {s.present ? "present" : "missing"}
+                    </Badge>
+                  </td>
+                  <td>
+                    <Badge>{s.source}</Badge>
+                  </td>
+                </Tr>
+              ))}
+              {secrets.length === 0 && !loading && (
+                <Tr animate={false}>
+                  <td colSpan={3} className="empty">
+                    No secrets reported.
+                  </td>
+                </Tr>
+              )}
+            </Tbody>
+          </Table>
+        </Panel>
       )}
     </>
   );

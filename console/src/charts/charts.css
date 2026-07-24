@@ -1,0 +1,133 @@
+/* AgentOS console — hand-rolled SVG charts. Token-driven; the theme owns the values. */
+
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.chart-grid {
+  stroke: var(--border, rgba(255, 255, 255, 0.06));
+  stroke-width: 1;
+}
+
+.chart-axis-label {
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 10px;
+  fill: var(--text-faint, #5c636e);
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--accent, #5b8cff);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart-area {
+  fill: var(--accent-dim, rgba(91, 140, 255, 0.12));
+  stroke: none;
+}
+
+/* Mount draw-in: pathLength is normalized to 1 in the markup, so a dashoffset
+   of 1 starts fully hidden and animates to fully drawn. */
+.chart-line--draw {
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+  animation: chart-draw var(--dur-med, 200ms) var(--ease, cubic-bezier(0.2, 0.8, 0.2, 1))
+    forwards;
+}
+
+.chart-area--fade {
+  opacity: 0;
+  animation: chart-fade var(--dur-med, 200ms) var(--ease, cubic-bezier(0.2, 0.8, 0.2, 1))
+    var(--dur-fast, 120ms) forwards;
+}
+
+@keyframes chart-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes chart-fade {
+  to {
+    opacity: 1;
+  }
+}
+
+/* SpendBreakdown — HTML bars; text labels carry the value, never color alone. */
+.breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 160px) 1fr auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.breakdown-label {
+  font-size: 12px;
+  color: var(--text-dim, #8b929d);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.breakdown-track {
+  height: 6px;
+  background: var(--inset, #0c0e12);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.breakdown-fill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent, #5b8cff);
+  transform-origin: left center;
+  animation: chart-bar var(--dur-med, 200ms) var(--ease, cubic-bezier(0.2, 0.8, 0.2, 1))
+    both;
+}
+
+.breakdown-value {
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-dim, #8b929d);
+  text-align: right;
+}
+
+.breakdown-empty {
+  font-size: 12px;
+  color: var(--text-faint, #5c636e);
+}
+
+@keyframes chart-bar {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chart-line--draw,
+  .chart-area--fade,
+  .breakdown-fill {
+    animation: none;
+  }
+  .chart-line--draw {
+    stroke-dashoffset: 0;
+  }
+  .chart-area--fade {
+    opacity: 1;
+  }
+}

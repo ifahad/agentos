@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { SSO_LOGIN_URL } from "../lib/api";
 import type { AuthRole } from "../lib/rbac";
 import { roleLabel } from "../lib/rbac";
+import { Button, Input, Modal } from "../ui";
 import { ErrorNotice } from "./common";
 
 interface Props {
+  open: boolean;
   adminKey: string;
   role: AuthRole;
   orgId: string;
@@ -16,6 +18,7 @@ interface Props {
 }
 
 export function SettingsModal({
+  open,
   adminKey,
   role,
   orgId,
@@ -28,6 +31,16 @@ export function SettingsModal({
   const [mode, setMode] = useState<"root" | "user">(role === "root" ? "root" : "user");
   const [value, setValue] = useState(adminKey);
 
+  // The modal now stays mounted between opens (so the Modal primitive's exit
+  // animation can run) — reset the form to the current credentials each time
+  // it opens, matching the previous mount-per-open behavior.
+  useEffect(() => {
+    if (open) {
+      setValue(adminKey);
+      setMode(role === "root" ? "root" : "user");
+    }
+  }, [open, adminKey, role]);
+
   const save = () => onSave(value.trim());
 
   // Once whoami has resolved a token, show the identity the gateway reports —
@@ -39,86 +52,77 @@ export function SettingsModal({
       : [email, roleLabel(role), orgId].filter(Boolean).join(" · ");
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Settings</h2>
-        <p>
-          Authenticate calls to the gateway admin API. Use the{" "}
-          <strong>root admin key</strong> (global superuser) or a{" "}
-          <strong>user token</strong> (<code>agu-…</code>) issued from the Users page. Your role and
-          org are read from the gateway (<code>whoami</code>) — no need to enter them. The token is
-          sent as a Bearer credential and stored in this browser only.
-        </p>
-
-        {identityError && <ErrorNotice error={identityError} />}
-
-        {resolved && identityLine && (
-          <div className="secret-reveal" style={{ marginBottom: 16 }}>
-            <strong>Signed in</strong>
-            <div className="muted mono" style={{ marginTop: 6 }}>
-              {identityLine}
-            </div>
-          </div>
-        )}
-
-        {ssoEnabled && (
-          <>
-            <button
-              className="btn primary"
-              style={{ width: "100%" }}
-              onClick={() => window.location.assign(SSO_LOGIN_URL)}
-            >
-              Sign in with SSO
-            </button>
-            <p className="muted" style={{ fontSize: "12px", margin: "10px 0 16px" }}>
-              Redirects to your identity provider and returns with a user token issued for you.
-            </p>
-          </>
-        )}
-
-        <div className="mode-toggle">
-          <button
-            className={`btn small${mode === "root" ? " primary" : ""}`}
-            onClick={() => setMode("root")}
-          >
-            Root admin key
-          </button>
-          <button
-            className={`btn small${mode === "user" ? " primary" : ""}`}
-            onClick={() => setMode("user")}
-          >
-            User token
-          </button>
-        </div>
-
-        <label className="field">
-          <span>{mode === "root" ? "Gateway admin key" : "User token (agu-…)"}</span>
-          <input
-            type="password"
-            className="mono"
-            value={value}
-            placeholder={mode === "root" ? "AGENTOS_ADMIN_KEY" : "agu-…"}
-            onChange={(e) => setValue(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && save()}
-            autoFocus
-          />
-        </label>
-        {mode === "user" && (
-          <p className="muted" style={{ fontSize: "12px", marginBottom: 0 }}>
-            Your role and org come from the token itself — the gateway enforces your real
-            permissions and answers 403 if you exceed them.
-          </p>
-        )}
-
-        <div className="modal-actions">
-          <button className="btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn primary" onClick={save}>
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Settings"
+      actions={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button variant="primary" onClick={save}>
             Save
-          </button>
+          </Button>
+        </>
+      }
+    >
+      <p>
+        Authenticate calls to the gateway admin API. Use the <strong>root admin key</strong> (global
+        superuser) or a <strong>user token</strong> (<code>agu-…</code>) issued from the Users page.
+        Your role and org are read from the gateway (<code>whoami</code>) — no need to enter them.
+        The token is sent as a Bearer credential and stored in this browser only.
+      </p>
+
+      {identityError && <ErrorNotice error={identityError} />}
+
+      {resolved && identityLine && (
+        <div className="secret-reveal" style={{ marginBottom: 16 }}>
+          <strong>Signed in</strong>
+          <div className="muted mono" style={{ marginTop: 6 }}>
+            {identityLine}
+          </div>
         </div>
+      )}
+
+      {ssoEnabled && (
+        <>
+          <Button
+            variant="primary"
+            style={{ width: "100%" }}
+            onClick={() => window.location.assign(SSO_LOGIN_URL)}
+          >
+            Sign in with SSO
+          </Button>
+          <p className="muted" style={{ fontSize: "12px", margin: "10px 0 16px" }}>
+            Redirects to your identity provider and returns with a user token issued for you.
+          </p>
+        </>
+      )}
+
+      <div className="mode-toggle">
+        <Button small variant={mode === "root" ? "primary" : "ghost"} onClick={() => setMode("root")}>
+          Root admin key
+        </Button>
+        <Button small variant={mode === "user" ? "primary" : "ghost"} onClick={() => setMode("user")}>
+          User token
+        </Button>
       </div>
-    </div>
+
+      <Input
+        label={mode === "root" ? "Gateway admin key" : "User token (agu-…)"}
+        type="password"
+        className="mono"
+        value={value}
+        placeholder={mode === "root" ? "AGENTOS_ADMIN_KEY" : "agu-…"}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => e.key === "Enter" && save()}
+        autoFocus
+      />
+      {mode === "user" && (
+        <p className="muted" style={{ fontSize: "12px", marginBottom: 0 }}>
+          Your role and org come from the token itself — the gateway enforces your real permissions
+          and answers 403 if you exceed them.
+        </p>
+      )}
+    </Modal>
   );
 }

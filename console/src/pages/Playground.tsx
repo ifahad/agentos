@@ -1,10 +1,21 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { PageProps } from "../App";
 import { ErrorNotice, PageHead, errorMessage } from "../components/common";
 import { apiFetchRaw, runtimeRequest } from "../lib/api";
 import { compactJSON } from "../lib/format";
 import { streamSSE } from "../lib/sse";
 import type { PendingApprovalResponse, PendingTool, RunResponse, StreamEvent } from "../lib/types";
+import {
+  Button,
+  EmptyState,
+  Textarea,
+  STAGGER,
+  STAGGER_MAX_ITEMS,
+  transition,
+  transitionFast,
+} from "../ui";
+import "./Playground.css";
 
 type Entry =
   | { kind: "user"; text: string }
@@ -12,6 +23,54 @@ type Entry =
   | { kind: "output"; text: string }
   | { kind: "pending"; pending: PendingTool[]; resolved: "approved" | "denied" | null }
   | { kind: "info"; text: string };
+
+/** Pretty-printed tool input for the expanded tool-call body. */
+function prettyJSON(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  } catch {
+    return String(value);
+  }
+}
+
+/**
+ * Expandable tool call — collapsed shows the tool name and a one-line summary;
+ * expanded reveals the full input. Height animates via AnimatePresence.
+ */
+function ToolCall({ tool, input }: { tool: string; input: unknown }) {
+  const [open, setOpen] = useState(false);
+  const reduced = useReducedMotion();
+  return (
+    <div className="pg-tool">
+      <button
+        type="button"
+        className="pg-tool-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className={`pg-chevron${open ? " open" : ""}`} aria-hidden>
+          ›
+        </span>
+        <span className="tool-name mono">{tool}</span>
+        {!open && <code className="pg-tool-summary">{compactJSON(input, 90)}</code>}
+      </button>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            key="body"
+            className="pg-tool-body"
+            initial={reduced ? false : { height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={reduced ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            transition={transition}
+          >
+            <pre className="pg-tool-pre">{prettyJSON(input)}</pre>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export function Playground(_props: PageProps) {
   const [input, setInput] = useState("");
@@ -21,6 +80,28 @@ export function Playground(_props: PageProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const reduced = useReducedMotion();
+
+  // Length of `entries` at the previous commit — used to stagger only the
+  // freshly appended batch (capped), so earlier events never re-animate.
+  const prevCountRef = useRef(0);
+  useEffect(() => {
+    prevCountRef.current = entries.length;
+  }, [entries.length]);
+
+  const enterDelay = (i: number): number => {
+    if (reduced) return 0;
+    const fresh = i - prevCountRef.current;
+    if (fresh < 0) return 0;
+    return Math.min(fresh, STAGGER_MAX_ITEMS - 1) * STAGGER;
+  };
+
+  const eventMotion = (i: number) => ({
+    initial: reduced ? false : { opacity: 0, y: 6 },
+    animate: { opacity: 1, y: 0 },
+    exit: reduced ? { opacity: 0 } : { opacity: 0, y: 4, transition: transitionFast },
+    transition: { ...transition, delay: enterDelay(i) },
+  });
 
   const append = (...added: Entry[]) => {
     setEntries((prev) => [...prev, ...added]);
@@ -140,9 +221,9 @@ export function Playground(_props: PageProps) {
         {threadId ? (
           <>
             thread <span className="mono">{threadId}</span>
-            <button className="btn small" onClick={reset}>
+            <Button small onClick={reset}>
               New thread
-            </button>
+            </Button>
           </>
         ) : (
           <>new conversation</>
@@ -151,79 +232,106 @@ export function Playground(_props: PageProps) {
 
       <ErrorNotice error={error} />
 
-      <div className="timeline">
-        {entries.map((e, i) => {
-          switch (e.kind) {
-            case "user":
-              return (
-                <div key={i} className="event user">
-                  <div className="event-tag">you</div>
-                  <pre>{e.text}</pre>
+      <div className="timeline pg-stream">
+        {entries.length === 0 && !busy ? (
+          <EmptyState
+            title="No run yet"
+            description="Ask the governed agent below — tool calls and answers stream in here as a live step stream."
+          />
+        ) : (
+          <AnimatePresence initial={false}>
+            {entries.map((e, i) => {
+              switch (e.kind) {
+                case "user":
+                  return (
+                    <motion.div key={i} className="event user" {...eventMotion(i)}>
+                      <div className="event-tag">you</div>
+                      <pre>{e.text}</pre>
+                    </motion.div>
+                  );
+                case "step": {
+                  const stepNo = entries
+                    .slice(0, i + 1)
+                    .reduce((n, x) => n + (x.kind === "step" ? 1 : 0), 0);
+                  return (
+                    <motion.div key={i} className="event step" {...eventMotion(i)}>
+                      <div className="event-tag">step {stepNo} · tool call</div>
+                      <ToolCall tool={e.tool} input={e.input} />
+                    </motion.div>
+                  );
+                }
+                case "output":
+                  return (
+                    <motion.div key={i} className="event output" {...eventMotion(i)}>
+                      <div className="event-tag">agent</div>
+                      <pre>{e.text}</pre>
+                    </motion.div>
+                  );
+                case "pending":
+                  return (
+                    <motion.div key={i} className="event pending" {...eventMotion(i)}>
+                      <div className="event-tag">
+                        {e.resolved === null && (
+                          <span className="pg-live-dot pg-live-dot--amber" aria-hidden />
+                        )}
+                        approval required{e.resolved ? ` — ${e.resolved}` : ""}
+                      </div>
+                      {e.pending.map((p, j) => (
+                        <ToolCall key={j} tool={p.tool} input={p.input} />
+                      ))}
+                      {e.resolved === null && (
+                        <div className="pending-actions">
+                          <Button
+                            small
+                            variant="primary"
+                            disabled={busy}
+                            onClick={() => void decide(i, true)}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            small
+                            variant="danger"
+                            disabled={busy}
+                            onClick={() => void decide(i, false)}
+                          >
+                            Deny
+                          </Button>
+                        </div>
+                      )}
+                    </motion.div>
+                  );
+                case "info":
+                  return (
+                    <motion.div key={i} className="event" {...eventMotion(i)}>
+                      <pre className="muted">{e.text}</pre>
+                    </motion.div>
+                  );
+              }
+            })}
+            {busy && (
+              <motion.div
+                key="thinking"
+                className="event pg-thinking"
+                initial={reduced ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={transition}
+              >
+                <div className="event-tag">
+                  <span className="pg-live-dot" aria-hidden /> working
                 </div>
-              );
-            case "step":
-              return (
-                <div key={i} className="event step">
-                  <div className="event-tag">tool call</div>
-                  <div>
-                    <span className="tool-name mono">{e.tool}</span>{" "}
-                    <code>{compactJSON(e.input)}</code>
-                  </div>
-                </div>
-              );
-            case "output":
-              return (
-                <div key={i} className="event output">
-                  <div className="event-tag">agent</div>
-                  <pre>{e.text}</pre>
-                </div>
-              );
-            case "pending":
-              return (
-                <div key={i} className="event pending">
-                  <div className="event-tag">
-                    approval required{e.resolved ? ` — ${e.resolved}` : ""}
-                  </div>
-                  {e.pending.map((p, j) => (
-                    <div key={j}>
-                      <span className="tool-name mono">{p.tool}</span>{" "}
-                      <code>{compactJSON(p.input)}</code>
-                    </div>
-                  ))}
-                  {e.resolved === null && (
-                    <div className="pending-actions">
-                      <button
-                        className="btn small primary"
-                        disabled={busy}
-                        onClick={() => void decide(i, true)}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        className="btn small danger"
-                        disabled={busy}
-                        onClick={() => void decide(i, false)}
-                      >
-                        Deny
-                      </button>
-                    </div>
-                  )}
-                </div>
-              );
-            case "info":
-              return (
-                <div key={i} className="event">
-                  <pre className="muted">{e.text}</pre>
-                </div>
-              );
-          }
-        })}
-        {busy && <div className="spin">running…</div>}
+                <div className="pg-shimmer w70" />
+                <div className="pg-shimmer w45" />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
         <div ref={bottomRef} />
       </div>
 
       <div className="run-bar">
-        <textarea
+        <Textarea
           value={input}
           placeholder="Ask the agent, e.g. “Which customer has the highest total order value?”"
           onChange={(e) => setInput(e.target.value)}
@@ -235,13 +343,13 @@ export function Playground(_props: PageProps) {
           }}
         />
         <div className="run-controls">
-          <button
-            className="btn primary"
+          <Button
+            variant="primary"
             onClick={() => void run()}
             disabled={busy || !input.trim() || hasUnresolvedPending}
           >
             {busy ? "Running…" : "Run"}
-          </button>
+          </Button>
           <label className="toggle">
             <input
               type="checkbox"

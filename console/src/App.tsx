@@ -1,5 +1,7 @@
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import { SettingsModal } from "./components/SettingsModal";
+import { Sidebar } from "./components/Sidebar";
 import { errorMessage } from "./components/common";
 import {
   apiFetch,
@@ -15,9 +17,10 @@ import {
   whoamiRequest,
 } from "./lib/api";
 import type { AuthRole } from "./lib/rbac";
-import { asAuthRole, can, roleLabel } from "./lib/rbac";
+import { asAuthRole, can } from "./lib/rbac";
 import { identityFromWhoAmI, parseAuthFragment } from "./lib/sso";
 import type { WhoAmI } from "./lib/types";
+import { ToastProvider, pageTransition } from "./ui";
 import { Audit } from "./pages/Audit";
 import { Documents } from "./pages/Documents";
 import { Improve } from "./pages/Improve";
@@ -140,57 +143,57 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const reducedMotion = useReducedMotion();
+  const page = (
+    <route.Component adminKey={adminKey} role={role} orgId={orgId} openSettings={openSettings} />
+  );
+
   return (
-    <div className="shell">
-      <aside className="sidebar">
-        <div className="brand">
-          <span className="brand-name">AgentOS</span>
-          <span className="brand-tag">console</span>
-        </div>
-        <nav className="nav">
-          {visibleRoutes.map((r) => (
-            <button
-              key={r.path}
-              className={`nav-item${r.path === route.path ? " active" : ""}`}
-              onClick={() => navigate(r.path)}
-            >
-              {r.label}
-            </button>
-          ))}
-        </nav>
-        <div className="sidebar-footer">
-          <button className="nav-item" onClick={openSettings}>
-            Settings
-            {adminKey ? (
-              <span className="dim"> · {roleLabel(role).toLowerCase()}</span>
-            ) : (
-              <span style={{ color: "var(--amber)" }}> · no key</span>
-            )}
-          </button>
-        </div>
-      </aside>
-      <main className="main">
-        <div className="page">
-          <route.Component adminKey={adminKey} role={role} orgId={orgId} openSettings={openSettings} />
-        </div>
-      </main>
-      {settingsOpen && (
-        <SettingsModal
+    <ToastProvider>
+      <div className="shell">
+        <Sidebar
+          routes={visibleRoutes}
+          activePath={route.path}
+          onNavigate={navigate}
           adminKey={adminKey}
           role={role}
-          orgId={orgId}
-          email={email}
-          ssoEnabled={ssoEnabled}
-          identityError={identityError}
-          onSave={(k) => {
-            saveAdminKey(k);
-            setAdminKey(k);
-            setSettingsOpen(false);
-            void refreshIdentity(k);
-          }}
-          onClose={() => setSettingsOpen(false)}
+          openSettings={openSettings}
         />
-      )}
-    </div>
+        <main className="main">
+          {reducedMotion ? (
+            <div className="page">{page}</div>
+          ) : (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={route.path}
+                className="page"
+                variants={pageTransition}
+                initial="hidden"
+                animate="show"
+                exit="exit"
+              >
+                {page}
+              </motion.div>
+            </AnimatePresence>
+          )}
+        </main>
+      </div>
+      <SettingsModal
+        open={settingsOpen}
+        adminKey={adminKey}
+        role={role}
+        orgId={orgId}
+        email={email}
+        ssoEnabled={ssoEnabled}
+        identityError={identityError}
+        onSave={(k) => {
+          saveAdminKey(k);
+          setAdminKey(k);
+          setSettingsOpen(false);
+          void refreshIdentity(k);
+        }}
+        onClose={() => setSettingsOpen(false)}
+      />
+    </ToastProvider>
   );
 }

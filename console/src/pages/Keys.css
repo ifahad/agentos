@@ -1,0 +1,24 @@
+/*
+ * Keys page — budget meter fill animation.
+ * Base `.meter` styling (track, colors, `.hot`) lives in styles.css; this
+ * adds the animate-on-mount fill from the approved primitives preview:
+ * fill starts at 0 and eases to the `--w` custom property over 1.2s.
+ */
+
+.keys-meter > div {
+  width: 0;
+  animation: keys-meter-fill 1.2s var(--ease) forwards;
+}
+
+@keyframes keys-meter-fill {
+  to {
+    width: var(--w);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .keys-meter > div {
+    animation: none;
+    width: var(--w);
+  }
+}

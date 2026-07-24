@@ -1,0 +1,164 @@
+/* AgentOS Console — src/ui primitive styles. Tokens live in styles.css;
+   only primitive-specific classes live here. */
+
+/* ---- Stat ---- */
+
+.ui-stat-spark {
+  margin-top: 8px;
+  display: block;
+}
+
+/* ---- Tabs ---- */
+
+.ui-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.ui-tab {
+  position: relative;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.ui-tab:hover {
+  color: var(--text);
+}
+
+.ui-tab.active {
+  color: var(--text);
+}
+
+.ui-tab-pill {
+  position: absolute;
+  inset: 0;
+  background: var(--raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+}
+
+.ui-tab-label {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---- Toast ---- */
+
+.ui-toast-stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  z-index: 100;
+  pointer-events: none;
+}
+
+.ui-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 220px;
+  max-width: 360px;
+  background: var(--raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--text);
+  cursor: pointer;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.ui-toast-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.ui-toast-success .ui-toast-dot {
+  background: var(--green);
+}
+
+.ui-toast-error {
+  border-color: rgba(216, 96, 96, 0.5);
+}
+
+.ui-toast-error .ui-toast-dot {
+  background: var(--red);
+}
+
+/* ---- Skeleton ---- */
+
+.ui-skeleton {
+  display: inline-block;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--raised) 25%, #1a1f27 50%, var(--raised) 75%);
+  background-size: 200% 100%;
+  animation: ui-shimmer 1.4s linear infinite;
+  vertical-align: middle;
+}
+
+.ui-skeleton-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+@keyframes ui-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* ---- EmptyState ---- */
+
+.ui-empty {
+  padding: 40px 18px;
+  text-align: center;
+  color: var(--text-faint);
+}
+
+.ui-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.ui-empty-desc {
+  margin-top: 6px;
+  font-size: 12.5px;
+  max-width: 420px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.ui-empty-action {
+  margin-top: 14px;
+}
+
+/* ---- Reduced motion ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-skeleton {
+    animation: none;
+  }
+}

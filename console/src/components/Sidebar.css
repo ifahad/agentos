@@ -1,0 +1,61 @@
+/* Shell & navigation — co-located with Sidebar.tsx.
+   Matches console/design/shell/navigation.html. Tokens live in styles.css. */
+
+/* Brand row: align the live dot on center (styles.css uses baseline). */
+.brand {
+  align-items: center;
+}
+
+/* Brand live dot — pulses while any agent run is in flight. */
+.live {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: live-pulse 1.6s ease-out infinite;
+}
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 7px rgba(91, 140, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0);
+  }
+}
+
+/* Sliding active-pill: the pill is a motion.span rendered inside the active
+   nav item; framer-motion layoutId="nav-pill" slides it between items
+   (200ms, var(--ease) via ui/motion transition). */
+.nav .nav-item {
+  position: relative;
+}
+
+/* The pill carries the active fill, so the item itself stays transparent —
+   overrides the static .nav-item rules in styles.css (higher specificity). */
+.nav .nav-item:hover,
+.nav .nav-item.active,
+.sidebar-footer .nav-item:hover {
+  background: transparent;
+}
+
+.nav-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-sm);
+  background: var(--accent-dim);
+}
+
+.nav-item-label {
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .live {
+    animation: none;
+  }
+}

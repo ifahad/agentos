@@ -6,6 +6,7 @@ import { formatTimestamp } from "../lib/format";
 import { activeBadge, formatExternalId } from "../lib/provisioning";
 import { can } from "../lib/rbac";
 import type { Org, User } from "../lib/types";
+import { Badge, Panel, PanelHead, Select, Skeleton, Table, Tbody, Tr } from "../ui";
 
 // SCIM 2.0 provisioning view. There is no dedicated status endpoint that
 // reports whether SCIM is enabled — that is an IdP-side concern — so this page
@@ -36,6 +37,7 @@ export function Provisioning({ adminKey, role, openSettings }: PageProps) {
   );
 
   const users = usersLoad.data ?? [];
+  const showSkeleton = usersLoad.loading && users.length === 0 && !!activeOrg;
 
   return (
     <>
@@ -51,10 +53,8 @@ export function Provisioning({ adminKey, role, openSettings }: PageProps) {
 
       {adminKey && allowed && (
         <>
-          <div className="panel">
-            <div className="panel-head">
-              <h2>How provisioning works</h2>
-            </div>
+          <Panel>
+            <PanelHead title="How provisioning works" />
             <div className="panel-body">
               <p className="muted">
                 Users are provisioned by your identity provider (Okta, Entra, …) over SCIM 2.0 at{" "}
@@ -68,65 +68,70 @@ export function Provisioning({ adminKey, role, openSettings }: PageProps) {
                 here — manage the roster in your identity provider.
               </p>
             </div>
-          </div>
+          </Panel>
 
           <div className="thread-line">
             <span>Org</span>
-            <select value={activeOrg} onChange={(e) => setChosen(e.target.value)}>
+            <Select value={activeOrg} onChange={(e) => setChosen(e.target.value)} aria-label="Org">
               {orgs.length === 0 && <option value="">no orgs</option>}
               {orgs.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name} ({o.id})
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
 
-          <div className="panel">
-            <div className="panel-head">
-              <h2>Provisioned users</h2>
-              {usersLoad.loading && <span className="spin">loading…</span>}
-            </div>
+          <Panel>
+            <PanelHead title="Provisioned users" />
             <ErrorNotice error={usersLoad.error} />
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                    <th>Source</th>
-                    <th>Created</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => {
-                    const b = activeBadge(u.active);
-                    return (
-                      <tr key={u.id}>
-                        <td>{u.email}</td>
-                        <td>
-                          <span className="badge">{u.role}</span>
-                        </td>
-                        <td>
-                          <span className={b.className}>{b.label}</span>
-                        </td>
-                        <td className="dim">{formatExternalId(u.external_id)}</td>
-                        <td className="dim mono">{formatTimestamp(u.created_at)}</td>
-                      </tr>
-                    );
-                  })}
-                  {users.length === 0 && !usersLoad.loading && (
-                    <tr>
-                      <td colSpan={5} className="empty">
-                        {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
+            <Table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Source</th>
+                  <th>Created</th>
+                </tr>
+              </thead>
+              <Tbody staggerKey={`${activeOrg}:${users.length}`}>
+                {showSkeleton &&
+                  Array.from({ length: 3 }, (_, i) => (
+                    <Tr key={`skel-${i}`} animate={false}>
+                      <td><Skeleton width={180} /></td>
+                      <td><Skeleton width={56} /></td>
+                      <td><Skeleton width={56} /></td>
+                      <td><Skeleton width={80} /></td>
+                      <td><Skeleton width={120} /></td>
+                    </Tr>
+                  ))}
+                {users.map((u) => {
+                  const b = activeBadge(u.active);
+                  return (
+                    <Tr key={u.id}>
+                      <td>{u.email}</td>
+                      <td>
+                        <Badge>{u.role}</Badge>
                       </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                      <td>
+                        <Badge variant={u.active ? "pass" : "inactive"}>{b.label}</Badge>
+                      </td>
+                      <td className="dim">{formatExternalId(u.external_id)}</td>
+                      <td className="dim mono">{formatTimestamp(u.created_at)}</td>
+                    </Tr>
+                  );
+                })}
+                {users.length === 0 && !usersLoad.loading && (
+                  <Tr animate={false}>
+                    <td colSpan={5} className="empty">
+                      {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
+                    </td>
+                  </Tr>
+                )}
+              </Tbody>
+            </Table>
+          </Panel>
         </>
       )}
     </>

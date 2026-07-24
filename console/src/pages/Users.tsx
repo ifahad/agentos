@@ -14,10 +14,12 @@ import { formatTimestamp } from "../lib/format";
 import { activeBadge } from "../lib/provisioning";
 import { ROLES, can, roleLabel } from "../lib/rbac";
 import type { CreatedUser, Org, Role, User } from "../lib/types";
+import { Badge, Button, Input, Panel, PanelHead, Select, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
 
 export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
   const allowed = can(role, "user.view");
   const isRoot = role === "root";
+  const toast = useToast();
 
   // Root can enumerate every org and pick one; a user-token caller is scoped to
   // their own org (resolved from whoami — the gateway rejects any other).
@@ -44,7 +46,6 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
   const [email, setEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<Role>("member");
   const [inviting, setInviting] = useState(false);
-  const [inviteError, setInviteError] = useState<string | null>(null);
   const [created, setCreated] = useState<CreatedUser | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
 
@@ -53,11 +54,10 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
 
   const invite = async () => {
     if (!email.trim()) {
-      setInviteError("An email address is required.");
+      toast.error("An email address is required.");
       return;
     }
     setInviting(true);
-    setInviteError(null);
     try {
       const res = await apiFetch<CreatedUser>(
         gatewayAdminRequest(`/admin/orgs/${activeOrg}/users`, adminKey, {
@@ -67,9 +67,10 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
       );
       setCreated(res);
       setEmail("");
+      toast.success(`Invited ${res.email} as ${res.role}.`);
       usersLoad.reload();
     } catch (err) {
-      setInviteError(errorMessage(err));
+      toast.error(errorMessage(err));
     } finally {
       setInviting(false);
     }
@@ -86,15 +87,17 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
           method: "DELETE",
         }),
       );
+      toast.success(`Removed ${user.email}.`);
       usersLoad.reload();
     } catch (err) {
-      window.alert(errorMessage(err));
+      toast.error(errorMessage(err));
     } finally {
       setRemoving(null);
     }
   };
 
   const users = usersLoad.data ?? [];
+  const showSkeleton = usersLoad.loading && users.length === 0 && !!activeOrg;
 
   return (
     <>
@@ -114,14 +117,14 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
             {isRoot ? (
               <>
                 <span>Org</span>
-                <select value={activeOrg} onChange={(e) => setChosen(e.target.value)}>
+                <Select value={activeOrg} onChange={(e) => setChosen(e.target.value)} aria-label="Org">
                   {orgs.length === 0 && <option value="">no orgs</option>}
                   {orgs.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.name} ({o.id})
                     </option>
                   ))}
-                </select>
+                </Select>
               </>
             ) : (
               <span>
@@ -155,99 +158,101 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
           )}
 
           {canInvite && (
-            <div className="panel">
-              <div className="panel-head">
-                <h2>Invite user</h2>
-              </div>
+            <Panel>
+              <PanelHead title="Invite user" />
               <div className="panel-body">
-                <ErrorNotice error={inviteError} />
                 <div className="form-row">
-                  <label className="field">
-                    <span>Email</span>
-                    <input
-                      type="text"
-                      value={email}
-                      placeholder="person@acme.com"
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Role</span>
-                    <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as Role)}>
-                      {ROLES.map((r) => (
-                        <option key={r} value={r}>
-                          {roleLabel(r)}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  <Input
+                    label="Email"
+                    type="text"
+                    value={email}
+                    placeholder="person@acme.com"
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
+                  <Select
+                    label="Role"
+                    value={inviteRole}
+                    onChange={(e) => setInviteRole(e.target.value as Role)}
+                  >
+                    {ROLES.map((r) => (
+                      <option key={r} value={r}>
+                        {roleLabel(r)}
+                      </option>
+                    ))}
+                  </Select>
                 </div>
-                <button
-                  className="btn primary"
+                <Button
+                  variant="primary"
                   onClick={() => void invite()}
                   disabled={inviting || !activeOrg}
                 >
                   {inviting ? "Inviting…" : "Invite user"}
-                </button>
+                </Button>
               </div>
-            </div>
+            </Panel>
           )}
 
-          <div className="panel">
-            <div className="panel-head">
-              <h2>Members</h2>
-              {usersLoad.loading && <span className="spin">loading…</span>}
-            </div>
+          <Panel>
+            <PanelHead title="Members" />
             <ErrorNotice error={usersLoad.error} />
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Status</th>
-                    <th>Created</th>
-                    {canRemove && <th></th>}
-                  </tr>
-                </thead>
-                <tbody>
-                  {users.map((u) => (
-                    <tr key={u.id}>
+            <Table>
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Role</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  {canRemove && <th></th>}
+                </tr>
+              </thead>
+              <Tbody staggerKey={`${activeOrg}:${users.length}`}>
+                {showSkeleton &&
+                  Array.from({ length: 3 }, (_, i) => (
+                    <Tr key={`skel-${i}`} animate={false}>
+                      <td><Skeleton width={180} /></td>
+                      <td><Skeleton width={56} /></td>
+                      <td><Skeleton width={56} /></td>
+                      <td><Skeleton width={120} /></td>
+                      {canRemove && <td className="num"><Skeleton width={64} /></td>}
+                    </Tr>
+                  ))}
+                {users.map((u) => {
+                  const b = activeBadge(u.active);
+                  return (
+                    <Tr key={u.id}>
                       <td>{u.email}</td>
                       <td>
-                        <span className="badge">{u.role}</span>
+                        <Badge>{u.role}</Badge>
                       </td>
                       <td>
-                        {(() => {
-                          const b = activeBadge(u.active);
-                          return <span className={b.className}>{b.label}</span>;
-                        })()}
+                        <Badge variant={u.active ? "pass" : "inactive"}>{b.label}</Badge>
                       </td>
                       <td className="dim mono">{formatTimestamp(u.created_at)}</td>
                       {canRemove && (
                         <td className="num">
-                          <button
-                            className="btn small danger"
+                          <Button
+                            small
+                            variant="danger"
                             onClick={() => void remove(u)}
                             disabled={removing === u.id}
                           >
                             {removing === u.id ? "Removing…" : "Remove"}
-                          </button>
+                          </Button>
                         </td>
                       )}
-                    </tr>
-                  ))}
-                  {users.length === 0 && !usersLoad.loading && (
-                    <tr>
-                      <td colSpan={canRemove ? 5 : 4} className="empty">
-                        {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
+                    </Tr>
+                  );
+                })}
+                {users.length === 0 && !usersLoad.loading && (
+                  <Tr animate={false}>
+                    <td colSpan={canRemove ? 5 : 4} className="empty">
+                      {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
+                    </td>
+                  </Tr>
+                )}
+              </Tbody>
+            </Table>
+          </Panel>
         </>
       )}
     </>
