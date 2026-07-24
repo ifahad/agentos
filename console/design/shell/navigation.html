@@ -1,0 +1,100 @@
+<!-- @dsCard group="Shell" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentOS — Shell &amp; navigation</title>
+<style>
+  :root {
+    --bg: #0a0b0d; --raised: #101318; --inset: #0c0e12;
+    --border: rgba(255,255,255,0.06);
+    --text: #d6dae1; --text-dim: #8b929d; --text-faint: #5c636e;
+    --accent: #5b8cff; --accent-dim: rgba(91,140,255,0.12);
+    --dur-med: 200ms; --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    font-size: 13px; display: flex; min-height: 100vh;
+  }
+  .sidebar {
+    width: 200px; flex-shrink: 0; display: flex; flex-direction: column;
+    border-right: 1px solid var(--border); background: var(--inset);
+    padding: 20px 10px 14px;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; padding: 0 10px 20px; }
+  .brand-name { font-size: 15px; font-weight: 650; letter-spacing: 0.02em; }
+  .live { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: live-pulse 1.6s ease-out infinite; }
+  @keyframes live-pulse {
+    0% { box-shadow: 0 0 0 0 rgba(91,140,255,0.45); }
+    70% { box-shadow: 0 0 0 7px rgba(91,140,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(91,140,255,0); }
+  }
+  .nav { display: flex; flex-direction: column; gap: 2px; position: relative; }
+  .nav-item {
+    position: relative; z-index: 1;
+    display: block; width: 100%; text-align: left; padding: 7px 10px;
+    border: 0; border-radius: 6px; background: transparent;
+    color: var(--text-dim); font: inherit; cursor: pointer;
+    transition: color 120ms var(--ease);
+  }
+  .nav-item:hover { color: var(--text); }
+  .nav-item.active { color: var(--text); }
+  .pill {
+    position: absolute; left: 0; right: 0; height: 32px; border-radius: 6px;
+    background: var(--accent-dim); z-index: 0;
+    transition: transform var(--dur-med) var(--ease);
+  }
+  .sidebar-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); }
+  .sidebar-footer .dim { color: var(--text-faint); }
+  .main { flex: 1; padding: 32px 40px; }
+  .page { animation: page-in 160ms var(--ease); }
+  @keyframes page-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  .main h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; }
+  .main p { color: var(--text-dim); margin-top: 4px; }
+  .hint { margin-top: 26px; color: var(--text-faint); font-size: 12px; }
+  @media (prefers-reduced-motion: reduce) { .page, .live { animation: none; } .pill { transition: none; } }
+</style>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand"><span class="brand-name">AgentOS</span><span class="live" title="run in flight"></span></div>
+    <nav class="nav" id="nav">
+      <div class="pill" id="pill"></div>
+      <button class="nav-item active">Overview</button>
+      <button class="nav-item">Keys</button>
+      <button class="nav-item">Audit</button>
+      <button class="nav-item">Playground</button>
+      <button class="nav-item">Documents</button>
+      <button class="nav-item">Improve</button>
+    </nav>
+    <div class="sidebar-footer">
+      <button class="nav-item">Settings <span class="dim">· root</span></button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page" id="page">
+      <h1 id="title">Overview</h1>
+      <p id="desc">Everything governed, at a glance.</p>
+      <p class="hint">Click nav items — the active pill slides with layout animation; the page fades and rises. The dot next to the brand pulses while any agent run is in flight.</p>
+    </div>
+  </main>
+<script>
+  const items = [...document.querySelectorAll(".nav .nav-item")];
+  const pill = document.getElementById("pill");
+  const page = document.getElementById("page");
+  const title = document.getElementById("title");
+  const move = el => { pill.style.transform = `translateY(${el.offsetTop}px)`; };
+  move(items[0]);
+  addEventListener("resize", () => move(document.querySelector(".nav-item.active")));
+  items.forEach(el => el.addEventListener("click", () => {
+    items.forEach(i => i.classList.remove("active"));
+    el.classList.add("active");
+    move(el);
+    title.textContent = el.textContent;
+    page.style.animation = "none"; void page.offsetWidth; page.style.animation = "";
+  }));
+</script>
+</body>
+</html>

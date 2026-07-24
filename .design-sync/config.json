@@ -1,0 +1,8 @@
+{
+  "projectId": "53f934b5-0289-4113-b170-ab81887c37e5",
+  "projectName": "AgentOS Console",
+  "projectUrl": "https://claude.ai/design/p/53f934b5-0289-4113-b170-ab81887c37e5",
+  "shape": "package",
+  "pkg": "console",
+  "notes": "First sync 2026-07-24. No component library exists yet — this project is the visual-reference target for the console UI overhaul (docs/superpowers/specs/2026-07-24-console-ui-overhaul-design.md). Components are hand-authored preview cards under console/design/ with @dsCard markers, synced incrementally as the overhaul builds them."
+}

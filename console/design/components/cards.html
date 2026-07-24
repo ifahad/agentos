@@ -1,0 +1,128 @@
+<!-- @dsCard group="Components" -->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AgentOS — Stat cards &amp; table</title>
+<style>
+  :root {
+    --bg: #0a0b0d; --raised: #101318; --inset: #0c0e12;
+    --border: rgba(255,255,255,0.06); --border-strong: rgba(255,255,255,0.09);
+    --text: #d6dae1; --text-dim: #8b929d; --text-faint: #5c636e;
+    --accent: #5b8cff; --accent-dim: rgba(91,140,255,0.12);
+    --green: #43b374;
+    --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    padding: 32px; font-size: 13px;
+  }
+  h1 { font-size: 20px; font-weight: 600; letter-spacing: -0.01em; margin-bottom: 4px; }
+  .sub { color: var(--text-dim); margin-bottom: 28px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin-bottom: 28px; }
+  .card {
+    background: var(--raised); border: 1px solid var(--border);
+    border-radius: 8px; padding: 16px 18px;
+    opacity: 0; transform: translateY(6px);
+    animation: rise 400ms var(--ease) forwards;
+  }
+  .card:nth-child(2) { animation-delay: 60ms; }
+  .card:nth-child(3) { animation-delay: 120ms; }
+  .card:nth-child(4) { animation-delay: 180ms; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); margin-bottom: 6px; }
+  .value { font-size: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .spark { margin-top: 8px; display: block; }
+
+  .panel {
+    background: var(--raised); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden;
+    opacity: 0; animation: fade 400ms var(--ease) 240ms forwards;
+  }
+  @keyframes fade { to { opacity: 1; } }
+  .panel-head {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 12px 18px; border-bottom: 1px solid var(--border);
+  }
+  .panel-head h2 { font-size: 13px; font-weight: 600; margin: 0; text-transform: none; letter-spacing: 0; color: var(--text); }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th {
+    text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-faint);
+    padding: 10px 18px; border-bottom: 1px solid var(--border);
+  }
+  td { padding: 9px 18px; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: 0; }
+  tbody tr { opacity: 0; animation: fade 300ms var(--ease) forwards; transition: background 120ms var(--ease); }
+  tbody tr:nth-child(1) { animation-delay: 300ms; }
+  tbody tr:nth-child(2) { animation-delay: 340ms; }
+  tbody tr:nth-child(3) { animation-delay: 380ms; }
+  tbody tr:hover { background: var(--inset); }
+  td.num, th.num { text-align: right; }
+  td.dim { color: var(--text-dim); }
+  .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+  @media (prefers-reduced-motion: reduce) { .card, .panel, tbody tr { animation: none; opacity: 1; transform: none; } }
+</style>
+</head>
+<body>
+  <h1>Stats &amp; tables</h1>
+  <p class="sub">Staggered entrances, count-up values, thin-stroke sparklines.</p>
+
+  <div class="cards">
+    <div class="card">
+      <div class="label">Requests today</div>
+      <div class="value" data-count="12408">0</div>
+      <svg class="spark" width="120" height="24" viewBox="0 0 120 24" fill="none">
+        <path d="M0 18 L12 15 L24 16 L36 11 L48 13 L60 8 L72 10 L84 6 L96 8 L108 4 L120 5" stroke="var(--accent)" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M0 18 L12 15 L24 16 L36 11 L48 13 L60 8 L72 10 L84 6 L96 8 L108 4 L120 5 V24 H0 Z" fill="var(--accent-dim)"/>
+      </svg>
+    </div>
+    <div class="card">
+      <div class="label">Spend today</div>
+      <div class="value" data-count="41.20" data-prefix="$" data-decimals="2">$0.00</div>
+    </div>
+    <div class="card">
+      <div class="label">Active keys</div>
+      <div class="value" data-count="6">0</div>
+    </div>
+    <div class="card">
+      <div class="label">Runs in flight</div>
+      <div class="value" data-count="2">0</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><h2>Recent keys</h2></div>
+    <table>
+      <thead><tr><th>Name</th><th>Key</th><th class="num">Budget</th><th class="num">Used</th></tr></thead>
+      <tbody>
+        <tr><td>production-agent</td><td class="mono dim">agk_7f3a…9c2e</td><td class="num">$500</td><td class="num">$212</td></tr>
+        <tr><td>staging-eval</td><td class="mono dim">agk_1bd4…77f0</td><td class="num">$50</td><td class="num">$8</td></tr>
+        <tr><td>local-dev</td><td class="mono dim">agk_e992…0a41</td><td class="num">∞</td><td class="num">$1</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+<script>
+  const ease = t => 1 - Math.pow(1 - t, 3);
+  const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelectorAll("[data-count]").forEach((el, i) => {
+    const target = parseFloat(el.dataset.count);
+    const dec = parseInt(el.dataset.decimals || "0");
+    const prefix = el.dataset.prefix || "";
+    const fmt = v => prefix + v.toLocaleString("en-US", { minimumFractionDigits: dec, maximumFractionDigits: dec });
+    if (reduced) { el.textContent = fmt(target); return; }
+    const t0 = performance.now() + i * 60;
+    const tick = now => {
+      const p = Math.min(1, Math.max(0, (now - t0) / 700));
+      el.textContent = fmt(target * ease(p));
+      if (p < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+</script>
+</body>
+</html>
