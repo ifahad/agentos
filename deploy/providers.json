@@ -1,0 +1,40 @@
+{
+  "_comment": "PLACEHOLDER endpoints, model ids, and prices. These were NOT verified against vendor documentation. Confirm each vendor's current OpenAI-compatible base URL, exact model id, and per-1M-token pricing, set the matching AGENTOS_*_API_KEY, then flip enabled to true. Prices are USD per 1M tokens and drive budget enforcement — wrong prices mean wrong budget caps. Some vendors expose their OpenAI-compatible surface under a non-default path (e.g. /v4/chat/completions); set chat_path per entry when so.",
+  "providers": [
+    {
+      "name": "moonshot",
+      "base_url": "https://api.moonshot.ai",
+      "key_name": "AGENTOS_MOONSHOT_API_KEY",
+      "enabled": false,
+      "prices": { "kimi-k3": { "in": 0, "out": 0 } }
+    },
+    {
+      "name": "zhipu",
+      "base_url": "https://open.bigmodel.cn/api/paas",
+      "key_name": "AGENTOS_ZHIPU_API_KEY",
+      "enabled": false,
+      "prices": { "glm-5.2": { "in": 0, "out": 0 } }
+    },
+    {
+      "name": "alibaba",
+      "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode",
+      "key_name": "AGENTOS_ALIBABA_API_KEY",
+      "enabled": false,
+      "prices": { "qwen3.8-max": { "in": 0, "out": 0 } }
+    },
+    {
+      "name": "deepseek",
+      "base_url": "https://api.deepseek.com",
+      "key_name": "AGENTOS_DEEPSEEK_API_KEY",
+      "enabled": false,
+      "prices": { "deepseek-v4-pro": { "in": 0, "out": 0 } }
+    },
+    {
+      "name": "minimax",
+      "base_url": "https://api.minimax.chat",
+      "key_name": "AGENTOS_MINIMAX_API_KEY",
+      "enabled": false,
+      "prices": { "minimax-m3": { "in": 0, "out": 0 } }
+    }
+  ]
+}

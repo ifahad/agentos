@@ -74,6 +74,9 @@ type Server struct {
 	reserveUSD float64
 	// maxBodyBytes caps request bodies (AGENTOS_MAX_BODY_BYTES); 0 disables.
 	maxBodyBytes int64
+	// providers is the operator provider registry, reported by GET
+	// /admin/providers. Nil until WithProviders is set.
+	providers *provider.Registry
 }
 
 // DefaultMaxBodyBytes caps a single request body. Chat payloads carry whole
@@ -163,6 +166,12 @@ func WithMaxBodyBytes(n int64) Option {
 	return func(s *Server) { s.maxBodyBytes = n }
 }
 
+// WithProviders attaches the operator provider registry so GET /admin/providers
+// can report what is configured.
+func WithProviders(reg *provider.Registry) Option {
+	return func(s *Server) { s.providers = reg }
+}
+
 // WithRateLimits sets the global default requests-per-minute applied to orgs
 // whose own rate_limit_rpm is 0. A default of 0 keeps rate limiting off unless
 // an org opts in, reproducing Phase 5 behavior.
@@ -238,6 +247,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /admin/orgs/{org_id}/users", s.adminAuth(s.handleListUsers))
 	mux.HandleFunc("DELETE /admin/orgs/{org_id}/users/{user_id}", s.adminAuth(s.handleDeleteUser))
 	mux.HandleFunc("GET /admin/secrets/status", s.adminAuth(s.handleSecretsStatus))
+	mux.HandleFunc("GET /admin/providers", s.adminAuth(s.handleProviders))
 	mux.HandleFunc("POST /admin/secrets/reload", s.adminAuth(s.handleSecretsReload))
 	mux.HandleFunc("GET /auth/oidc/status", s.handleOIDCStatus)
 	mux.HandleFunc("GET /auth/oidc/login", s.handleOIDCLogin)

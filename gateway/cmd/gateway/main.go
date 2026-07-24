@@ -79,6 +79,22 @@ func main() {
 	anthropicKey, _ := secrets.Get("AGENTOS_ANTHROPIC_API_KEY")
 	openaiKey, _ := secrets.Get("AGENTOS_OPENAI_API_KEY")
 
+	// Operator-configured OpenAI-compatible providers. A missing file is fine
+	// (built-ins only); per-entry validation errors are logged and skipped so
+	// one bad entry never blocks startup.
+	providersPath := os.Getenv("AGENTOS_PROVIDERS_FILE")
+	if providersPath == "" {
+		providersPath = "providers.json"
+	}
+	registry, regErrs := provider.LoadRegistry(providersPath)
+	for _, err := range regErrs {
+		log.Printf("provider registry: %v", err)
+	}
+	if names := registry.Names(); len(names) > 0 {
+		log.Printf("provider registry: %d provider(s) loaded from %s: %v",
+			len(names), providersPath, names)
+	}
+
 	router := &provider.Router{
 		AnthropicAPIKey: anthropicKey,
 		OpenAIAPIKey:    openaiKey,
@@ -86,10 +102,14 @@ func main() {
 		// Resolve provider keys from the live secret source on every Route call
 		// so POST /admin/secrets/reload and the refresh loop rotate the upstream
 		// key without a restart (H5). The static fields above remain a fallback.
-		Secrets: secrets,
+		Secrets:  secrets,
+		Registry: registry,
 	}
 
-	opts := []server.Option{server.WithSecrets(secrets, server.DefaultSecretNames)}
+	opts := []server.Option{
+		server.WithSecrets(secrets, server.DefaultSecretNames),
+		server.WithProviders(registry),
+	}
 
 	guardMode := os.Getenv("AGENTOS_GUARDRAILS_MODE")
 	if guardMode == "" {

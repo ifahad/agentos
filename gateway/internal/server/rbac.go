@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/ifahad/agentos/gateway/internal/rbac"
@@ -383,4 +384,40 @@ func (s *Server) handleSecretsStatus(w http.ResponseWriter, _ *http.Request, c *
 		return
 	}
 	writeJSON(w, http.StatusOK, s.secretsStatus())
+}
+
+// handleProviders reports the configured OpenAI-compatible providers. It reports
+// only whether each credential RESOLVES — never a key name's value — so the page
+// can never leak a secret. Root-admin only, like the secrets status endpoint.
+func (s *Server) handleProviders(w http.ResponseWriter, _ *http.Request, c *caller) {
+	if !c.root {
+		writeForbidden(w, "only the root admin key may view providers")
+		return
+	}
+	type providerOut struct {
+		Name       string   `json:"name"`
+		BaseURL    string   `json:"base_url"`
+		Enabled    bool     `json:"enabled"`
+		KeyPresent bool     `json:"key_present"`
+		Models     []string `json:"models"`
+	}
+	out := []providerOut{}
+	for _, name := range s.providers.Names() {
+		e, _ := s.providers.Lookup(name)
+		present := e.KeyName == ""
+		if !present && s.secrets != nil {
+			v, ok := s.secrets.Get(e.KeyName)
+			present = ok && v != ""
+		}
+		models := make([]string, 0, len(e.Prices))
+		for m := range e.Prices {
+			models = append(models, m)
+		}
+		sort.Strings(models)
+		out = append(out, providerOut{
+			Name: e.Name, BaseURL: e.BaseURL, Enabled: e.Enabled,
+			KeyPresent: present, Models: models,
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"providers": out})
 }

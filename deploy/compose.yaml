@@ -58,6 +58,17 @@ services:
       AGENTOS_OIDC_POST_LOGIN_URL: ${AGENTOS_OIDC_POST_LOGIN_URL:-}
       AGENTOS_OIDC_DEFAULT_ORG: ${AGENTOS_OIDC_DEFAULT_ORG:-org_default}
       AGENTOS_OIDC_DEFAULT_ROLE: ${AGENTOS_OIDC_DEFAULT_ROLE:-member}
+      # Config-driven providers. Compose injects ONLY the variables declared
+      # here, so each frontier key must be listed or it never reaches the
+      # container even when set in .env (a trap that has bitten this repo before).
+      AGENTOS_PROVIDERS_FILE: /app/providers.json
+      AGENTOS_MOONSHOT_API_KEY: ${AGENTOS_MOONSHOT_API_KEY:-}
+      AGENTOS_ZHIPU_API_KEY: ${AGENTOS_ZHIPU_API_KEY:-}
+      AGENTOS_ALIBABA_API_KEY: ${AGENTOS_ALIBABA_API_KEY:-}
+      AGENTOS_DEEPSEEK_API_KEY: ${AGENTOS_DEEPSEEK_API_KEY:-}
+      AGENTOS_MINIMAX_API_KEY: ${AGENTOS_MINIMAX_API_KEY:-}
+    volumes:
+      - ./providers.json:/app/providers.json:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
