@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -642,18 +643,52 @@ func (s *Server) proxy(w http.ResponseWriter, r *http.Request, p proxyRequest) {
 		return
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.route.URL, bytes.NewReader(payload))
-	if err != nil {
-		writeError(w, http.StatusBadGateway, errProviderError, "failed to build provider request")
-		return
+	// Attempt loop. Streaming retries only before any byte reaches the client,
+	// so a partially-delivered stream is never restarted. Retries sit AFTER the
+	// auth/guardrail/rate-limit/budget checks in the handlers, so they cannot
+	// bypass governance. A failed attempt costs nothing — nothing was streamed
+	// and usage is only recorded on the final outcome below.
+	attempts := p.route.MaxAttempts
+	if attempts <= 0 {
+		attempts = provider.DefaultMaxAttempts
 	}
-	req.Header.Set("Content-Type", "application/json")
-	if p.route.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+p.route.APIKey)
-	}
-
+	var resp *http.Response
 	start := time.Now()
-	resp, err := s.client.Do(req)
+	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			delay := backoffDelay(attempt-1, retryAfterHeader(resp), rand.Float64)
+			if resp != nil {
+				resp.Body.Close()
+				resp = nil
+			}
+			select {
+			case <-ctx.Done():
+				writeError(w, http.StatusBadGateway, errProviderError, "request cancelled during retry backoff")
+				return
+			case <-time.After(delay):
+			}
+		}
+		var req *http.Request
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, p.route.URL, bytes.NewReader(payload))
+		if err != nil {
+			writeError(w, http.StatusBadGateway, errProviderError, "failed to build provider request")
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		if p.route.APIKey != "" {
+			req.Header.Set("Authorization", "Bearer "+p.route.APIKey)
+		}
+		resp, err = s.client.Do(req)
+		status := 0
+		if resp != nil {
+			status = resp.StatusCode
+		}
+		if !retryable(status, err) || attempt == attempts-1 {
+			break
+		}
+		log.Printf("provider %s attempt %d/%d failed (status=%d err=%v); retrying",
+			p.route.Provider, attempt+1, attempts, status, err)
+	}
 	latencyMS := time.Since(start).Milliseconds()
 	if err != nil {
 		s.record(r, span, store.Usage{
