@@ -1,0 +1,60 @@
+# Multiverse council registry.
+#
+# The five frontier members below are DISABLED: their provider entries in
+# deploy/providers.json carry placeholder endpoints and pricing that an operator
+# must confirm first. The enabled members are local Ollama models, so a full
+# five-way council runs at zero cost.
+#
+# A member's `model` must never use the reserved `council/` prefix.
+judge: ollama/qwen3.6:latest
+quorum: 3
+agreement_threshold: 0.6
+max_cycles: 8
+max_tool_steps: 12
+member_timeout_s: 300
+
+members:
+  # --- frontier members: enable after confirming provider config ---
+  - id: kimi
+    model: moonshot/kimi-k3
+    enabled: false
+    profile: deep
+    persona: "Prioritize inspecting schemas and citing exact tables before concluding."
+  - id: glm
+    model: zhipu/glm-5.2
+    enabled: false
+    profile: deep
+  - id: qwen-max
+    model: alibaba/qwen3.8-max
+    enabled: false
+    profile: deep
+  - id: deepseek
+    model: deepseek/deepseek-v4-pro
+    enabled: false
+    profile: deep
+  - id: minimax
+    model: minimax/minimax-m3
+    enabled: false
+    profile: deep
+
+  # --- local members: a real five-way council at $0 ---
+  - id: local-qwen36
+    model: ollama/qwen3.6:latest
+    enabled: true
+    profile: deep
+  - id: local-qwen35
+    model: ollama/qwen3.5:latest
+    enabled: true
+    profile: deep
+  - id: local-gemma4-31b
+    model: ollama/gemma4:31b
+    enabled: true
+    profile: react
+  - id: local-gemma4
+    model: ollama/gemma4:latest
+    enabled: true
+    profile: react
+  - id: local-gemma3
+    model: ollama/gemma3:latest
+    enabled: true
+    profile: react
