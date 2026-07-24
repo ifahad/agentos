@@ -48,6 +48,18 @@ func run() error {
 		maxRows = n
 	}
 
+	// Bounds how long one agent-issued query may run. The row cap limits how
+	// much comes back but not how long it takes to get there, and cancelling
+	// the client does not stop a Postgres backend already executing.
+	stmtTimeout := tools.DefaultStatementTimeout
+	if v := os.Getenv("AGENTOS_CONNECTOR_STATEMENT_TIMEOUT_S"); v != "" {
+		secs, err := strconv.Atoi(v)
+		if err != nil || secs < 0 {
+			return fmt.Errorf("AGENTOS_CONNECTOR_STATEMENT_TIMEOUT_S must be a non-negative integer, got %q", v)
+		}
+		stmtTimeout = time.Duration(secs) * time.Second
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -66,7 +78,7 @@ func run() error {
 	mcpServer := server.NewMCPServer(serverName, serverVersion,
 		server.WithToolCapabilities(false),
 	)
-	tools.New(pool, maxRows).Register(mcpServer)
+	tools.New(pool, maxRows).WithStatementTimeout(stmtTimeout).Register(mcpServer)
 
 	httpServer := server.NewStreamableHTTPServer(mcpServer,
 		server.WithEndpointPath(endpointPath),

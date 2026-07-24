@@ -363,3 +363,50 @@ func TestQueryDB(t *testing.T) {
 		}
 	})
 }
+
+// A query that runs longer than the statement timeout must be stopped by the
+// database, not merely abandoned by the client. Cancelling a client leaves the
+// Postgres backend executing; only statement_timeout actually halts it.
+func TestQueryStatementTimeoutStopsLongRunningQuery(t *testing.T) {
+	pool := testPool(t)
+	tl := New(pool, 10).WithStatementTimeout(300 * time.Millisecond)
+
+	start := time.Now()
+	res, err := tl.Query(context.Background(), callReq(map[string]any{
+		"sql": "SELECT pg_sleep(5)",
+	}))
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("Query returned a transport error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatal("a query exceeding the statement timeout should fail, not return rows")
+	}
+	// Generous bound: what matters is that it did not run the full 5 seconds.
+	if elapsed > 3*time.Second {
+		t.Fatalf("query ran %v; the statement timeout did not stop it", elapsed)
+	}
+}
+
+// The timeout must be scoped to its transaction. If it leaked onto the pooled
+// connection, a later query on that connection would inherit it.
+func TestQueryStatementTimeoutDoesNotLeakToPool(t *testing.T) {
+	pool := testPool(t)
+	tl := New(pool, 10).WithStatementTimeout(300 * time.Millisecond)
+
+	// Burn a query that trips the timeout, returning its connection to the pool.
+	_, _ = tl.Query(context.Background(), callReq(map[string]any{"sql": "SELECT pg_sleep(5)"}))
+
+	// A slower-than-the-old-timeout query under a generous timeout must succeed.
+	slow := New(pool, 10).WithStatementTimeout(10 * time.Second)
+	res, err := slow.Query(context.Background(), callReq(map[string]any{
+		"sql": "SELECT pg_sleep(1)",
+	}))
+	if err != nil {
+		t.Fatalf("Query returned a transport error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("the short timeout leaked onto the pooled connection: %+v", res)
+	}
+}

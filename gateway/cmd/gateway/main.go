@@ -135,6 +135,21 @@ func main() {
 		}
 	}
 
+	// Audit retention. Off by default and deliberately so: the audit log is
+	// evidence of what every key did, and a gateway that silently discards it
+	// out of the box would be a worse failure than an oversized table. Set a
+	// retention window only when you have decided how long you must keep it.
+	if raw := os.Getenv("AGENTOS_AUDIT_RETENTION_DAYS"); raw != "" {
+		days, err := strconv.Atoi(raw)
+		if err != nil || days < 0 {
+			log.Fatalf("AGENTOS_AUDIT_RETENTION_DAYS must be a non-negative integer (got %q)", raw)
+		}
+		if days > 0 {
+			startAuditRetention(ctx, st, time.Duration(days)*24*time.Hour)
+			log.Printf("audit retention: pruning entries older than %d day(s)", days)
+		}
+	}
+
 	// Request body cap. Without one, every JSON decode reads until the client
 	// stops sending, so a single request can drive memory to whatever an
 	// attacker is willing to upload.
@@ -361,4 +376,38 @@ func buildModelGuardrail(ctx context.Context, st store.Store, router *provider.R
 
 	log.Printf("guardrail classifier model %q wired via provider layer", model)
 	return guardrail.NewModelScreenWithTimeout(heuristic, classifier, model, timeout)
+}
+
+// startAuditRetention prunes audit rows older than retention, once at start-up
+// and daily thereafter.
+//
+// Pruning runs in the background rather than on the request path so a large
+// first sweep on a long-neglected table cannot add latency to live traffic. A
+// failed sweep is logged and retried on the next tick: falling behind on
+// retention is a housekeeping problem, never a reason to stop serving.
+func startAuditRetention(ctx context.Context, st store.Store, retention time.Duration) {
+	prune := func() {
+		cutoff := time.Now().Add(-retention)
+		removed, err := st.PruneAudit(ctx, cutoff)
+		if err != nil {
+			log.Printf("audit retention: prune failed: %v", err)
+			return
+		}
+		if removed > 0 {
+			log.Printf("audit retention: pruned %d entr(ies) older than %s", removed, cutoff.Format(time.RFC3339))
+		}
+	}
+	go func() {
+		prune()
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				prune()
+			}
+		}
+	}()
 }

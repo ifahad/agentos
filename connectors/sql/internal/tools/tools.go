@@ -18,16 +18,34 @@ const DefaultMaxRows = 200
 
 // Tools holds the shared dependencies of the agentos-sql MCP tool handlers.
 type Tools struct {
-	pool    *pgxpool.Pool
-	maxRows int
+	pool        *pgxpool.Pool
+	maxRows     int
+	stmtTimeout time.Duration
 }
+
+// DefaultStatementTimeout bounds how long one agent-issued query may run.
+//
+// The row cap limits how much a query returns, but says nothing about how long
+// it takes to get there: a model can write a perfectly valid join across large
+// legacy tables that pins a connection for minutes. Without a server-side
+// timeout, cancelling the client does not stop the backend — Postgres keeps
+// executing until it finishes.
+const DefaultStatementTimeout = 30 * time.Second
 
 // New returns a Tools bound to pool. maxRows <= 0 falls back to DefaultMaxRows.
 func New(pool *pgxpool.Pool, maxRows int) *Tools {
 	if maxRows <= 0 {
 		maxRows = DefaultMaxRows
 	}
-	return &Tools{pool: pool, maxRows: maxRows}
+	return &Tools{pool: pool, maxRows: maxRows, stmtTimeout: DefaultStatementTimeout}
+}
+
+// WithStatementTimeout overrides how long a single query may run. A value <= 0
+// disables the timeout, which is only sensible when the database enforces its
+// own.
+func (t *Tools) WithStatementTimeout(d time.Duration) *Tools {
+	t.stmtTimeout = d
+	return t
 }
 
 // Register adds the list_tables, describe_table and query tools to s.
@@ -180,6 +198,18 @@ func (t *Tools) Query(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallTo
 		return mcp.NewToolResultError(fmt.Sprintf("begin read-only transaction: %v", err)), nil
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+
+	// SET LOCAL scopes the timeout to this transaction, so it cannot leak onto
+	// the pooled connection and silently apply to somebody else's query. The
+	// value is a duration we control, never caller input, so formatting it into
+	// the statement introduces no injection surface — statement_timeout cannot
+	// be parameterised.
+	if t.stmtTimeout > 0 {
+		if _, err := tx.Exec(ctx, fmt.Sprintf("SET LOCAL statement_timeout = %d",
+			t.stmtTimeout.Milliseconds())); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("set statement timeout: %v", err)), nil
+		}
+	}
 
 	rows, err := tx.Query(ctx, sql)
 	if err != nil {

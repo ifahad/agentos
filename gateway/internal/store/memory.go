@@ -229,6 +229,23 @@ func (m *Memory) RecordUsage(_ context.Context, u Usage) error {
 	return nil
 }
 
+// PruneAudit drops audit entries older than the cutoff.
+func (m *Memory) PruneAudit(_ context.Context, before time.Time) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	kept := m.audit[:0]
+	var removed int64
+	for _, a := range m.audit {
+		if a.entry.TS.Before(before) {
+			removed++
+			continue
+		}
+		kept = append(kept, a)
+	}
+	m.audit = kept
+	return removed, nil
+}
+
 func (m *Memory) RecordAudit(_ context.Context, u Usage) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

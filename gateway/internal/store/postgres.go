@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -365,6 +366,15 @@ func (p *Postgres) RecordUsage(ctx context.Context, u Usage) error {
 
 const insertAuditSQL = `INSERT INTO audit_log (secret_hash, org_id, key_name, model, input_tokens, output_tokens, cost_usd, latency_ms, status, kind)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
+
+// PruneAudit drops audit rows recorded before the cutoff.
+func (p *Postgres) PruneAudit(ctx context.Context, before time.Time) (int64, error) {
+	tag, err := p.pool.Exec(ctx, `DELETE FROM audit_log WHERE created_at < $1`, before)
+	if err != nil {
+		return 0, fmt.Errorf("prune audit: %w", err)
+	}
+	return tag.RowsAffected(), nil
+}
 
 func (p *Postgres) RecordAudit(ctx context.Context, u Usage) error {
 	secretHash, orgID := resolveIdentity(ctx, p.pool, u)

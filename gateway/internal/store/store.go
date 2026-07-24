@@ -204,6 +204,11 @@ type Store interface {
 	// AuditList returns audit rows newest first. An empty orgID returns all
 	// (root); a non-empty orgID scopes by org_id in the query (H4).
 	AuditList(ctx context.Context, orgID string, limit int) ([]AuditEntry, error)
+	// PruneAudit deletes audit rows recorded before the cutoff and reports how
+	// many went. It is never called unless retention is explicitly configured:
+	// an audit trail is evidence, and silently discarding it by default would be
+	// a worse failure than the table growing.
+	PruneAudit(ctx context.Context, before time.Time) (int64, error)
 	EnsureKey(ctx context.Context, name, secret string, budgetUSD float64) error
 
 	// Multi-tenant RBAC additions (Phase 5).
