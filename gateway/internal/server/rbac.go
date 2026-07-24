@@ -56,20 +56,12 @@ func writeForbidden(w http.ResponseWriter, msg string) {
 	writeError(w, http.StatusForbidden, errForbidden, msg)
 }
 
-// orgBudgetExceeded reports whether the org's aggregate key spend has reached
-// its monthly cap. A zero (or missing) cap means unlimited, so pre-existing
-// keys in the default org are never blocked — preserving Phase 1–4 behavior.
-func (s *Server) orgBudgetExceeded(ctx context.Context, orgID string) bool {
-	org, err := s.store.Org(ctx, orgID)
-	if err != nil || org.MonthlyBudgetUSD <= 0 {
-		return false
-	}
-	spend, err := s.store.OrgSpend(ctx, orgID)
-	if err != nil {
-		return false
-	}
-	return spend >= org.MonthlyBudgetUSD
-}
+// The org budget check used to live here as orgBudgetExceeded, costing a second
+// Org lookup plus an OrgSpend aggregate on every proxied request — on top of the
+// Org lookup the rate limiter already does. It is gone: ReserveSpend now applies
+// the same cap inside the admission transaction, which is both cheaper and
+// atomic. Do not reintroduce a pre-flight check here; a second, non-atomic
+// opinion about the budget is exactly the race that was just closed.
 
 // admitSpend reserves budget for one in-flight request against the key and its
 // org, atomically. It writes the 402 and returns ok=false when there is no room.
@@ -228,14 +220,17 @@ func (s *Server) handleListOrgs(w http.ResponseWriter, r *http.Request, c *calle
 		writeError(w, http.StatusInternalServerError, errProviderError, "failed to list orgs")
 		return
 	}
+	// One grouped query for every org's spend rather than one query per org:
+	// this page previously cost 1+N round trips and got slower with each tenant
+	// added. Orgs with no keys are absent from the map and read as 0.
+	spends, err := s.store.OrgSpends(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errProviderError, "failed to aggregate org spend")
+		return
+	}
 	out := make([]orgWithSpend, 0, len(orgs))
 	for _, o := range orgs {
-		spend, err := s.store.OrgSpend(r.Context(), o.ID)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, errProviderError, "failed to aggregate org spend")
-			return
-		}
-		out = append(out, orgWithSpend{Org: o, SpendUSD: spend})
+		out = append(out, orgWithSpend{Org: o, SpendUSD: spends[o.ID]})
 	}
 	writeJSON(w, http.StatusOK, out)
 }

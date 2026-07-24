@@ -681,7 +681,11 @@ func (s *Server) proxy(w http.ResponseWriter, r *http.Request, p proxyRequest) {
 		inputTokens, outputTokens = streamProviderResponse(w, resp.Body)
 		latencyMS = time.Since(start).Milliseconds()
 	} else {
-		respBody, err := io.ReadAll(resp.Body)
+		// Non-streamed responses are read whole because token usage — the basis
+		// of every budget and audit row — is only available from the complete
+		// body. Pre-sizing from Content-Length avoids io.ReadAll's repeated
+		// grow-and-copy on the multi-hundred-KB bodies long completions produce.
+		respBody, err := readAllSized(resp.Body, resp.ContentLength)
 		latencyMS = time.Since(start).Milliseconds()
 		if err != nil {
 			s.record(r, span, store.Usage{
@@ -904,4 +908,22 @@ func writeError(w http.ResponseWriter, status int, typ, msg string) {
 	writeJSON(w, status, map[string]any{
 		"error": map[string]string{"type": typ, "message": msg},
 	})
+}
+
+// maxPresizeBytes bounds how much a single Content-Length header may cause the
+// gateway to allocate up front. A hostile or broken upstream could otherwise
+// advertise a huge length and have us reserve it before a byte arrives.
+const maxPresizeBytes = 8 << 20 // 8 MiB
+
+// readAllSized reads r fully, pre-allocating from a known length when one is
+// available and plausible. Falls back to io.ReadAll semantics otherwise.
+func readAllSized(r io.Reader, contentLength int64) ([]byte, error) {
+	if contentLength <= 0 || contentLength > maxPresizeBytes {
+		return io.ReadAll(r)
+	}
+	buf := bytes.NewBuffer(make([]byte, 0, contentLength))
+	if _, err := buf.ReadFrom(r); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }

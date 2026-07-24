@@ -561,6 +561,26 @@ func (p *Postgres) OrgSpend(ctx context.Context, orgID string) (float64, error) 
 	return total, nil
 }
 
+// OrgSpends aggregates every org's key spend in a single grouped query.
+func (p *Postgres) OrgSpends(ctx context.Context) (map[string]float64, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT org_id, COALESCE(SUM(spend_usd), 0) FROM keys GROUP BY org_id`)
+	if err != nil {
+		return nil, fmt.Errorf("org spends: %w", err)
+	}
+	defer rows.Close()
+	out := make(map[string]float64)
+	for rows.Next() {
+		var orgID string
+		var spend float64
+		if err := rows.Scan(&orgID, &spend); err != nil {
+			return nil, fmt.Errorf("scan org spend: %w", err)
+		}
+		out[orgID] = spend
+	}
+	return out, rows.Err()
+}
+
 func (p *Postgres) CreateUser(ctx context.Context, orgID, email, role string) (*User, string, error) {
 	return p.CreateUserWithExternalID(ctx, orgID, email, role, "")
 }

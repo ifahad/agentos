@@ -428,6 +428,17 @@ func (m *Memory) OrgSpend(_ context.Context, orgID string) (float64, error) {
 	return total, nil
 }
 
+// OrgSpends aggregates every org's key spend in one pass.
+func (m *Memory) OrgSpends(_ context.Context) (map[string]float64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]float64)
+	for _, k := range m.keys {
+		out[orgOrDefault(k.orgID)] += k.spendUSD
+	}
+	return out, nil
+}
+
 func (m *Memory) CreateUser(ctx context.Context, orgID, email, role string) (*User, string, error) {
 	return m.CreateUserWithExternalID(ctx, orgID, email, role, "")
 }

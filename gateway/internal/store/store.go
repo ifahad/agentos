@@ -217,6 +217,11 @@ type Store interface {
 	Org(ctx context.Context, id string) (*Org, error)                               // ErrOrgNotFound
 	Orgs(ctx context.Context) ([]Org, error)
 	OrgSpend(ctx context.Context, orgID string) (float64, error) // sum of the org's keys' spend
+	// OrgSpends returns every org's aggregate key spend in one round trip,
+	// keyed by org id. Listing orgs previously called OrgSpend once per org,
+	// which is a query per row; this makes that page cost two queries in total
+	// instead of one plus N. Orgs with no keys are absent from the map, not zero.
+	OrgSpends(ctx context.Context) (map[string]float64, error)
 	// UpdateOrg patches an org's monthly budget and/or rate limit (Phase 6). A
 	// nil field is left unchanged. Returns the updated org, or ErrOrgNotFound.
 	UpdateOrg(ctx context.Context, id string, monthlyBudgetUSD *float64, rateLimitRPM *int) (*Org, error)
