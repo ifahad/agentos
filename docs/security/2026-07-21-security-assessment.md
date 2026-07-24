@@ -162,6 +162,13 @@ CI is safe (`contents: read`, no `pull_request_target`, mocks never in prod).
 
 ## OpenClaw: security problems & secure operation
 
+> **Superseded 2026-07-24 — integration withdrawn.** The risk analysis below
+> stands and is why the decision was made; the "operate it safely" wiring is no
+> longer the plan. AgentOS will not integrate OpenClaw. Its capabilities are
+> being rebuilt first-party as Operators, where the runtime's lack of provider
+> credentials makes gateway governance structural rather than configured. See
+> `docs/interop/withdrawn/README.md`.
+
 OpenClaw is a high-privilege, always-on agent (host shell/file/browser/Docker, a
 WebSocket control plane on :18789, and the ClawHub skill marketplace). Its trust
 model is the opposite of what this platform needs:

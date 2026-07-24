@@ -347,14 +347,20 @@ SQL `statement_timeout`, browser IP backstop, runtime non-root image + K8s
 plus efficiency items (an N+1 in `handleListOrgs`, duplicate per-request org
 lookups, unbuffered proxy responses).
 
-**OpenClaw interop** (`docs/interop/openclaw.md`): a recipe for running the
-third-party OpenClaw autonomous agent as a **governed, jailed worker** — model
-traffic through the gateway, execution jailed to the sandbox or hardened SSH,
-skills screened from a read-only vetted directory (never ClawHub auto-fetch),
-non-root/read-only/unexposed deployment. It cites the documented ClawHub
-supply-chain problem (~36% of skills carrying prompt injection; 341+ malicious
-skills found). Honest limits: the WebSocket control plane and messaging channels
-are **not** bridged.
+**OpenClaw interop — WITHDRAWN 2026-07-24.** AgentOS will not integrate the
+third-party OpenClaw agent. The analysis is retained at
+`docs/interop/withdrawn/` as the record of the decision; do not implement it.
+The defensive recipe was sound, but its worst risks are structural rather than
+configurable: a compromised skill ecosystem (~36% of ClawHub skills carrying
+prompt injection, 341+ malicious skills found), governance that holds only
+because the agent is *pointed* at the gateway, and a WebSocket control plane
+that is authority over the agent living outside our RBAC, audit, and approval
+gate.
+
+Its capabilities are being rebuilt first-party as **Operators**. The decisive
+difference is structural: the runtime holds no provider credentials, so a native
+autonomy engine cannot route around the gateway even when misconfigured —
+governance becomes a property of the architecture instead of a setting.
 
 ---
 
@@ -401,8 +407,8 @@ provider registry** (routing is a hardcoded 3-prefix switch), **real pricing**
 closes two harness gaps: no per-run cycle cap and no provider retry/fallback.
 
 It is additionally exposed as `council/multiverse`, an OpenAI-compatible model,
-so any client — including the governed OpenClaw worker — gets the whole council
-behind one model name, with two independent recursion guards.
+so any client gets the whole council behind one model name, with two independent
+recursion guards.
 
 **New console surface it defines** (Task 14, the likely UI/UX target): a
 **Multiverse** page with a member grid (model · enabled · latency · error rate ·
