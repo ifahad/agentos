@@ -1,45 +1,74 @@
-/* AgentOS Console — Linear-grade minimal dark. One accent, hairlines, motion as telemetry. */
+/* AgentOS Console — "Instrument".
+ *
+ * The premise of the platform is that nothing runs unauthorized, unattributed,
+ * or unrecorded. The interface is built to match: it is a panel you read, not a
+ * product you are sold.
+ *
+ * THE RULE THAT DEFINES THIS DESIGN: chroma is reserved for machine state.
+ * There is no decorative accent. If something on screen is colored, the system
+ * is telling you it is running, held, denied, or over budget. Everything else —
+ * navigation, buttons, selection, links, charts at rest — is built from graphite
+ * and ink alone. A quiet screen means a healthy one, readable at a glance from
+ * across a room. Do not add a brand color; it would make the signals lie.
+ */
+
+@import "./fonts/fonts.css";
 
 :root {
-  /* Surfaces */
-  --bg: #0a0b0d;
-  --raised: #101318;
-  --inset: #0c0e12;
+  /* ---- Surfaces: graphite panels, not a black void. Lifted off pure black so
+     hairlines read as machined edges rather than as glow. ---- */
+  --bg: #121517;
+  --raised: #191d20;
+  --raised-2: #20252a;
+  --inset: #0d0f11;
   /* Legacy aliases (pages migrate incrementally) */
   --bg-raised: var(--raised);
   --bg-inset: var(--inset);
 
-  /* Hairline borders */
-  --border: rgba(255, 255, 255, 0.06);
-  --border-strong: rgba(255, 255, 255, 0.09);
+  /* ---- Hairlines ---- */
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.13);
 
-  /* Text steps */
-  --text: #d6dae1;
-  --text-dim: #8b929d;
-  --text-faint: #5c636e;
+  /* ---- Ink ---- */
+  --text: #e6e9eb;
+  --text-dim: #98a1a8;
+  --text-faint: #626b71;
 
-  /* Accent */
-  --accent: #5b8cff;
-  --accent-dim: rgba(91, 140, 255, 0.12);
+  /* ---- SIGNAL. The only chroma in the interface. Each one means a specific
+     machine state; never use them for emphasis, branding, or decoration. ---- */
+  --live: #5ad1c4; /* in flight right now */
+  --ok: #6cc48f; /* completed / allowed */
+  --hold: #e3a851; /* held, awaiting a human */
+  --deny: #e2685f; /* denied / failed / over budget */
 
-  /* Semantic (status only) */
-  --green: #43b374;
-  --amber: #d2a24a;
-  --red: #d86060;
+  /* Legacy semantic aliases, repointed onto the signal set. */
+  --green: var(--ok);
+  --amber: var(--hold);
+  --red: var(--deny);
 
-  /* Radii */
-  --radius-sm: 6px; /* controls */
-  --radius-md: 8px; /* cards / panels */
-  --radius-lg: 10px; /* modals */
+  /* --accent no longer exists as a brand color. It resolves to ink so any
+     unmigrated rule degrades to monochrome instead of reintroducing blue. */
+  --accent: var(--text);
+  --accent-dim: rgba(255, 255, 255, 0.07);
 
-  /* Motion */
-  --dur-fast: 120ms;
-  --dur-med: 200ms;
+  /* ---- Radii: machined, not soft. ---- */
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+
+  /* ---- Motion. Movement reports state; it never performs. ---- */
+  --dur-fast: 110ms;
+  --dur-med: 180ms;
+  --dur-slow: 420ms;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
 
-  /* Type */
-  --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Menlo, Consolas, monospace;
-  --sans: "Inter", ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+  /* ---- Type: signage for the interface, engineering for the data. ---- */
+  --mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: "Archivo", ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
+
+  /* Eyebrow/label treatment, used verbatim wherever a field is named. */
+  --eyebrow-size: 10px;
+  --eyebrow-track: 0.16em;
 }
 
 * {
@@ -63,17 +92,47 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Every machine-produced value — ids, counts, money, models, timestamps — is
+   set in the mono face with tabular figures, so columns of numbers align to the
+   digit and a changing value never reflows its neighbours. */
 code,
 pre,
 .mono {
   font-family: var(--mono);
-  font-size: 12.5px;
+  font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
 
+/* Field names throughout the console. Small, tracked-out, mono — they read as
+   panel legends rather than as prose. */
+.eyebrow {
+  font-family: var(--mono);
+  font-size: var(--eyebrow-size);
+  font-weight: 500;
+  letter-spacing: var(--eyebrow-track);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* Links carry no hue: an underline marks them, since color is reserved for
+   machine state. */
 a {
-  color: var(--accent);
-  text-decoration: none;
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-fast) var(--ease);
+}
+
+a:hover {
+  text-decoration-color: var(--text-dim);
+}
+
+/* Focus is a signal — it reports where input will land. */
+:focus-visible {
+  outline: 1px solid var(--live);
+  outline-offset: 2px;
+  border-radius: 2px;
 }
 
 /* ---- Layout ---- */
@@ -101,9 +160,10 @@ a {
 }
 
 .brand-name {
-  font-size: 15px;
-  font-weight: 650;
-  letter-spacing: 0.02em;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .brand-tag {
@@ -120,7 +180,9 @@ a {
 }
 
 .nav-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 9px;
   width: 100%;
   text-align: left;
   padding: 7px 10px;
@@ -129,6 +191,7 @@ a {
   background: transparent;
   color: var(--text-dim);
   font: inherit;
+  font-size: 12.5px;
   cursor: pointer;
   transition:
     color var(--dur-fast) var(--ease),
@@ -154,12 +217,39 @@ a {
 .main {
   flex: 1;
   overflow-y: auto;
-  padding: 32px 40px 64px;
+  padding: 0 40px 64px;
+}
+
+/* The chain stays visible while content scrolls under it — the gauntlet applies
+   to every request regardless of what you are looking at. */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 16px 0 14px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar-legend {
+  flex-shrink: 0;
+}
+
+/* The run spans the full content width so it reads as one continuous circuit
+   across the top of the panel rather than a widget parked in a corner. */
+.topbar .chain {
+  flex: 1;
 }
 
 .page {
   max-width: 1080px;
   margin: 0 auto;
+  padding-top: 28px;
 }
 
 .page-head {
@@ -167,9 +257,9 @@ a {
 }
 
 .page-head h1 {
-  font-size: 20px;
+  font-size: 19px;
   font-weight: 600;
-  letter-spacing: -0.01em;
+  letter-spacing: 0.005em;
 }
 
 .page-head p {
@@ -195,17 +285,24 @@ a {
 }
 
 .card .label {
-  font-size: 11px;
+  font-family: var(--mono);
+  font-size: var(--eyebrow-size);
+  font-weight: 500;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: var(--eyebrow-track);
   color: var(--text-faint);
-  margin-bottom: 6px;
+  margin-bottom: 10px;
 }
 
+/* Machine-produced values are set in the machine face. Tabular figures keep a
+   counting number from shifting its own decimal point as it ticks up. */
 .card .value {
-  font-size: 22px;
-  font-weight: 600;
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 400;
+  letter-spacing: -0.02em;
   font-variant-numeric: tabular-nums;
+  line-height: 1.1;
 }
 
 .panel {
@@ -225,9 +322,15 @@ a {
   border-bottom: 1px solid var(--border);
 }
 
+/* Panels are named the way instrument panels are: a small engraved legend, not
+   a headline. This also keeps them from competing with the page title. */
 .panel-head h2 {
-  font-size: 13px;
-  font-weight: 600;
+  font-family: var(--mono);
+  font-size: var(--eyebrow-size);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: var(--eyebrow-track);
+  color: var(--text-dim);
 }
 
 .panel-body {
@@ -406,65 +509,54 @@ button {
 
 /* ---- Badges & notices ---- */
 
+/* A badge names a thing. Whether it may carry colour depends on whether that
+   thing is a machine STATE (allowed, held, denied) or merely a CATEGORY (what
+   kind of call it was). Categories stay monochrome — if every label were
+   coloured, colour would stop meaning anything and the guardrail badges would
+   no longer stand out on a page full of ordinary traffic. */
 .badge {
   display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  padding: 2px 8px;
-  border-radius: 999px;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
   border: 1px solid var(--border-strong);
   color: var(--text-dim);
 }
 
-.badge.chat {
-  color: var(--accent);
-  border-color: rgba(91, 140, 255, 0.4);
-}
-
+/* Categories: what kind of call this was. Never a state, therefore never
+   coloured — this is deliberate, do not "improve" it with a hue. */
+.badge.chat,
 .badge.embeddings {
-  color: var(--green);
-  border-color: rgba(67, 179, 116, 0.4);
+  color: var(--text-dim);
 }
 
-.badge.guardrail_flag {
-  color: var(--amber);
-  border-color: rgba(210, 162, 74, 0.5);
-  background: rgba(210, 162, 74, 0.08);
+/* States: the guardrail fired and a human is implicated. */
+.badge.guardrail_flag,
+.badge.failed_evals {
+  color: var(--hold);
+  border-color: rgba(227, 168, 81, 0.45);
+  background: rgba(227, 168, 81, 0.08);
 }
 
-.badge.guardrail_block {
-  color: var(--red);
-  border-color: rgba(216, 96, 96, 0.5);
-  background: rgba(216, 96, 96, 0.08);
+.badge.guardrail_block,
+.badge.fail {
+  color: var(--deny);
+  border-color: rgba(226, 104, 95, 0.45);
+  background: rgba(226, 104, 95, 0.08);
 }
 
 .badge.pass,
-.badge.passed_evals {
-  color: var(--green);
-  border-color: rgba(67, 179, 116, 0.4);
-}
-
-.badge.fail {
-  color: var(--red);
-  border-color: rgba(216, 96, 96, 0.5);
-}
-
-.badge.failed_evals {
-  color: var(--amber);
-  border-color: rgba(210, 162, 74, 0.5);
-  background: rgba(210, 162, 74, 0.08);
-}
-
+.badge.passed_evals,
 .badge.approved {
-  color: var(--accent);
-  border-color: rgba(91, 140, 255, 0.4);
+  color: var(--ok);
+  border-color: rgba(108, 196, 143, 0.4);
 }
 
-.badge.denied {
-  color: var(--text-faint);
-}
-
+.badge.denied,
 .badge.inactive {
   color: var(--text-faint);
   border-color: var(--border);

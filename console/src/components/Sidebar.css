@@ -1,57 +1,78 @@
-/* Shell & navigation — co-located with Sidebar.tsx.
-   Matches console/design/shell/navigation.html. Tokens live in styles.css. */
+/* Shell & navigation — co-located with Sidebar.tsx. Tokens live in styles.css. */
 
 /* Brand row: align the live dot on center (styles.css uses baseline). */
 .brand {
   align-items: center;
 }
 
-/* Brand live dot — pulses while any agent run is in flight. */
+/* Brand live dot — lit only while an agent run is actually in flight, so it is
+   a reading rather than an ornament. Teal is the platform's "in flight" signal
+   and is used for nothing else. */
 .live {
-  width: 7px;
-  height: 7px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--accent);
-  animation: live-pulse 1.6s ease-out infinite;
+  background: var(--live);
+  animation: live-pulse 1.8s ease-out infinite;
 }
 
 @keyframes live-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0.45);
+    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0.4);
   }
   70% {
-    box-shadow: 0 0 0 7px rgba(91, 140, 255, 0);
+    box-shadow: 0 0 0 6px rgba(90, 209, 196, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0);
+    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0);
   }
 }
 
-/* Sliding active-pill: the pill is a motion.span rendered inside the active
-   nav item; framer-motion layoutId="nav-pill" slides it between items
-   (200ms, var(--ease) via ui/motion transition). */
+/* Sliding active marker: a motion.span inside the active item, moved between
+   items by framer-motion layoutId="nav-pill". */
 .nav .nav-item {
   position: relative;
 }
 
-/* The pill carries the active fill, so the item itself stays transparent —
-   overrides the static .nav-item rules in styles.css (higher specificity). */
+/* The marker carries the active treatment, so the item itself stays
+   transparent — overrides the static rules in styles.css. */
 .nav .nav-item:hover,
 .nav .nav-item.active,
 .sidebar-footer .nav-item:hover {
   background: transparent;
 }
 
+/* Selection is a machined edge, not a colored tab: a raised panel with a hard
+   rule down its leading edge. Colour would compete with the status signals. */
 .nav-pill {
   position: absolute;
   inset: 0;
   border-radius: var(--radius-sm);
-  background: var(--accent-dim);
+  background: var(--raised-2);
+  box-shadow: inset 2px 0 0 0 var(--text-dim);
 }
 
-.nav-item-label {
+.nav-item-label,
+.nav-icon {
   position: relative;
   z-index: 1;
+}
+
+.nav-icon {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  transition: color var(--dur-fast) var(--ease);
+}
+
+.nav-item:hover .nav-icon,
+.nav-item.active .nav-icon {
+  color: var(--text);
+}
+
+/* Waiting on a credential is a held state, drawn with the same amber the
+   platform uses for a tool call awaiting approval. */
+.nav-note-hold {
+  color: var(--hold);
 }
 
 @media (prefers-reduced-motion: reduce) {

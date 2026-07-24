@@ -53,21 +53,21 @@
 }
 
 .ov-dot.live {
-  background: var(--accent);
+  background: var(--live);
   animation: ov-pulse 1.6s var(--ease) infinite;
 }
 
 @keyframes ov-pulse {
   0% {
-    box-shadow: 0 0 0 0 var(--accent-dim);
+    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0.35);
     opacity: 1;
   }
   70% {
-    box-shadow: 0 0 0 6px rgba(91, 140, 255, 0);
+    box-shadow: 0 0 0 6px rgba(90, 209, 196, 0);
     opacity: 0.65;
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0);
+    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0);
     opacity: 1;
   }
 }
@@ -170,10 +170,12 @@
   overflow: hidden;
 }
 
+/* Budget consumption is not a state — a half-full budget is neither good nor
+   bad — so the bar stays graphite until it crosses into warning. */
 .ov-meter-fill {
   height: 100%;
   border-radius: 2px;
-  background: var(--accent);
+  background: var(--text-dim);
 }
 
 .ov-meter-fill.warn {

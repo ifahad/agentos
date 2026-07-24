@@ -1,0 +1,40 @@
+/* Self-hosted type. Never a CDN: the console must work on an air-gapped host,
+   and a font request to a third party would leak console usage off-box —
+   the same reason the runtime holds no provider credentials.
+
+   Archivo (OFL-1.1) — a grotesque with signage/wayfinding lineage. AgentOS is
+   wayfinding for autonomous work, so the UI voice is signage, not marketing.
+   IBM Plex Mono (OFL-1.1) — engineering heritage, true tabular figures. Every
+   machine-produced value (ids, tokens, money, hashes, times) is set in it. */
+
+@font-face {
+  font-family: "Archivo";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("./archivo-400700.woff2") format("woff2-variations");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./plexmono-400.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url("./plexmono-500.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "IBM Plex Mono";
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url("./plexmono-600.woff2") format("woff2");
+}

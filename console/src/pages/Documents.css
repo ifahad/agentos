@@ -1,22 +1,22 @@
 /* Documents page — drop-zone drag treatment + indeterminate ingest progress. */
 
 /* The ingest panel doubles as a drop zone for plain-text files. While a
-   drag is over it the border goes accent and a soft ring pulses. */
+   drag is over it the border takes the live signal and a soft ring pulses. */
 .doc-drop {
   transition: border-color var(--dur-fast) var(--ease);
 }
 
 .doc-drop.dragging {
-  border-color: var(--accent);
+  border-color: var(--live);
   animation: doc-drop-pulse 1.1s var(--ease) infinite;
 }
 
 @keyframes doc-drop-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0.25);
+    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0.25);
   }
   100% {
-    box-shadow: 0 0 0 10px rgba(91, 140, 255, 0);
+    box-shadow: 0 0 0 10px rgba(90, 209, 196, 0);
   }
 }
 
@@ -35,7 +35,7 @@
   height: 100%;
   width: 40%;
   border-radius: 2px;
-  background: var(--accent);
+  background: var(--live);
   animation: doc-progress-slide 1s var(--ease) infinite;
 }
 

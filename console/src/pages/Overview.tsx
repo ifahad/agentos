@@ -260,7 +260,7 @@ export function Overview({ adminKey, openSettings }: PageProps) {
               ) : (
                 <div className="ov-meters">
                   {meters.map((m, i) => (
-                    <div className="ov-meter-row" key={m.name}>
+                    <div className="ov-meter-row" key={m.id}>
                       <div className="ov-meter-head">
                         <span className="ov-meter-name">{m.name}</span>
                         <span className="ov-meter-nums">
@@ -312,8 +312,10 @@ export function Overview({ adminKey, openSettings }: PageProps) {
                   </tbody>
                 ) : (
                   <Tbody staggerKey={usage.length}>
-                    {usage.map((u) => (
-                      <Tr key={u.name}>
+                    {/* Key names are not unique and the gateway exposes no id,
+                        so rows are identified by name plus position. */}
+                    {usage.map((u, i) => (
+                      <Tr key={`${u.name}#${i}`}>
                         <td className="mono">{u.name}</td>
                         <td className="num">{formatInt(u.requests)}</td>
                         <td className="num">{formatInt(u.input_tokens)}</td>

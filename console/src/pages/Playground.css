@@ -15,12 +15,12 @@
   gap: 8px;
 }
 
-/* Live accent pulse — accompanies the stream while a run is in flight. */
+/* In-flight signal. Teal means "running right now" platform-wide. */
 .pg-live-dot {
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--accent);
+  background: var(--live);
   animation: pg-live-pulse 1.6s ease-out infinite;
   flex: none;
 }
@@ -32,32 +32,32 @@
 
 @keyframes pg-live-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0.45);
+    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0.45);
   }
   70% {
-    box-shadow: 0 0 0 7px rgba(91, 140, 255, 0);
+    box-shadow: 0 0 0 7px rgba(90, 209, 196, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(91, 140, 255, 0);
+    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0);
   }
 }
 
 @keyframes pg-live-pulse-amber {
   0% {
-    box-shadow: 0 0 0 0 rgba(210, 162, 74, 0.4);
+    box-shadow: 0 0 0 0 rgba(227, 168, 81, 0.4);
   }
   70% {
-    box-shadow: 0 0 0 7px rgba(210, 162, 74, 0);
+    box-shadow: 0 0 0 7px rgba(227, 168, 81, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(210, 162, 74, 0);
+    box-shadow: 0 0 0 0 rgba(227, 168, 81, 0);
   }
 }
 
 /* Thinking step — shimmer placeholder while the agent composes. Resolves into
    the output event via a fade (AnimatePresence exit). */
 .pg-thinking {
-  border-left: 3px solid var(--accent);
+  border-left: 2px solid var(--live);
 }
 
 .pg-shimmer {

@@ -162,11 +162,13 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
                       </td>
                     </Tr>
                   ))}
-                {keys.map((k) => {
+                {/* Key names are not unique and the gateway exposes no id, so
+                    rows are identified by name plus position. */}
+                {keys.map((k, i) => {
                   const frac = budgetFraction(k.spend_usd, k.monthly_budget_usd);
                   const pct = Math.round(frac * 100);
                   return (
-                    <Tr key={k.name}>
+                    <Tr key={`${k.name}#${i}`}>
                       <td className="mono">{k.name}</td>
                       <td className="num">{formatUSD(k.monthly_budget_usd)}</td>
                       <td className="num">{formatUSD(k.spend_usd)}</td>

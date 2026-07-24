@@ -92,6 +92,22 @@ describe("budgetMeters", () => {
     { name: "staging", monthly_budget_usd: 50, spend_usd: 25 },
   ];
 
+  it("gives same-named keys distinct ids", () => {
+    // The gateway exposes no key id and names collide in practice, which
+    // previously produced duplicate React keys and dropped rows.
+    const dupes: KeyInfo[] = [
+      { name: "acme-app", monthly_budget_usd: 5, spend_usd: 0 },
+      { name: "acme-app", monthly_budget_usd: 5, spend_usd: 0 },
+      { name: "acme-app", monthly_budget_usd: 5, spend_usd: 0 },
+    ];
+    const ids = budgetMeters(dupes).map((r) => r.id);
+    expect(new Set(ids).size).toBe(3);
+  });
+
+  it("keeps ids stable across identical responses", () => {
+    expect(budgetMeters(keys).map((r) => r.id)).toEqual(budgetMeters(keys).map((r) => r.id));
+  });
+
   it("drops budget-less keys and sorts fullest first", () => {
     const rows = budgetMeters(keys);
     expect(rows.map((r) => r.name)).toEqual(["prod", "staging", "dev"]);

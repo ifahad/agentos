@@ -1,7 +1,9 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
+import { Chain } from "./components/Chain";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
+import type { IconName } from "./ui/icons";
 import { errorMessage } from "./components/common";
 import {
   apiFetch,
@@ -42,24 +44,44 @@ export interface PageProps {
 interface Route {
   path: string;
   label: string;
+  icon: IconName;
   Component: (props: PageProps) => React.JSX.Element;
   // When set, the nav item is shown only if the predicate holds for the role.
   visible?: (role: AuthRole) => boolean;
 }
 
 const ROUTES: Route[] = [
-  { path: "/", label: "Overview", Component: Overview },
-  { path: "/keys", label: "Keys", Component: Keys },
-  { path: "/audit", label: "Audit", Component: Audit },
-  { path: "/playground", label: "Playground", Component: Playground },
-  { path: "/documents", label: "Documents", Component: Documents },
-  { path: "/improve", label: "Improve", Component: Improve },
-  { path: "/orgs", label: "Orgs", Component: Orgs, visible: (r) => can(r, "org.view") },
-  { path: "/users", label: "Users", Component: Users, visible: (r) => can(r, "user.view") },
-  { path: "/secrets", label: "Secrets", Component: Secrets, visible: (r) => can(r, "secret.view") },
+  { path: "/", label: "Overview", icon: "overview", Component: Overview },
+  { path: "/keys", label: "Keys", icon: "keys", Component: Keys },
+  { path: "/audit", label: "Audit", icon: "audit", Component: Audit },
+  { path: "/playground", label: "Playground", icon: "playground", Component: Playground },
+  { path: "/documents", label: "Documents", icon: "documents", Component: Documents },
+  { path: "/improve", label: "Improve", icon: "improve", Component: Improve },
+  {
+    path: "/orgs",
+    label: "Orgs",
+    icon: "orgs",
+    Component: Orgs,
+    visible: (r) => can(r, "org.view"),
+  },
+  {
+    path: "/users",
+    label: "Users",
+    icon: "users",
+    Component: Users,
+    visible: (r) => can(r, "user.view"),
+  },
+  {
+    path: "/secrets",
+    label: "Secrets",
+    icon: "secrets",
+    Component: Secrets,
+    visible: (r) => can(r, "secret.view"),
+  },
   {
     path: "/provisioning",
     label: "Provisioning",
+    icon: "provisioning",
     Component: Provisioning,
     visible: (r) => can(r, "provisioning.view"),
   },
@@ -160,6 +182,13 @@ export function App() {
           openSettings={openSettings}
         />
         <main className="main">
+          {/* The gauntlet every request runs, pinned above the content: it is the
+              one thing true of the whole platform regardless of which page you
+              are on. */}
+          <header className="topbar">
+            <span className="eyebrow topbar-legend">governance chain</span>
+            <Chain adminKey={adminKey} />
+          </header>
           {reducedMotion ? (
             <div className="page">{page}</div>
           ) : (

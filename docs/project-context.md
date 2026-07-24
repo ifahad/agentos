@@ -236,19 +236,41 @@ failing under 0.8.
 ## 7. The console (TypeScript) — read this section for UI work
 
 **Stack, deliberately minimal:** React **19**, TypeScript 5.8, Vite 6, Vitest 3.
-**Zero runtime dependencies beyond `react` and `react-dom`** — no router, no
-state library, no component library, no CSS framework. Routing is hand-rolled in
-`App.tsx` over a `Route[]` array; styling is a single hand-written
-`console/src/styles.css` (739 lines); shared primitives live in
-`console/src/components/common.tsx` (107 lines).
+Runtime dependencies are only `react`, `react-dom` and `framer-motion` — no
+router, no state library, no component library, no CSS framework. Routing is
+hand-rolled in `App.tsx` over a `Route[]` array; styling is hand-written CSS
+with tokens in `console/src/styles.css` plus co-located per-page sheets.
+
+**Design language — "Instrument".** The one rule that governs every visual
+decision: **chroma is reserved for machine state.** There is no brand accent. If
+something is colored it is `--live` (in flight), `--ok` (allowed), `--hold`
+(awaiting a human) or `--deny` (refused); navigation, buttons, selection, links
+and charts at rest are graphite and ink only. A quiet screen is a healthy one.
+Adding a decorative accent would make the signals lie — don't.
+
+Type is self-hosted, never a CDN, because a font request to a third party would
+leak console usage off-box: **Archivo** for interface text, **IBM Plex Mono**
+for every machine-produced value (ids, counts, money, models, timestamps).
+Icons are hand-drawn schematic marks in `src/ui/icons.tsx` on a 16px grid — no
+icon library. The signature element is the **governance chain** in the topbar,
+which renders how far the most recent request actually got through
+auth → rbac → budget → rate → audit, derived from recorded audit statuses in
+`src/lib/chain.ts` rather than from a timer.
 
 ```
 console/src/
   App.tsx                 nav + hand-rolled routing + identity/whoami wiring
   main.tsx                mount
-  styles.css              ALL styling (739 lines, hand-written CSS)
+  styles.css              tokens + shell + shared element styling
+  fonts/                  self-hosted Archivo + IBM Plex Mono (OFL, woff2)
+  ui/
+    icons.tsx             the AgentOS icon set (hand-drawn SVG)
+    Button/Card/Stat/Table/Badge/Modal/Toast/Skeleton + motion presets
+  charts/                 hand-rolled SVG sparkline / usage / spend + transforms
   components/
+    Chain.tsx             the governance chain (signature element)
     common.tsx            shared primitives (errorMessage, etc.)
+    Sidebar.tsx           nav shell with icons and the live dot
     SettingsModal.tsx     admin key / identity settings
   lib/                    pure logic, each with a .test.ts sibling
     api.ts                typed same-origin client + buildRequest()

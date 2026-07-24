@@ -3,9 +3,21 @@
 
 /* ---- Stat ---- */
 
+.ui-stat-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+/* The trace sits to the right of the reading and takes whatever width is left,
+   the way a strip recorder runs beside its readout. */
 .ui-stat-spark {
-  margin-top: 8px;
   display: block;
+  flex: 1;
+  min-width: 0;
+  max-width: 120px;
+  opacity: 0.85;
 }
 
 /* ---- Tabs ---- */

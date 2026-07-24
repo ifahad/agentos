@@ -60,6 +60,14 @@ export function isInflight(
 }
 
 export interface BudgetMeter {
+  /**
+   * Stable list identity. GET /admin/keys returns no key id and names are not
+   * unique — several distinct keys are routinely called the same thing — so
+   * rows are disambiguated by their position in the sorted result. Sorting is
+   * total (fraction, then name), which makes this deterministic for a given
+   * response rather than merely incidental.
+   */
+  id: string;
   name: string;
   spend: number;
   budget: number;
@@ -82,5 +90,6 @@ export function budgetMeters(keys: readonly KeyInfo[], cap = 6): BudgetMeter[] {
       fraction: budgetFraction(k.spend_usd, k.monthly_budget_usd),
     }));
   rows.sort((a, b) => b.fraction - a.fraction || a.name.localeCompare(b.name));
-  return cap > 0 ? rows.slice(0, cap) : rows;
+  const capped = cap > 0 ? rows.slice(0, cap) : rows;
+  return capped.map((row, i) => ({ ...row, id: `${row.name}#${i}` }));
 }

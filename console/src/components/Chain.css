@@ -1,0 +1,191 @@
+/* The governance chain. Reads as a wiring run across the top of the shell:
+   five nodes on one rule, inked only as far as the last request actually got. */
+
+.chain {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* The rule sits behind the nodes and spans exactly the stage row, so the
+   inked fraction lines up with stage boundaries rather than approximating them. */
+.chain-track {
+  position: absolute;
+  left: 0;
+  right: 26px;
+  top: 3.5px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.chain-rule,
+.chain-fill {
+  position: absolute;
+  inset: 0;
+}
+
+.chain-rule {
+  background: var(--border-strong);
+}
+
+.chain-fill {
+  background: var(--text-faint);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+
+/* Colour the run only when the request was stopped or the provider failed —
+   a clean pass stays graphite, because nothing needs your attention. */
+.chain[data-outcome="deny"] .chain-fill {
+  background: var(--deny);
+}
+
+.chain[data-outcome="fail"] .chain-fill {
+  background: var(--hold);
+}
+
+.chain-stages {
+  display: flex;
+  flex: 1;
+  list-style: none;
+  min-width: 0;
+}
+
+/* Equal stages keep the fill fraction (cleared / 5) landing exactly on a
+   boundary, so the rule can never imply a stage half-ran. */
+.chain-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+/* Nodes are tap points on the run, not bullets: square, seated on the rule,
+   and filled only once the request has actually passed through them. */
+.chain-node {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  z-index: 1;
+  transition:
+    background var(--dur-med) var(--ease),
+    box-shadow var(--dur-med) var(--ease);
+}
+
+.chain-label {
+  font-family: var(--mono);
+  font-size: var(--eyebrow-size);
+  font-weight: 500;
+  letter-spacing: var(--eyebrow-track);
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+  transition: color var(--dur-med) var(--ease);
+}
+
+.chain-stage[data-render="cleared"] .chain-node {
+  background: var(--text-dim);
+  box-shadow: inset 0 0 0 1px var(--text-dim);
+}
+
+.chain-stage[data-render="cleared"] .chain-label {
+  color: var(--text-dim);
+}
+
+/* The halting stage is the one place the chain raises its voice. */
+.chain-stage[data-render="stopped"] .chain-node {
+  background: var(--deny);
+  box-shadow:
+    inset 0 0 0 1px var(--deny),
+    0 0 0 3px rgba(226, 104, 95, 0.16);
+}
+
+.chain-stage[data-render="stopped"] .chain-label {
+  color: var(--deny);
+}
+
+.chain[data-outcome="fail"] .chain-stage[data-render="stopped"] .chain-node {
+  background: var(--hold);
+  box-shadow:
+    inset 0 0 0 1px var(--hold),
+    0 0 0 3px rgba(227, 168, 81, 0.16);
+}
+
+.chain-outcome {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Live traffic: the leading edge of the run breathes. Only while requests are
+   actually arriving — see LINGER_MS in Chain.tsx. */
+.chain[data-active] .chain-fill {
+  animation: chain-pulse 1.6s var(--ease) infinite;
+}
+
+@keyframes chain-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chain[data-active] .chain-fill {
+    animation: none;
+  }
+}
+
+/* Status glyphs are the only marks allowed to carry colour, and they take it
+   from the matching token so a state can never be drawn in the wrong hue. */
+.state-icon.state-live {
+  color: var(--live);
+}
+
+.state-icon.state-ok {
+  color: var(--ok);
+}
+
+.state-icon.state-hold {
+  color: var(--hold);
+}
+
+.state-icon.state-deny {
+  color: var(--deny);
+}
+
+/* A live run is the one thing worth catching your eye from across the room. */
+.state-icon.state-live {
+  animation: state-live-pulse 1.8s var(--ease) infinite;
+}
+
+@keyframes state-live-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .state-icon.state-live {
+    animation: none;
+  }
+}
+
+@media (max-width: 720px) {
+  /* Labels drop before nodes do: the shape of the run still reads without them. */
+  .chain-label {
+    display: none;
+  }
+}

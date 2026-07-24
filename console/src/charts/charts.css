@@ -20,14 +20,14 @@
 
 .chart-line {
   fill: none;
-  stroke: var(--accent, #5b8cff);
+  stroke: var(--text-dim);
   stroke-width: 1.5;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
 
 .chart-area {
-  fill: var(--accent-dim, rgba(91, 140, 255, 0.12));
+  fill: rgba(255, 255, 255, 0.05);
   stroke: none;
 }
 
@@ -90,7 +90,7 @@
 .breakdown-fill {
   height: 100%;
   border-radius: 3px;
-  background: var(--accent, #5b8cff);
+  background: var(--text-dim);
   transform-origin: left center;
   animation: chart-bar var(--dur-med, 200ms) var(--ease, cubic-bezier(0.2, 0.8, 0.2, 1))
     both;

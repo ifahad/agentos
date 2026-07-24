@@ -5,11 +5,14 @@ import type { AuthRole } from "../lib/rbac";
 import { roleLabel } from "../lib/rbac";
 import type { KeyUsage } from "../lib/types";
 import { transition } from "../ui";
+import type { IconName } from "../ui/icons";
+import { Icon } from "../ui/icons";
 import "./Sidebar.css";
 
 export interface NavRoute {
   path: string;
   label: string;
+  icon: IconName;
 }
 
 interface SidebarProps {
@@ -112,6 +115,7 @@ export function Sidebar({
                     transition={transition}
                   />
                 ))}
+              <Icon name={r.icon} size={15} className="nav-icon" />
               <span className="nav-item-label">{r.label}</span>
             </button>
           );
@@ -119,12 +123,15 @@ export function Sidebar({
       </nav>
       <div className="sidebar-footer">
         <button className="nav-item" onClick={openSettings}>
+          <Icon name="settings" size={15} className="nav-icon" />
           <span className="nav-item-label">
             Settings
             {adminKey ? (
               <span className="dim"> · {roleLabel(role).toLowerCase()}</span>
             ) : (
-              <span style={{ color: "var(--amber)" }}> · no key</span>
+              /* No key is a held state, not an error: the console is waiting on
+                 you, exactly like a tool call awaiting approval. */
+              <span className="nav-note-hold"> · no key</span>
             )}
           </span>
         </button>
