@@ -17,7 +17,8 @@ from typing import Any
 
 from agentos_runtime.agent import build_chat_model
 from agentos_runtime.council.config import CouncilConfig, Member
-from agentos_runtime.hitl import run_until_settled
+from agentos_runtime.council.gating import hold_writes_as_proposals, write_class_calls
+from agentos_runtime.hitl import RunOutcome, pending_tool_calls
 from agentos_runtime.messages import extract_output, extract_tool_calls
 
 logger = logging.getLogger(__name__)
@@ -91,12 +92,17 @@ def _select_tools(tools: Sequence[Any], names: Sequence[str]) -> list[Any]:
 
 
 def _with_profile(settings: Any, profile: str) -> Any:
-    """A settings copy whose agent_profile is the member's.
+    """A settings copy with the member's profile and council gating enabled.
 
-    build_agent reads agent_profile off settings; members choose react or deep
-    independently, so each needs its own view.
+    approval_tools is set to a sentinel so react-profile members compile with
+    interrupt_before=["tools"]; the council then classifies each batch itself
+    (read-safe executes, write-class becomes a proposal). deepagents ignores this
+    (it compiles its own graph), which is why deep members are constrained by
+    their tools list instead.
     """
-    return settings.model_copy(update={"agent_profile": profile})
+    return settings.model_copy(
+        update={"agent_profile": profile, "approval_tools": "__council__"}
+    )
 
 
 async def fanout(
@@ -109,17 +115,19 @@ async def fanout(
     cycle_no: int,
     input_text: str,
     agent_factory=build_member_agent,
+    store=None,
 ) -> list[MemberAnswer]:
     """Run every member on the same input concurrently.
 
     Returns one MemberAnswer per member, in the order given. Never raises for a
     member failure: exceptions and timeouts become failed answers so the caller
-    can apply quorum.
+    can apply quorum. When ``store`` is set, write-class tool calls are held as
+    proposals rather than executed (react-profile members only).
     """
     tasks = [
         _run_member(
             config, settings, member, tools, checkpointer,
-            objective_id, cycle_no, input_text, agent_factory,
+            objective_id, cycle_no, input_text, agent_factory, store,
         )
         for member in members
     ]
@@ -136,6 +144,7 @@ async def _run_member(
     cycle_no: int,
     input_text: str,
     agent_factory,
+    store,
 ) -> MemberAnswer:
     """Run one member to an answer, converting every failure into a status."""
     thread_id = member_thread_id(objective_id, member.id)
@@ -145,6 +154,7 @@ async def _run_member(
             _invoke_member(
                 config, settings, member, tools, checkpointer,
                 thread_id, cycle_no, input_text, agent_factory, model_used,
+                store, objective_id,
             ),
             timeout=config.member_timeout_s,
         )
@@ -177,11 +187,15 @@ async def _invoke_member(
     input_text: str,
     agent_factory,
     model_used: str,
+    store,
+    objective_id: str,
 ) -> MemberAnswer:
     """Invoke a member's agent, falling back to its fallback_model once."""
     try:
         agent = agent_factory(settings, member, tools, checkpointer)
-        outcome = await _drive(agent, thread_id, cycle_no, input_text, config)
+        outcome = await _drive(
+            agent, thread_id, cycle_no, input_text, config, store, objective_id, member.id
+        )
     except Exception:
         if not member.fallback_model:
             raise
@@ -190,7 +204,9 @@ async def _invoke_member(
         )
         model_used = member.fallback_model
         agent = agent_factory(settings, member, tools, checkpointer, model=model_used)
-        outcome = await _drive(agent, thread_id, cycle_no, input_text, config)
+        outcome = await _drive(
+            agent, thread_id, cycle_no, input_text, config, store, objective_id, member.id
+        )
 
     messages = outcome.values.get("messages", [])
     return MemberAnswer(
@@ -206,19 +222,34 @@ async def _invoke_member(
     )
 
 
-async def _drive(agent, thread_id, cycle_no, input_text, config):
-    """Drive one member's graph under the council's per-run step cap.
+async def _drive(
+    agent, thread_id, cycle_no, input_text, config, store=None, objective_id="", member_id=""
+):
+    """Drive one member's graph, holding write-class tool calls as proposals.
 
     recursion_limit is the cycle cap the runtime previously lacked: without it a
     member could loop until LangGraph's default 25, unbounded by council config.
+
+    At each tool interrupt, read-safe calls resume and execute; write-class calls
+    are recorded as proposals and denied in-graph, so the member sees they did not
+    run. When ``store`` is None (unit tests, or a member with no gating), the graph
+    simply runs to completion.
     """
     run_config = {
         "configurable": {"thread_id": f"{thread_id}#{cycle_no}"},
         "recursion_limit": config.max_tool_steps,
     }
-    return await run_until_settled(
-        agent, {"messages": [("user", input_text)]}, run_config, approval_tools=[]
-    )
+    values = await agent.ainvoke({"messages": [("user", input_text)]}, config=run_config)
+    while True:
+        snapshot = await agent.aget_state(run_config)
+        if not snapshot.next:
+            return RunOutcome(status="completed", values=values, pending=[])
+        pending = pending_tool_calls(snapshot)
+        if store is not None and write_class_calls(pending):
+            await hold_writes_as_proposals(
+                agent, run_config, pending, store, objective_id, member_id
+            )
+        values = await agent.ainvoke(None, config=run_config)
 
 
 def quorum_met(answers: Sequence[MemberAnswer], quorum: int) -> bool:

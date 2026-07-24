@@ -6,6 +6,11 @@
 # five-way council runs at zero cost.
 #
 # A member's `model` must never use the reserved `council/` prefix.
+#
+# GATING CAVEAT: deepagents compiles its own graph with no interrupt_before
+# pass-through, so the council cannot hold a deep member's write-class tool calls
+# in-graph. Every `profile: deep` member is therefore given an explicit read-only
+# `tools:` list — that IS its action surface. A test asserts this holds.
 judge: ollama/qwen3.6:latest
 quorum: 3
 agreement_threshold: 0.6
@@ -20,32 +25,41 @@ members:
     enabled: false
     profile: deep
     persona: "Prioritize inspecting schemas and citing exact tables before concluding."
+    tools: [query, list_tables, describe_table, search_knowledge, run_python]
   - id: glm
     model: zhipu/glm-5.2
     enabled: false
     profile: deep
+    tools: [query, list_tables, describe_table, search_knowledge, run_python]
   - id: qwen-max
     model: alibaba/qwen3.8-max
     enabled: false
     profile: deep
+    tools: [query, list_tables, describe_table, search_knowledge, run_python]
   - id: deepseek
     model: deepseek/deepseek-v4-pro
     enabled: false
     profile: deep
+    tools: [query, list_tables, describe_table, search_knowledge, run_python]
   - id: minimax
     model: minimax/minimax-m3
     enabled: false
     profile: deep
+    tools: [query, list_tables, describe_table, search_knowledge, run_python]
 
   # --- local members: a real five-way council at $0 ---
+  # Deep members carry an explicit read-only tools list (see caveat above);
+  # react members are gated in-graph by the council, so they may load all tools.
   - id: local-qwen36
     model: ollama/qwen3.6:latest
     enabled: true
     profile: deep
+    tools: [query, list_tables, describe_table, search_knowledge, run_python]
   - id: local-qwen35
     model: ollama/qwen3.5:latest
     enabled: true
     profile: deep
+    tools: [query, list_tables, describe_table, search_knowledge, run_python]
   - id: local-gemma4-31b
     model: ollama/gemma4:31b
     enabled: true
