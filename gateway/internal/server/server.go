@@ -714,7 +714,7 @@ func (s *Server) proxy(w http.ResponseWriter, r *http.Request, p proxyRequest) {
 		Model:        p.model,
 		InputTokens:  inputTokens,
 		OutputTokens: outputTokens,
-		CostUSD:      provider.Cost(p.route.Model, inputTokens, outputTokens),
+		CostUSD:      p.route.Cost(inputTokens, outputTokens),
 		LatencyMS:    latencyMS,
 		Status:       resp.StatusCode,
 		Kind:         p.kind,

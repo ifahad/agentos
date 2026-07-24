@@ -345,7 +345,7 @@ func buildModelGuardrail(ctx context.Context, st store.Store, router *provider.R
 			log.Printf("WARNING: AGENTOS_GUARDRAILS_KEY is not a known virtual key; classifier spend will not appear in /admin/usage")
 		} else {
 			guardModel := model
-			classifier.OnUsage = func(strippedModel string, inputTokens, outputTokens int64) {
+			classifier.OnUsage = func(_ string, inputTokens, outputTokens int64) {
 				if err := st.RecordUsage(context.Background(), store.Usage{
 					SecretHash:   key.SecretHash,
 					OrgID:        key.OrgID,
@@ -353,9 +353,11 @@ func buildModelGuardrail(ctx context.Context, st store.Store, router *provider.R
 					Model:        guardModel,
 					InputTokens:  inputTokens,
 					OutputTokens: outputTokens,
-					CostUSD:      provider.Cost(strippedModel, inputTokens, outputTokens),
-					Status:       http.StatusOK,
-					Kind:         store.KindChat,
+					// route is the classifier's own route, resolved above; it
+					// carries the correct price for this exact model.
+					CostUSD: route.Cost(inputTokens, outputTokens),
+					Status:  http.StatusOK,
+					Kind:    store.KindChat,
 				}); err != nil {
 					log.Printf("record guardrail classifier usage: %v", err)
 				}

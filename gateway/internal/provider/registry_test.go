@@ -126,3 +126,106 @@ func TestLoadRegistryReadsFile(t *testing.T) {
 		t.Error("moonshot not loaded")
 	}
 }
+
+func TestRouteViaRegistry(t *testing.T) {
+	stubLookup(t)
+	reg, errs := ParseRegistry([]byte(`{"providers":[
+	  {"name":"moonshot","base_url":"https://api.moonshot.ai",
+	   "key_name":"AGENTOS_MOONSHOT_API_KEY","enabled":true,
+	   "prices":{"kimi-k3":{"in":1.0,"out":4.0}}}]}`))
+	if len(errs) != 0 {
+		t.Fatalf("errs = %v", errs)
+	}
+	router := &Router{Registry: reg, Secrets: staticSource{"AGENTOS_MOONSHOT_API_KEY": "sk-moon"}}
+
+	route, err := router.Route("moonshot/kimi-k3")
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if route.Provider != "moonshot" {
+		t.Errorf("Provider = %q", route.Provider)
+	}
+	if route.URL != "https://api.moonshot.ai/v1/chat/completions" {
+		t.Errorf("URL = %q", route.URL)
+	}
+	if route.APIKey != "sk-moon" {
+		t.Errorf("APIKey = %q", route.APIKey)
+	}
+	if route.Model != "kimi-k3" {
+		t.Errorf("Model = %q", route.Model)
+	}
+	if route.MaxAttempts != DefaultMaxAttempts {
+		t.Errorf("MaxAttempts = %d, want %d", route.MaxAttempts, DefaultMaxAttempts)
+	}
+	// 1M in + 1M out at 1.0/4.0 == $5.00 — budgets are no longer inert.
+	if got := route.Cost(1_000_000, 1_000_000); got != 5.0 {
+		t.Errorf("Cost = %v, want 5.0", got)
+	}
+
+	emb, err := router.RouteEmbeddings("moonshot/embed-1")
+	if err != nil {
+		t.Fatalf("RouteEmbeddings: %v", err)
+	}
+	if emb.URL != "https://api.moonshot.ai/v1/embeddings" {
+		t.Errorf("embeddings URL = %q", emb.URL)
+	}
+	if got := emb.Cost(1_000_000, 0); got != 0 {
+		t.Errorf("unpriced model must cost 0, got %v", got)
+	}
+}
+
+func TestRouteRegistryDoesNotShadowBuiltins(t *testing.T) {
+	stubLookup(t)
+	reg, _ := ParseRegistry([]byte(`{"providers":[
+	  {"name":"anthropic","base_url":"https://api.moonshot.ai","key_name":"K"}]}`))
+	router := &Router{Registry: reg, AnthropicAPIKey: "sk-ant"}
+	route, err := router.Route("anthropic/claude-sonnet-5")
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if route.URL != "https://api.anthropic.com/v1/chat/completions" {
+		t.Errorf("built-in must win over a registry entry of the same name, got %q", route.URL)
+	}
+}
+
+func TestRouteDisabledProviderIsUnknown(t *testing.T) {
+	stubLookup(t)
+	reg, _ := ParseRegistry([]byte(`{"providers":[
+	  {"name":"moonshot","base_url":"https://api.moonshot.ai","key_name":"K","enabled":false}]}`))
+	router := &Router{Registry: reg}
+	if _, err := router.Route("moonshot/kimi-k3"); !errors.Is(err, ErrUnknownProvider) {
+		t.Errorf("err = %v, want ErrUnknownProvider", err)
+	}
+}
+
+func TestRouteEnabledProviderWithNoKeyIsUnknown(t *testing.T) {
+	stubLookup(t)
+	reg, _ := ParseRegistry([]byte(`{"providers":[
+	  {"name":"moonshot","base_url":"https://api.moonshot.ai",
+	   "key_name":"AGENTOS_MOONSHOT_API_KEY","enabled":true}]}`))
+	router := &Router{Registry: reg, Secrets: staticSource{}}
+	if _, err := router.Route("moonshot/kimi-k3"); !errors.Is(err, ErrUnknownProvider) {
+		t.Errorf("a provider with no resolvable key must not route, got err = %v", err)
+	}
+}
+
+func TestBuiltinPricingStillApplies(t *testing.T) {
+	router := &Router{}
+	route, err := router.Route("anthropic/claude-sonnet-5")
+	if err != nil {
+		t.Fatalf("Route: %v", err)
+	}
+	if got := route.Cost(1_000_000, 1_000_000); got != 18.0 {
+		t.Errorf("Cost = %v, want 18.0 (3 in + 15 out)", got)
+	}
+	unknown, _ := router.Route("ollama/qwen3.6:latest")
+	if got := unknown.Cost(1_000_000, 1_000_000); got != 0 {
+		t.Errorf("local model must cost 0, got %v", got)
+	}
+}
+
+// staticSource is a secret.Source backed by a map.
+type staticSource map[string]string
+
+func (s staticSource) Get(name string) (string, bool) { v, ok := s[name]; return v, ok }
+func (s staticSource) Backend() string                { return "static" }

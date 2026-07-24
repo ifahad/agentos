@@ -161,13 +161,16 @@ func TestCost(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := Cost(tt.model, tt.input, tt.output)
+			// Cost is now a method on Route; a built-in model carries no per-route
+			// price, so it falls back to the static table by Model name.
+			route := &Route{Model: tt.model}
+			got := route.Cost(tt.input, tt.output)
 			diff := got - tt.want
 			if diff < 0 {
 				diff = -diff
 			}
 			if diff > 1e-9 {
-				t.Errorf("Cost(%q, %d, %d) = %v, want %v", tt.model, tt.input, tt.output, got, tt.want)
+				t.Errorf("Route{Model:%q}.Cost(%d, %d) = %v, want %v", tt.model, tt.input, tt.output, got, tt.want)
 			}
 		})
 	}

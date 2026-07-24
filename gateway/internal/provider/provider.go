@@ -32,6 +32,12 @@ type Route struct {
 	URL      string // full chat-completions URL
 	APIKey   string // empty means no Authorization header
 	Model    string // model with the provider prefix stripped
+	// InPrice/OutPrice are USD per 1M tokens for this exact model, resolved at
+	// routing time (the registry knows prices per provider, the proxy does not).
+	InPrice  float64
+	OutPrice float64
+	// MaxAttempts caps upstream attempts for this route (see server retry).
+	MaxAttempts int
 }
 
 // Router resolves provider-prefixed model names. Zero-value base URLs fall
@@ -49,6 +55,9 @@ type Router struct {
 	// refresh loop) takes effect upstream without a restart (H5). When it lacks a
 	// value the static field above is used as a fallback.
 	Secrets secret.Source
+	// Registry holds operator-configured OpenAI-compatible providers, consulted
+	// after the built-in anthropic/openai/ollama prefixes. Nil = built-ins only.
+	Registry *Registry
 }
 
 // anthropicKey resolves the Anthropic credential: the live Secrets source wins
@@ -88,27 +97,75 @@ func (r *Router) route(model, path string) (*Route, error) {
 	switch {
 	case strings.HasPrefix(model, "anthropic/"):
 		return &Route{
-			Provider: "anthropic",
-			URL:      orDefault(r.AnthropicBaseURL, DefaultAnthropicBaseURL) + path,
-			APIKey:   r.anthropicKey(),
-			Model:    strings.TrimPrefix(model, "anthropic/"),
+			Provider:    "anthropic",
+			URL:         orDefault(r.AnthropicBaseURL, DefaultAnthropicBaseURL) + path,
+			APIKey:      r.anthropicKey(),
+			Model:       strings.TrimPrefix(model, "anthropic/"),
+			MaxAttempts: DefaultMaxAttempts,
 		}, nil
 	case strings.HasPrefix(model, "openai/"):
 		return &Route{
-			Provider: "openai",
-			URL:      orDefault(r.OpenAIBaseURL, DefaultOpenAIBaseURL) + path,
-			APIKey:   r.openaiKey(),
-			Model:    strings.TrimPrefix(model, "openai/"),
+			Provider:    "openai",
+			URL:         orDefault(r.OpenAIBaseURL, DefaultOpenAIBaseURL) + path,
+			APIKey:      r.openaiKey(),
+			Model:       strings.TrimPrefix(model, "openai/"),
+			MaxAttempts: DefaultMaxAttempts,
 		}, nil
 	case strings.HasPrefix(model, "ollama/"):
 		return &Route{
-			Provider: "ollama",
-			URL:      orDefault(r.OllamaBaseURL, DefaultOllamaBaseURL) + path,
-			Model:    strings.TrimPrefix(model, "ollama/"),
+			Provider:    "ollama",
+			URL:         orDefault(r.OllamaBaseURL, DefaultOllamaBaseURL) + path,
+			Model:       strings.TrimPrefix(model, "ollama/"),
+			MaxAttempts: DefaultMaxAttempts,
 		}, nil
 	default:
+		return r.routeRegistry(model, path)
+	}
+}
+
+// routeRegistry resolves "name/model" against the operator registry. A provider
+// that is disabled, unknown, or missing its credential is reported as unknown
+// rather than attempted, so a misconfiguration surfaces as a 400 here instead of
+// an opaque upstream 401 later.
+func (r *Router) routeRegistry(model, path string) (*Route, error) {
+	name, stripped, ok := strings.Cut(model, "/")
+	if !ok || name == "" || stripped == "" {
 		return nil, ErrUnknownProvider
 	}
+	entry, found := r.Registry.Lookup(name)
+	if !found || !entry.Enabled {
+		return nil, ErrUnknownProvider
+	}
+	key := r.secretValue(entry.KeyName)
+	if entry.KeyName != "" && key == "" {
+		return nil, ErrUnknownProvider
+	}
+	suffix := entry.ChatPath
+	if path == "/v1/embeddings" {
+		suffix = entry.EmbeddingsPath
+	}
+	price := entry.Prices[stripped]
+	return &Route{
+		Provider:    entry.Name,
+		URL:         entry.BaseURL + suffix,
+		APIKey:      key,
+		Model:       stripped,
+		InPrice:     price.In,
+		OutPrice:    price.Out,
+		MaxAttempts: entry.MaxAttempts,
+	}, nil
+}
+
+// secretValue resolves a named credential from the live secret source.
+func (r *Router) secretValue(name string) string {
+	if name == "" || r.Secrets == nil {
+		return ""
+	}
+	v, ok := r.Secrets.Get(name)
+	if !ok {
+		return ""
+	}
+	return v
 }
 
 func orDefault(v, def string) string {
@@ -131,9 +188,14 @@ var prices = map[string]price{
 	"gpt-4o-mini":      {In: 0.15, Out: 0.60},
 }
 
-// Cost prices a request from the stripped model name and token counts.
-// Models missing from the table cost 0 (local models are free).
-func Cost(model string, inputTokens, outputTokens int64) float64 {
-	p := prices[model]
-	return (float64(inputTokens)*p.In + float64(outputTokens)*p.Out) / 1_000_000
+// Cost prices a request for this route. Registry providers carry their prices
+// on the Route; built-in providers fall back to the static table. Models absent
+// from both cost 0 (local models are free).
+func (r *Route) Cost(inputTokens, outputTokens int64) float64 {
+	in, out := r.InPrice, r.OutPrice
+	if in == 0 && out == 0 {
+		p := prices[r.Model]
+		in, out = p.In, p.Out
+	}
+	return (float64(inputTokens)*in + float64(outputTokens)*out) / 1_000_000
 }
