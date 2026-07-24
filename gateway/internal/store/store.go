@@ -30,6 +30,20 @@ var ErrUserNotFound = errors.New("user not found")
 // account is retained and can be reactivated.
 var ErrUserInactive = errors.New("user inactive")
 
+// ReservationTTL bounds how long an in-flight spend reservation counts against
+// a budget. It exists only to reclaim reservations orphaned by a crashed or
+// killed process, so it is set far above any legitimate request duration —
+// expiring a live request's reservation would let real spend slip past the cap.
+const ReservationTTL = 15 * time.Minute
+
+// ErrBudgetExceeded is returned by ReserveSpend when the key's own monthly
+// budget has no room left for the estimated cost.
+var ErrBudgetExceeded = errors.New("key budget exceeded")
+
+// ErrOrgBudgetExceeded is returned by ReserveSpend when the key has room but
+// its org's shared monthly budget does not.
+var ErrOrgBudgetExceeded = errors.New("org budget exceeded")
+
 // Multi-tenant defaults from the frozen contract. Pre-existing keys belong to
 // the bootstrapped default org and are attributed to the root superuser.
 const (
@@ -153,8 +167,35 @@ type Store interface {
 	// RootCreator). Phase 5 callers use this to scope keys to a tenant.
 	CreateKeyIn(ctx context.Context, name string, budgetUSD float64, orgID, createdBy string) (secret string, err error)
 	Authenticate(ctx context.Context, secret string) (*Key, error) // ErrInvalidKey
-	RecordUsage(ctx context.Context, u Usage) error                // updates spend
-	RecordAudit(ctx context.Context, u Usage) error                // audit log only, no spend
+
+	// ReserveSpend atomically confirms that the key AND its org still have room
+	// for estimateUSD, records that amount as in flight, and returns a handle
+	// for releasing it. It returns ErrBudgetExceeded or ErrOrgBudgetExceeded
+	// when there is no room.
+	//
+	// This exists because reading Key.SpendUSD and then deciding is a
+	// check-then-act race: N concurrent requests on one key all observe the
+	// same pre-spend snapshot, all pass, and all spend. A council fanning out
+	// to five members is exactly that shape, so the overrun is not theoretical.
+	// Reserving under a lock makes admission serial per key and per org.
+	//
+	// Reservations expire on their own after ReservationTTL. That matters
+	// because a process that is killed mid-request never runs its release: with
+	// a running total the lost amount would shrink the key's budget forever,
+	// whereas an expiring row heals without operator intervention. Expiry is
+	// deliberately far longer than any legitimate request.
+	//
+	// Every successful reservation SHOULD still be released promptly, normally
+	// via defer; expiry is the backstop, not the mechanism.
+	ReserveSpend(ctx context.Context, secretHash string, estimateUSD float64) (reservationID string, err error)
+	// ReleaseSpend drops an in-flight reservation by the handle ReserveSpend
+	// returned. The actual cost is recorded separately by RecordUsage;
+	// releasing only undoes the estimate. Releasing an unknown or already
+	// released handle is not an error.
+	ReleaseSpend(ctx context.Context, reservationID string) error
+
+	RecordUsage(ctx context.Context, u Usage) error // updates spend
+	RecordAudit(ctx context.Context, u Usage) error // audit log only, no spend
 	// Usage returns per-key aggregates. An empty orgID returns all keys (root);
 	// a non-empty orgID scopes to that org in the store query — the isolation is
 	// pushed down, not filtered by name in Go (H4).

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -68,6 +69,37 @@ func (s *Server) orgBudgetExceeded(ctx context.Context, orgID string) bool {
 		return false
 	}
 	return spend >= org.MonthlyBudgetUSD
+}
+
+// admitSpend reserves budget for one in-flight request against the key and its
+// org, atomically. It writes the 402 and returns ok=false when there is no room.
+//
+// The returned release func MUST be deferred by the caller: it frees the hold
+// once the request is done, whether it succeeded, failed, or panicked. Actual
+// cost is recorded separately by recordAudit/RecordUsage — releasing only
+// undoes the estimate, it does not un-bill anything.
+func (s *Server) admitSpend(w http.ResponseWriter, r *http.Request, key *store.Key) (release func(), ok bool) {
+	id, err := s.store.ReserveSpend(r.Context(), key.SecretHash, s.reserveUSD)
+	switch {
+	case errors.Is(err, store.ErrBudgetExceeded):
+		writeError(w, http.StatusPaymentRequired, errBudgetExceeded,
+			fmt.Sprintf("monthly budget of $%.2f exhausted for key %q", key.MonthlyBudgetUSD, key.Name))
+		return nil, false
+	case errors.Is(err, store.ErrOrgBudgetExceeded):
+		writeError(w, http.StatusPaymentRequired, errOrgBudgetExceeded,
+			fmt.Sprintf("org %q monthly budget exhausted", key.OrgID))
+		return nil, false
+	case err != nil:
+		// Reservation is a guardrail, not the request's purpose. A store blip
+		// must not take traffic down, so admit and rely on the post-hoc spend
+		// record — the same fail-open stance the guardrail screener takes.
+		return func() {}, true
+	}
+	return func() {
+		// Detached from the request context: the release must still run after a
+		// client disconnect, or the hold survives until it expires.
+		_ = s.store.ReleaseSpend(context.WithoutCancel(r.Context()), id)
+	}, true
 }
 
 // scopeOrg returns the org id used to scope usage/audit store queries: empty

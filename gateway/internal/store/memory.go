@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -13,6 +14,15 @@ type memoryKey struct {
 	spendUSD  float64
 	orgID     string
 	createdBy string
+}
+
+// memoryReservation is cost admitted but not yet settled — one request in
+// flight. Budget decisions count these alongside recorded spend so concurrent
+// requests cannot each be admitted against the same pre-spend snapshot.
+type memoryReservation struct {
+	secretHash  string
+	estimateUSD float64
+	at          time.Time
 }
 
 type memoryUser struct {
@@ -43,6 +53,9 @@ type Memory struct {
 	audit []memoryAudit           // oldest first
 	orgs  map[string]*Org         // org id -> org
 	users map[string]*memoryUser  // user id -> user (with token hash)
+	// In-flight spend reservations, keyed by the handle handed to the caller.
+	reservations   map[string]*memoryReservation
+	reservationSeq int64
 }
 
 // NewMemory returns an empty in-memory store.
@@ -52,6 +65,8 @@ func NewMemory() *Memory {
 		usage: make(map[string]*memoryUsage),
 		orgs:  make(map[string]*Org),
 		users: make(map[string]*memoryUser),
+
+		reservations: make(map[string]*memoryReservation),
 	}
 }
 
@@ -109,6 +124,75 @@ func (m *Memory) resolveIdentity(u Usage) (identity, orgID string) {
 		identity = "name:" + u.KeyName
 	}
 	return identity, orgID
+}
+
+// reservedLocked totals live reservations for one key. Callers must hold m.mu.
+// Expired entries are ignored rather than deleted so this stays a pure read;
+// reaping happens in ReserveSpend.
+func (m *Memory) reservedLocked(secretHash string, now time.Time) float64 {
+	var total float64
+	for _, r := range m.reservations {
+		if r.secretHash == secretHash && now.Sub(r.at) < ReservationTTL {
+			total += r.estimateUSD
+		}
+	}
+	return total
+}
+
+// ReserveSpend admits a request only if the key and its org both have room,
+// counting cost already in flight. The single store mutex makes the check and
+// the reservation one atomic step, which is the whole point.
+func (m *Memory) ReserveSpend(_ context.Context, secretHash string, estimateUSD float64) (string, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	k, ok := m.keys[secretHash]
+	if !ok {
+		return "", ErrInvalidKey
+	}
+	now := time.Now()
+	// Drop anything orphaned by a crashed process before deciding.
+	for id, r := range m.reservations {
+		if now.Sub(r.at) >= ReservationTTL {
+			delete(m.reservations, id)
+		}
+	}
+
+	// A budget of 0 means unlimited, matching the rest of the gateway.
+	if k.budgetUSD > 0 && k.spendUSD+m.reservedLocked(secretHash, now)+estimateUSD > k.budgetUSD {
+		return "", ErrBudgetExceeded
+	}
+
+	orgID := orgOrDefault(k.orgID)
+	if org, ok := m.orgs[orgID]; ok && org.MonthlyBudgetUSD > 0 {
+		var committed float64
+		for hash, other := range m.keys {
+			if orgOrDefault(other.orgID) == orgID {
+				committed += other.spendUSD + m.reservedLocked(hash, now)
+			}
+		}
+		if committed+estimateUSD > org.MonthlyBudgetUSD {
+			return "", ErrOrgBudgetExceeded
+		}
+	}
+
+	m.reservationSeq++
+	id := strconv.FormatInt(m.reservationSeq, 10)
+	m.reservations[id] = &memoryReservation{
+		secretHash:  secretHash,
+		estimateUSD: estimateUSD,
+		at:          now,
+	}
+	return id, nil
+}
+
+// ReleaseSpend drops a reservation by handle. Releasing an unknown or already
+// released handle is a no-op, so a double release cannot manufacture headroom.
+func (m *Memory) ReleaseSpend(_ context.Context, reservationID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.reservations, reservationID)
+	return nil
 }
 
 func (m *Memory) RecordUsage(_ context.Context, u Usage) error {

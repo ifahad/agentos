@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -64,6 +65,25 @@ CREATE INDEX IF NOT EXISTS users_org_idx ON users (org_id);
 -- Pre-existing keys join the bootstrapped default org, attributed to root.
 ALTER TABLE keys ADD COLUMN IF NOT EXISTS org_id     TEXT NOT NULL DEFAULT 'org_default';
 ALTER TABLE keys ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT 'root';
+
+-- Cost admitted but not yet settled: one row per request in flight. Budget
+-- admission counts these alongside recorded spend, so concurrent requests on
+-- one key cannot each be approved against the same pre-spend snapshot.
+--
+-- A table rather than a running total on the keys row, specifically so orphans
+-- heal: a replica killed mid-request never runs its release, and a lost counter
+-- increment would shrink that key's budget permanently, whereas a row simply
+-- ages out of the window. Rows are also reaped opportunistically on reserve.
+CREATE TABLE IF NOT EXISTS spend_reservations (
+    id           BIGSERIAL PRIMARY KEY,
+    secret_hash  TEXT NOT NULL,
+    org_id       TEXT NOT NULL,
+    estimate_usd DOUBLE PRECISION NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS spend_reservations_key_idx ON spend_reservations (secret_hash);
+CREATE INDEX IF NOT EXISTS spend_reservations_org_idx ON spend_reservations (org_id);
+CREATE INDEX IF NOT EXISTS spend_reservations_created_idx ON spend_reservations (created_at);
 
 -- Phase 6 per-tenant rate limits (additive, migration-safe). 0 = unlimited,
 -- so pre-existing orgs keep Phase 1–5 behavior.
@@ -194,6 +214,108 @@ func resolveIdentity(ctx context.Context, q pgQuerier, u Usage) (secretHash, org
 		secretHash = u.KeyName
 	}
 	return secretHash, orgID
+}
+
+// ReserveSpend admits a request only if the key and its org both have room,
+// counting cost already in flight.
+//
+// Serialisation comes from row locks, not from application logic: the org row
+// is locked first and the key row second, always in that order, so concurrent
+// reservations queue instead of racing and no pair of callers can deadlock by
+// grabbing the two locks in opposite orders. Both budget reads then happen
+// inside that lock, which is what closes the check-then-act window.
+func (p *Postgres) ReserveSpend(ctx context.Context, secretHash string, estimateUSD float64) (string, error) {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return "", fmt.Errorf("begin reserve: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	var orgID string
+	if err := tx.QueryRow(ctx,
+		`SELECT org_id FROM keys WHERE secret_hash = $1`, secretHash).Scan(&orgID); err != nil {
+		return "", ErrInvalidKey
+	}
+
+	// Lock the org row first, then the key row, and always in that order, so
+	// concurrent reservations serialise instead of racing and no two callers
+	// can deadlock by taking the locks in opposite orders. A missing org row is
+	// not an error: pre-Phase-5 keys predate orgs and are unconstrained at the
+	// org level.
+	var orgBudget float64
+	hasOrg := tx.QueryRow(ctx,
+		`SELECT monthly_budget_usd FROM orgs WHERE id = $1 FOR UPDATE`, orgID).Scan(&orgBudget) == nil
+
+	var spend, keyBudget float64
+	if err := tx.QueryRow(ctx,
+		`SELECT spend_usd, monthly_budget_usd FROM keys WHERE secret_hash = $1 FOR UPDATE`,
+		secretHash).Scan(&spend, &keyBudget); err != nil {
+		return "", ErrInvalidKey
+	}
+
+	// Clear orphans from processes that died mid-request before counting.
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM spend_reservations WHERE created_at < now() - $1::interval`,
+		ttlInterval()); err != nil {
+		return "", fmt.Errorf("reap reservations: %w", err)
+	}
+
+	// A budget of 0 means unlimited, matching the rest of the gateway.
+	if keyBudget > 0 {
+		var reserved float64
+		if err := tx.QueryRow(ctx,
+			`SELECT COALESCE(SUM(estimate_usd), 0) FROM spend_reservations WHERE secret_hash = $1`,
+			secretHash).Scan(&reserved); err != nil {
+			return "", fmt.Errorf("key reserved: %w", err)
+		}
+		if spend+reserved+estimateUSD > keyBudget {
+			return "", ErrBudgetExceeded
+		}
+	}
+
+	if hasOrg && orgBudget > 0 {
+		var committed float64
+		if err := tx.QueryRow(ctx,
+			`SELECT COALESCE((SELECT SUM(spend_usd) FROM keys WHERE org_id = $1), 0)
+			      + COALESCE((SELECT SUM(estimate_usd) FROM spend_reservations WHERE org_id = $1), 0)`,
+			orgID).Scan(&committed); err != nil {
+			return "", fmt.Errorf("org committed: %w", err)
+		}
+		if committed+estimateUSD > orgBudget {
+			return "", ErrOrgBudgetExceeded
+		}
+	}
+
+	var id int64
+	if err := tx.QueryRow(ctx,
+		`INSERT INTO spend_reservations (secret_hash, org_id, estimate_usd)
+		 VALUES ($1, $2, $3) RETURNING id`,
+		secretHash, orgID, estimateUSD).Scan(&id); err != nil {
+		return "", fmt.Errorf("reserve: %w", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return "", fmt.Errorf("commit reserve: %w", err)
+	}
+	return strconv.FormatInt(id, 10), nil
+}
+
+// ReleaseSpend drops a reservation by handle. Releasing an unknown or already
+// released handle is a no-op, so a double release cannot manufacture headroom.
+func (p *Postgres) ReleaseSpend(ctx context.Context, reservationID string) error {
+	id, err := strconv.ParseInt(reservationID, 10, 64)
+	if err != nil {
+		return nil
+	}
+	if _, err := p.pool.Exec(ctx, `DELETE FROM spend_reservations WHERE id = $1`, id); err != nil {
+		return fmt.Errorf("release: %w", err)
+	}
+	return nil
+}
+
+// ttlInterval renders ReservationTTL as a Postgres interval literal, so the
+// expiry window has exactly one definition shared by both store backends.
+func ttlInterval() string {
+	return strconv.FormatInt(int64(ReservationTTL.Seconds()), 10) + " seconds"
 }
 
 func (p *Postgres) RecordUsage(ctx context.Context, u Usage) error {

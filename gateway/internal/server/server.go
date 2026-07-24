@@ -68,7 +68,24 @@ type Server struct {
 	scimToken   string            // AGENTOS_SCIM_TOKEN; "" disables SCIM
 	scimOrg     string            // SCIM default org (AGENTOS_SCIM_DEFAULT_ORG)
 	scimRole    string            // SCIM default role (AGENTOS_SCIM_DEFAULT_ROLE)
+	// reserveUSD is the amount held against a budget while a request is in
+	// flight (AGENTOS_BUDGET_RESERVE_USD). See DefaultReserveUSD.
+	reserveUSD float64
 }
+
+// DefaultReserveUSD is the cost assumed for a request that has been admitted
+// but has not yet reported its actual usage.
+//
+// Budgets cannot be enforced exactly: the true cost of a call is unknown until
+// the provider answers, so admission has to work from an estimate. Holding a
+// fixed amount per in-flight request converts an unbounded overrun — every
+// concurrent request approved against the same pre-spend snapshot — into one
+// bounded by how far a single request's real cost exceeds this figure.
+//
+// Set it above a typical request cost for the models in use. Too low and a
+// burst can still nudge past a budget; too high and keys are throttled before
+// their budget is really gone.
+const DefaultReserveUSD = 0.05
 
 // DefaultSecretNames are the provider keys reported by GET /admin/secrets/status.
 var DefaultSecretNames = []string{"AGENTOS_ANTHROPIC_API_KEY", "AGENTOS_OPENAI_API_KEY"}
@@ -116,6 +133,17 @@ func WithOIDC(p *oidc.Provider) Option {
 	return func(s *Server) {
 		if p != nil {
 			s.oidc = p
+		}
+	}
+}
+
+// WithBudgetReserve sets the amount held against a budget while a request is in
+// flight (AGENTOS_BUDGET_RESERVE_USD). Values <= 0 are ignored: a zero hold
+// would reinstate the check-then-act race the reservation exists to close.
+func WithBudgetReserve(usd float64) Option {
+	return func(s *Server) {
+		if usd > 0 {
+			s.reserveUSD = usd
 		}
 	}
 }
@@ -168,6 +196,7 @@ func New(st store.Store, router *provider.Router, adminKey string, opts ...Optio
 		limiter:     ratelimit.New(),
 		scimOrg:     store.DefaultOrgID,
 		scimRole:    rbac.RoleMember,
+		reserveUSD:  DefaultReserveUSD,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -405,17 +434,14 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if key.SpendUSD >= key.MonthlyBudgetUSD {
-		writeError(w, http.StatusPaymentRequired, errBudgetExceeded,
-			fmt.Sprintf("monthly budget of $%.2f exhausted for key %q", key.MonthlyBudgetUSD, key.Name))
+	// Atomic admission against both the key and its org budget. Reading
+	// key.SpendUSD here instead would be a check-then-act race: concurrent
+	// requests on one key all see the same pre-spend snapshot and all pass.
+	release, ok := s.admitSpend(w, r, key)
+	if !ok {
 		return
 	}
-
-	if s.orgBudgetExceeded(r.Context(), key.OrgID) {
-		writeError(w, http.StatusPaymentRequired, errOrgBudgetExceeded,
-			fmt.Sprintf("org %q monthly budget exhausted", key.OrgID))
-		return
-	}
+	defer release()
 
 	if s.guard != nil && s.guardMode != guardrail.ModeOff {
 		switch v := s.guard.Screen(latestUserMessage(body)); {
@@ -503,17 +529,14 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if key.SpendUSD >= key.MonthlyBudgetUSD {
-		writeError(w, http.StatusPaymentRequired, errBudgetExceeded,
-			fmt.Sprintf("monthly budget of $%.2f exhausted for key %q", key.MonthlyBudgetUSD, key.Name))
+	// Atomic admission against both the key and its org budget. Reading
+	// key.SpendUSD here instead would be a check-then-act race: concurrent
+	// requests on one key all see the same pre-spend snapshot and all pass.
+	release, ok := s.admitSpend(w, r, key)
+	if !ok {
 		return
 	}
-
-	if s.orgBudgetExceeded(r.Context(), key.OrgID) {
-		writeError(w, http.StatusPaymentRequired, errOrgBudgetExceeded,
-			fmt.Sprintf("org %q monthly budget exhausted", key.OrgID))
-		return
-	}
+	defer release()
 
 	route, err := s.router.RouteEmbeddings(model)
 	if err != nil {

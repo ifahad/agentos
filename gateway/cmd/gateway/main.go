@@ -132,6 +132,18 @@ func main() {
 		}
 	}
 
+	// Budget hold per in-flight request. Budgets cannot be enforced exactly —
+	// a call's real cost is unknown until the provider answers — so admission
+	// holds this much and settles afterwards. Raise it for expensive models.
+	if raw := os.Getenv("AGENTOS_BUDGET_RESERVE_USD"); raw != "" {
+		reserve, err := strconv.ParseFloat(raw, 64)
+		if err != nil || reserve < 0 {
+			log.Fatalf("AGENTOS_BUDGET_RESERVE_USD must be a non-negative number (got %q)", raw)
+		}
+		opts = append(opts, server.WithBudgetReserve(reserve))
+		log.Printf("budget reserve: $%.4f held per in-flight request", reserve)
+	}
+
 	// Rate-limit backend selection (Phase 7). Default "memory" is the Phase 6
 	// in-process limiter (unchanged). "postgres" shares one bucket per org across
 	// gateway replicas via atomic SQL, and requires the Postgres store.
