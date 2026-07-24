@@ -4,11 +4,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ifahad/agentos/gateway/internal/guardrail"
@@ -132,6 +135,18 @@ func main() {
 		}
 	}
 
+	// Request body cap. Without one, every JSON decode reads until the client
+	// stops sending, so a single request can drive memory to whatever an
+	// attacker is willing to upload.
+	if raw := os.Getenv("AGENTOS_MAX_BODY_BYTES"); raw != "" {
+		n, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || n < 0 {
+			log.Fatalf("AGENTOS_MAX_BODY_BYTES must be a non-negative integer (got %q)", raw)
+		}
+		opts = append(opts, server.WithMaxBodyBytes(n))
+		log.Printf("max request body: %d bytes", n)
+	}
+
 	// Budget hold per in-flight request. Budgets cannot be enforced exactly —
 	// a call's real cost is unknown until the provider answers — so admission
 	// holds this much and settles afterwards. Raise it for expensive models.
@@ -232,9 +247,54 @@ func main() {
 		}
 	}
 
-	log.Println("gateway listening on :8080")
-	if err := http.ListenAndServe(":8080", srv.Handler()); err != nil {
-		log.Fatalf("listen: %v", err)
+	httpServer := &http.Server{
+		Addr:    ":8080",
+		Handler: srv.Handler(),
+		// Slow-loris defence: a client that opens a connection and dribbles
+		// headers holds a goroutine forever without this.
+		ReadHeaderTimeout: 10 * time.Second,
+		// Bodies are prompts and documents, not uploads, so a minute is ample.
+		ReadTimeout: 60 * time.Second,
+		// WriteTimeout is deliberately UNSET. It bounds the time from the end of
+		// the request headers to the end of the response, which for a streamed
+		// completion is the whole generation — setting it would sever long SSE
+		// responses mid-token. Runaway upstreams are bounded instead by the
+		// proxy client's own 5-minute timeout.
+		IdleTimeout: 120 * time.Second,
+	}
+
+	// Serve until the process is asked to stop, then drain.
+	serveErr := make(chan error, 1)
+	go func() {
+		log.Println("gateway listening on :8080")
+		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serveErr <- err
+			return
+		}
+		serveErr <- nil
+	}()
+
+	stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case err := <-serveErr:
+		if err != nil {
+			log.Fatalf("listen: %v", err)
+		}
+		return
+	case <-stopCtx.Done():
+	}
+
+	// Graceful shutdown matters here beyond tidiness: in-flight requests hold
+	// budget reservations that are only released when they finish. Killing them
+	// mid-flight would strand those holds until they expire, shrinking the
+	// affected keys' budgets in the meantime.
+	log.Println("gateway shutting down; draining in-flight requests")
+	drainCtx, cancelDrain := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelDrain()
+	if err := httpServer.Shutdown(drainCtx); err != nil {
+		log.Printf("shutdown: %v", err)
 	}
 }
 

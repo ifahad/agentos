@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -71,7 +72,14 @@ type Server struct {
 	// reserveUSD is the amount held against a budget while a request is in
 	// flight (AGENTOS_BUDGET_RESERVE_USD). See DefaultReserveUSD.
 	reserveUSD float64
+	// maxBodyBytes caps request bodies (AGENTOS_MAX_BODY_BYTES); 0 disables.
+	maxBodyBytes int64
 }
+
+// DefaultMaxBodyBytes caps a single request body. Chat payloads carry whole
+// conversations and retrieved documents, so the ceiling is generous — it exists
+// to stop an unbounded upload from exhausting memory, not to police prompt size.
+const DefaultMaxBodyBytes int64 = 10 << 20 // 10 MiB
 
 // DefaultReserveUSD is the cost assumed for a request that has been admitted
 // but has not yet reported its actual usage.
@@ -148,6 +156,13 @@ func WithBudgetReserve(usd float64) Option {
 	}
 }
 
+// WithMaxBodyBytes caps request bodies (AGENTOS_MAX_BODY_BYTES). A value of 0
+// or less removes the cap, which is only sensible behind a proxy that already
+// enforces one.
+func WithMaxBodyBytes(n int64) Option {
+	return func(s *Server) { s.maxBodyBytes = n }
+}
+
 // WithRateLimits sets the global default requests-per-minute applied to orgs
 // whose own rate_limit_rpm is 0. A default of 0 keeps rate limiting off unless
 // an org opts in, reproducing Phase 5 behavior.
@@ -185,18 +200,19 @@ func WithSCIM(token, defaultOrg, defaultRole string) Option {
 // New builds a Server. adminKey guards the /admin endpoints.
 func New(st store.Store, router *provider.Router, adminKey string, opts ...Option) *Server {
 	s := &Server{
-		store:       st,
-		router:      router,
-		adminKey:    adminKey,
-		client:      &http.Client{Timeout: 5 * time.Minute},
-		guardMode:   guardrail.ModeOff,
-		tracer:      noop.NewTracerProvider().Tracer("gateway"),
-		secrets:     secret.NewEnv(),
-		secretNames: DefaultSecretNames,
-		limiter:     ratelimit.New(),
-		scimOrg:     store.DefaultOrgID,
-		scimRole:    rbac.RoleMember,
-		reserveUSD:  DefaultReserveUSD,
+		store:        st,
+		router:       router,
+		adminKey:     adminKey,
+		client:       &http.Client{Timeout: 5 * time.Minute},
+		guardMode:    guardrail.ModeOff,
+		tracer:       noop.NewTracerProvider().Tracer("gateway"),
+		secrets:      secret.NewEnv(),
+		secretNames:  DefaultSecretNames,
+		limiter:      ratelimit.New(),
+		scimOrg:      store.DefaultOrgID,
+		scimRole:     rbac.RoleMember,
+		reserveUSD:   DefaultReserveUSD,
+		maxBodyBytes: DefaultMaxBodyBytes,
 	}
 	for _, opt := range opts {
 		opt(s)
@@ -232,9 +248,45 @@ func (s *Server) Handler() http.Handler {
 		s.registerSCIMRoutes(mux)
 	}
 	if len(s.corsOrigins) > 0 {
-		return s.withCORS(mux)
+		return s.withBodyLimit(s.withCORS(mux))
 	}
-	return mux
+	return s.withBodyLimit(mux)
+}
+
+// withBodyLimit caps how much request body any handler can be made to read.
+//
+// Without it every JSON decode in the gateway will read until the client stops
+// sending, so one request can drive memory to whatever an attacker is willing
+// to upload. The cap is applied once here rather than at each decode site so a
+// newly added endpoint cannot forget it.
+//
+// MaxBytesReader also makes the overrun visible: reads fail past the limit
+// instead of silently truncating, so handlers reject the request rather than
+// acting on half a document.
+func (s *Server) withBodyLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.maxBodyBytes > 0 && r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, s.maxBodyBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// writeDecodeError reports a failed body decode, distinguishing a body that was
+// too large from one that was malformed.
+//
+// Both surface as a decode failure, so without this an oversized upload is
+// reported as "invalid JSON body" — which sends whoever is debugging it looking
+// for a syntax error that does not exist. 413 with the actual limit tells them
+// what to change.
+func writeDecodeError(w http.ResponseWriter, err error) {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		writeError(w, http.StatusRequestEntityTooLarge, errUnsupported,
+			fmt.Sprintf("request body exceeds the %d byte limit", tooLarge.Limit))
+		return
+	}
+	writeError(w, http.StatusBadRequest, errUnsupported, "invalid JSON body")
 }
 
 // withCORS emits CORS headers for allowed origins and answers OPTIONS
@@ -304,7 +356,7 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request, c *call
 		RoleScope        string  `json:"role_scope"` // reserved; accepted, currently a no-op
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, errUnsupported, "invalid JSON body")
+		writeDecodeError(w, err)
 		return
 	}
 	if req.Name == "" {
@@ -421,7 +473,7 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 
 	var body map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, errUnsupported, "invalid JSON body")
+		writeDecodeError(w, err)
 		return
 	}
 	model, _ := body["model"].(string)
@@ -516,7 +568,7 @@ func (s *Server) handleEmbeddings(w http.ResponseWriter, r *http.Request) {
 
 	var body map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		writeError(w, http.StatusBadRequest, errUnsupported, "invalid JSON body")
+		writeDecodeError(w, err)
 		return
 	}
 	model, _ := body["model"].(string)

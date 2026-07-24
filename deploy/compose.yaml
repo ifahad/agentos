@@ -20,6 +20,10 @@ services:
 
   gateway:
     build: ../gateway
+    # The gateway drains in-flight requests for up to 30s on SIGTERM. Docker's
+    # default grace period is 10s, which would SIGKILL it mid-drain and strand
+    # the budget reservations those requests are holding.
+    stop_grace_period: 40s
     environment:
       AGENTOS_ADMIN_KEY: ${AGENTOS_ADMIN_KEY:-admin-local-dev}
       AGENTOS_DATABASE_URL: postgres://agentos:agentos@postgres:5432/agentos

@@ -143,7 +143,7 @@ func (s *Server) handleCreateOrg(w http.ResponseWriter, r *http.Request, c *call
 		RateLimitRPM     int     `json:"rate_limit_rpm"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, errUnsupported, "invalid JSON body")
+		writeDecodeError(w, err)
 		return
 	}
 	if req.Name == "" {
@@ -180,7 +180,7 @@ func (s *Server) handleUpdateOrg(w http.ResponseWriter, r *http.Request, c *call
 		RateLimitRPM     *int     `json:"rate_limit_rpm"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, errUnsupported, "invalid JSON body")
+		writeDecodeError(w, err)
 		return
 	}
 	org, err := s.store.UpdateOrg(r.Context(), orgID, req.MonthlyBudgetUSD, req.RateLimitRPM)
@@ -269,7 +269,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, c *cal
 		Role  string `json:"role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeError(w, http.StatusBadRequest, errUnsupported, "invalid JSON body")
+		writeDecodeError(w, err)
 		return
 	}
 	if req.Email == "" {
