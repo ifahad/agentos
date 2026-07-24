@@ -164,7 +164,7 @@ services:
       # so the browser never holds the runtime credential.
       AGENTOS_RUNTIME_AUTH_TOKEN: ${AGENTOS_RUNTIME_AUTH_TOKEN:-runtime-local-dev}
     ports:
-      - "${AGENTOS_CONSOLE_PORT:-3000}:80"
+      - "${AGENTOS_CONSOLE_PORT:-3000}:8080"
     depends_on:
       - gateway
       - runtime

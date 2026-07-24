@@ -63,13 +63,26 @@ spec:
       annotations:
         checksum/nginx-config: {{ printf "%s-%s" (include "agentos.gatewayUrl" .) (include "agentos.fullname" .) | sha256sum }}
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: console
           image: "{{ .Values.console.image.repository }}:{{ .Values.console.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.console.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: http
-              containerPort: 80
+              # 8080: the console image runs nginx unprivileged, which cannot
+              # bind a port below 1024. The Service port is unchanged.
+              containerPort: 8080
           {{- with .Values.console.extraEnv }}
           env:
             {{- toYaml . | nindent 12 }}

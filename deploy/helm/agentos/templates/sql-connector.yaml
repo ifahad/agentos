@@ -18,10 +18,22 @@ spec:
         {{- include "agentos.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: sql-connector
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: sql-connector
           image: "{{ .Values.sqlConnector.image.repository }}:{{ .Values.sqlConnector.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.sqlConnector.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: http
               containerPort: 8090
