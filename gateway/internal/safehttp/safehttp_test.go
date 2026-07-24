@@ -41,10 +41,10 @@ func TestIsDisallowedHostEmptyIsFailClosed(t *testing.T) {
 }
 
 func TestIsDisallowedHostUnresolvableIsFailClosed(t *testing.T) {
-	restore := SetLookupIPForTest(func(string) ([]net.IP, error) {
+	SetLookupIPForTest(func(string) ([]net.IP, error) {
 		return nil, errors.New("no such host")
 	})
-	defer restore()
+	t.Cleanup(func() { SetLookupIPForTest(net.LookupIP) })
 	if !IsDisallowedHost("nonexistent.invalid") {
 		t.Error("unresolvable host must be disallowed (fail closed)")
 	}
@@ -53,10 +53,10 @@ func TestIsDisallowedHostUnresolvableIsFailClosed(t *testing.T) {
 func TestIsDisallowedHostResolvesToPrivate(t *testing.T) {
 	// A perfectly public-looking name that resolves to a private address is the
 	// classic DNS-rebinding SSRF; it must be refused.
-	restore := SetLookupIPForTest(func(string) ([]net.IP, error) {
+	SetLookupIPForTest(func(string) ([]net.IP, error) {
 		return []net.IP{net.ParseIP("10.1.2.3")}, nil
 	})
-	defer restore()
+	t.Cleanup(func() { SetLookupIPForTest(net.LookupIP) })
 	if !IsDisallowedHost("api.evil.example") {
 		t.Error("host resolving to a private address must be disallowed")
 	}
@@ -65,20 +65,20 @@ func TestIsDisallowedHostResolvesToPrivate(t *testing.T) {
 func TestIsDisallowedHostAnyPrivateAddressDisqualifies(t *testing.T) {
 	// One public and one private A record: the private one wins, because the
 	// dialer could pick either.
-	restore := SetLookupIPForTest(func(string) ([]net.IP, error) {
+	SetLookupIPForTest(func(string) ([]net.IP, error) {
 		return []net.IP{net.ParseIP("8.8.8.8"), net.ParseIP("127.0.0.1")}, nil
 	})
-	defer restore()
+	t.Cleanup(func() { SetLookupIPForTest(net.LookupIP) })
 	if !IsDisallowedHost("mixed.example") {
 		t.Error("a host with any disallowed address must be disallowed")
 	}
 }
 
 func TestIsDisallowedHostResolvesToPublic(t *testing.T) {
-	restore := SetLookupIPForTest(func(string) ([]net.IP, error) {
+	SetLookupIPForTest(func(string) ([]net.IP, error) {
 		return []net.IP{net.ParseIP("93.184.216.34")}, nil
 	})
-	defer restore()
+	t.Cleanup(func() { SetLookupIPForTest(net.LookupIP) })
 	if IsDisallowedHost("example.com") {
 		t.Error("host resolving only to a public address must be allowed")
 	}

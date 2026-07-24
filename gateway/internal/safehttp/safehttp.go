@@ -61,12 +61,10 @@ func isDisallowedIP(ip net.IP) bool {
 		ip.IsUnspecified()
 }
 
-// SetLookupIPForTest swaps the resolver and returns a func that restores it.
-// It exists so a caller can screen a hostname against controlled addresses
-// without real DNS. Test-only, but exported because the registry's tests live
-// in a sibling package.
-func SetLookupIPForTest(fn func(host string) ([]net.IP, error)) func() {
-	prev := lookupIP
+// SetLookupIPForTest substitutes the DNS resolver so a caller can screen a
+// hostname against controlled addresses without real DNS. Test-only, but
+// exported because the registry's tests live in a sibling package. Restore the
+// original with SetLookupIPForTest(net.LookupIP) in a t.Cleanup.
+func SetLookupIPForTest(fn func(host string) ([]net.IP, error)) {
 	lookupIP = fn
-	return func() { lookupIP = prev }
 }
