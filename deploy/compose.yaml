@@ -104,6 +104,12 @@ services:
       AGENTOS_JUDGE_MODEL: ${AGENTOS_JUDGE_MODEL:-anthropic/claude-haiku-4-5}
       AGENTOS_RUNTIME_AUTH_TOKEN: ${AGENTOS_RUNTIME_AUTH_TOKEN:-runtime-local-dev}
       AGENTOS_MAX_CONTEXT_TOKENS: ${AGENTOS_MAX_CONTEXT_TOKENS:-0}
+      # Multiverse council. Config path is baked into the image at /app/council.yaml;
+      # the heartbeat stays OFF (0) unless explicitly enabled — the council serves
+      # its API but never acts autonomously by default.
+      AGENTOS_COUNCIL_CONFIG: ${AGENTOS_COUNCIL_CONFIG:-/app/council.yaml}
+      AGENTOS_COUNCIL_HEARTBEAT_S: ${AGENTOS_COUNCIL_HEARTBEAT_S:-0}
+      AGENTOS_COUNCIL_MAX_SPEND_USD: ${AGENTOS_COUNCIL_MAX_SPEND_USD:-5}
     ports:
       - "${AGENTOS_RUNTIME_PORT:-8000}:8000"
     # On both networks: `default` to reach gateway/postgres/connectors, and

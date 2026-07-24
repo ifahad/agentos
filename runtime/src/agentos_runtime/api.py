@@ -1,11 +1,13 @@
 """FastAPI service exposing the agent as the Runtime HTTP API."""
 
+import asyncio
 import json
 import logging
 import os
 import secrets
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+from types import SimpleNamespace
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request
@@ -23,6 +25,7 @@ from agentos_runtime.agent import (
 )
 from agentos_runtime.config import Settings
 from agentos_runtime.context import build_context_engine, make_search_tool
+from agentos_runtime.council import api as council_api
 from agentos_runtime.hitl import (
     PendingCall,
     RunOutcome,
@@ -130,7 +133,53 @@ async def lifespan(app: FastAPI):
         app.state.judge_model = build_chat_model(settings, model=settings.judge_model)
         app.state.current_prompt = active_prompt or SYSTEM_PROMPT
         app.state.agent = agent_builder(active_prompt)
-        yield
+
+        # The council needs both a config file and a checkpoint database (its
+        # store lives there). Missing either leaves app.state.council None, so
+        # every /council route reports 503 rather than crashing.
+        app.state.council = None
+        app.state.council_task = None
+        app.state.council_stop = None
+        if settings.council_config and settings.checkpoint_database_url:
+            from agentos_runtime.council.config import load_council_config
+            from agentos_runtime.council.loop import CouncilDeps, heartbeat
+            from agentos_runtime.council.store import CouncilStore
+
+            council_config = load_council_config(settings.council_config)
+            council_store = CouncilStore(settings.checkpoint_database_url)
+            deps = CouncilDeps(
+                config=council_config,
+                settings=settings,
+                tools=list(tools),
+                checkpointer=checkpointer,
+                store=council_store,
+                judge_model=build_chat_model(settings, model=council_config.judge),
+            )
+            app.state.council = SimpleNamespace(
+                config=council_config,
+                store=council_store,
+                deps=deps,
+                default_budget_usd=settings.council_max_spend_usd,
+            )
+            # The autonomous loop is opt-in: it runs only with a positive
+            # interval, so the default runtime serves the API but never acts on
+            # its own.
+            if settings.council_heartbeat_s > 0:
+                stop_event = asyncio.Event()
+                app.state.council_stop = stop_event
+                app.state.council_task = asyncio.create_task(
+                    heartbeat(deps, settings.council_heartbeat_s, stop_event)
+                )
+                logger.info("council heartbeat enabled (%ss)", settings.council_heartbeat_s)
+        try:
+            yield
+        finally:
+            if app.state.council_stop is not None:
+                app.state.council_stop.set()
+            if app.state.council_task is not None:
+                app.state.council_task.cancel()
+                with suppress(asyncio.CancelledError):
+                    await app.state.council_task
 
 
 app = FastAPI(
@@ -141,6 +190,7 @@ app = FastAPI(
 app.include_router(evals.router)
 app.include_router(improve.router)
 app.include_router(prompts.router)
+app.include_router(council_api.router)
 
 
 def get_agent(request: Request):

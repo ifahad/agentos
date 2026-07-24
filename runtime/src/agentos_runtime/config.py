@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     # existing behaviour exactly; autonomous multi-cycle runs should set it.
     # The deep profile ignores this: deepagents summarises on its own.
     max_context_tokens: int = 0
+    # Multiverse council. council_config points at council.yaml (empty disables
+    # the council entirely); the heartbeat runs autonomous objectives only when
+    # its interval is > 0 (off by default — a conservative, opt-in stance);
+    # council_max_spend_usd is the default per-objective spend ceiling.
+    council_config: str = ""
+    council_heartbeat_s: int = 0
+    council_max_spend_usd: float = 5.0
 
     def require_runtime_auth_token(self) -> str:
         """Return the configured runtime auth token or fail closed.

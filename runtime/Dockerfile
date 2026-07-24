@@ -11,6 +11,7 @@ RUN uv sync --frozen --no-install-project --no-dev
 
 COPY src ./src
 COPY evals ./evals
+COPY council.yaml ./council.yaml
 COPY README.md ./
 RUN uv sync --frozen --no-dev
 
