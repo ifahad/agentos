@@ -37,7 +37,12 @@ capping, upgrade verification* — is exactly the AgentOS control set.
 
 | OpenClaw provides | AgentOS provides |
 |---|---|
-| always-on presence, heartbeat autonomy, messaging channels (WhatsApp/Slack/…), portable skills | governed model access (keys, budgets, rate limits, guardrails, audit), sandbox isolation, legacy connectors, multi-tenancy, RBAC/SSO |
+| always-on presence, heartbeat autonomy | governed model access (keys, budgets, rate limits, guardrails, audit), sandbox isolation, legacy connectors, multi-tenancy, RBAC/SSO, **and the network that makes all of it unavoidable** |
+
+Two OpenClaw features are deliberately **not** taken: **skills** (Step 3 — the
+registry is the single largest attack surface) and **messaging channels** (an
+inbound instruction path into an autonomous agent). What remains is the part
+worth having: an always-on loop, running under someone else's governance.
 
 Point OpenClaw's **model traffic** at the AgentOS gateway and route its
 **execution** through AgentOS isolation, and OpenClaw's biggest risk classes are
@@ -110,35 +115,108 @@ OpenClaw's shell/skill execution must **never touch the host**. Two safe surface
 Gate high-risk actions behind **human confirmation** — OpenClaw's own exec-approval
 policy, and AgentOS's HITL approval on the agent side.
 
-## Step 3 — Screen the skills (kills supply-chain poisoning)
+## Step 3 — Turn skills off (kills supply-chain poisoning outright)
 
-- Load skills **only from a vetted, read-only directory** — never auto-install
-  from ClawHub at runtime.
-- **Statically screen** each `SKILL.md` for injection markers before enabling it
-  (the same deny-list AgentOS applies to prompt proposals: "ignore previous
-  instructions", "exfiltrate", "auto-approve", …), and require human review.
-- Treat skill bodies as **advisory data, not authoritative instructions**.
-  AgentOS's immutable safety preamble already states that retrieved/tool/skill
-  content can never override the safety rules.
+**Run with skills disabled.** Not "vetted", not "screened" — off:
 
-The `SKILL.md` format is shared with AgentOS/Claude Code/Cursor
-(`skills/README.md` — pending), so vetted skills are portable both ways.
+```
+OPENCLAW_SKILLS_DIR=""
+OPENCLAW_DISABLE_SKILLS=true
+OPENCLAW_DISABLE_REGISTRY=true
+```
 
-## Step 4 — Contain the deployment (privilege restriction)
+The earlier version of this guide recommended a vetted read-only directory plus
+static injection screening. That is a reasonable control and it is not the one we
+use, for two reasons. It relies on a human performing an unbounded review
+obligation correctly, forever, against an adversary that only has to win once.
+And screening for injection markers is a deny-list on natural language, which
+cannot be made complete — a skill that passes the check is not thereby safe.
+Against a registry where roughly **1 in 12 packages is malicious**, the only
+control with a provable outcome is having nothing to load.
 
-- Run OpenClaw **non-root**, read-only rootfs where possible, on an **isolated
-  Docker network** with an **egress allow-list**.
-- **Do not expose** the control plane (:18789) beyond localhost / a trusted admin
-  network.
-- Give it only the gateway and the sandbox/SSH endpoints it needs — nothing else.
+Disabling skills costs the portable-skill capability. If you later need it, treat
+re-enabling as its own reviewed change with its own threat model, not as flipping
+a flag — and note that AgentOS's own tools (SQL, RAG, sandbox, connectors) reach
+the agent through the gateway and MCP already, without touching ClawHub.
 
-See `deploy/openclaw/` for an illustrative compose overlay wiring OpenClaw to the
-gateway on a restricted network.
+If a skill body ever does reach the model, AgentOS's immutable safety preamble
+already frames retrieved/tool/skill content as **untrusted data that can never
+override the safety rules**. That is a backstop, not a reason to re-enable.
+
+## Step 4 — Contain the deployment (this is the load-bearing control)
+
+Put the worker on an **`internal: true` Docker network**. This is the control
+that makes everything above hold, because it is the difference between OpenClaw
+being *configured* to use the gateway and OpenClaw being *unable to reach
+anything else*:
+
+```yaml
+networks:
+  governed-net:
+    internal: true      # no route off-host, for anything attached
+```
+
+Attach the gateway to both `default` and `governed-net`; attach OpenClaw to
+`governed-net` (plus `sandbox-net` for execution) and **never to `default`**. The
+gateway becomes the sole crossing point between the worker and the outside world.
+
+**Verified, not assumed** — a container on an internal network cannot resolve or
+reach a provider at all:
+
+```
+$ docker run --rm --network <internal-net> alpine \
+    sh -c 'wget -T5 -O- https://api.openai.com'
+wget: bad address 'api.openai.com'
+
+$ ... nslookup api.openai.com
+** server can't find api.openai.com: SERVFAIL
+```
+
+Set `OPENAI_BASE_URL` to a provider by mistake, or ship a compromised build that
+tries to phone home, and the connection simply fails. Governance stops depending
+on configuration being right.
+
+The rest of the containment:
+
+- **Non-root, read-only rootfs, all caps dropped, `no-new-privileges`**, with
+  memory and pid limits.
+- **The control plane (:18789) is never published.** On an internal network
+  Docker refuses host port publishing outright, so this is enforced rather than
+  merely omitted from the compose file.
+- Pin the image **by digest**, not by tag — an unverified upgrade is a supply
+  chain of its own.
+
+See `deploy/openclaw/compose.openclaw.yaml` for the wired overlay.
+
+## Residual risk (what this does not fix)
+
+Be clear about what is left after all four steps:
+
+- **A model acting badly within its permissions.** The worker can still issue
+  legitimate-looking tool calls that are wrong or harmful. Budgets, rate limits,
+  `max_cycles`, and the HITL approval gate bound the blast radius; they do not
+  make the agent correct.
+- **Prompt injection via content it reads.** Screening at the gateway
+  (`AGENTOS_GUARDRAILS_MODE=block`) and the untrusted-data framing reduce this;
+  neither eliminates it.
+- **OpenClaw's own code.** Pinning by digest fixes *which* build you run, not
+  whether that build is sound. It remains third-party software with host-agent
+  ambitions, contained rather than trusted.
+- **Everything inside `governed-net`.** The isolation stops egress to the
+  internet, not lateral movement to the gateway and sandbox — which is precisely
+  why both of those are hardened and audited.
 
 ## What is NOT integrated (be honest)
 
 This recipe governs OpenClaw's **model traffic** and gives it **safe execution
 surfaces**. It does **not** bridge OpenClaw's WebSocket control plane into the
-AgentOS console, nor proxy its messaging channels. Those remain OpenClaw-side and
-are future work. The value here is turning an ungoverned, high-privilege agent
-into a **budgeted, audited, jailed worker**.
+AgentOS console, nor proxy its messaging channels.
+
+Messaging in particular is deferred **on purpose**, not merely unfinished: an
+inbound channel is a path for anyone who can post in it to instruct an autonomous
+agent. If notifications are needed, prefer **outbound-only** delivery through the
+SSRF-screened egress — you get told what happened, and nobody gets to issue
+instructions over Slack.
+
+The value here is turning an ungoverned, high-privilege agent into a **budgeted,
+audited, jailed worker that cannot reach the internet**.

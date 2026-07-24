@@ -347,20 +347,31 @@ SQL `statement_timeout`, browser IP backstop, runtime non-root image + K8s
 plus efficiency items (an N+1 in `handleListOrgs`, duplicate per-request org
 lookups, unbuffered proxy responses).
 
-**OpenClaw interop — WITHDRAWN 2026-07-24.** AgentOS will not integrate the
-third-party OpenClaw agent. The analysis is retained at
-`docs/interop/withdrawn/` as the record of the decision; do not implement it.
-The defensive recipe was sound, but its worst risks are structural rather than
-configurable: a compromised skill ecosystem (~36% of ClawHub skills carrying
-prompt injection, 341+ malicious skills found), governance that holds only
-because the agent is *pointed* at the gateway, and a WebSocket control plane
-that is authority over the agent living outside our RBAC, audit, and approval
-gate.
+**OpenClaw interop** (`docs/interop/openclaw.md`): running the third-party
+OpenClaw agent as a **governed, jailed, egress-less worker**. Two controls carry
+the design:
 
-Its capabilities are being rebuilt first-party as **Operators**. The decisive
-difference is structural: the runtime holds no provider credentials, so a native
-autonomy engine cannot route around the gateway even when misconfigured —
-governance becomes a property of the architecture instead of a setting.
+1. **Skills are disabled outright** (`OPENCLAW_DISABLE_SKILLS`/`_REGISTRY`), not
+   vetted. ClawHub is the largest attack surface — ~36% of skills carry prompt
+   injection, 341+ are outright malicious, roughly 1 in 12 packages. Screening is
+   a deny-list on natural language and cannot be made complete; having nothing to
+   load is the only control with a provable outcome.
+2. **The worker sits on an `internal: true` network** with the gateway as its
+   only crossing point. It is not *configured* to prefer the gateway — it cannot
+   reach anything else. Verified: a container there fails DNS for
+   `api.openai.com` with SERVFAIL. This is what turns gateway governance from a
+   setting into a property of the network, and it is the same technique
+   `sandbox-net` already uses.
+
+Plus non-root, read-only rootfs, all caps dropped, digest-pinned image, and a
+control plane that Docker refuses to publish from an internal network. Execution
+routes to the egress-less sandbox, never a host shell.
+
+Honest limits, documented in the guide: the WebSocket control plane is not
+bridged, and messaging channels are deferred **deliberately** — an inbound
+channel is an instruction path into an autonomous agent. Residual risk that
+remains after all of it: a model acting badly within its permissions, prompt
+injection via content it reads, and the soundness of OpenClaw's own code.
 
 ---
 

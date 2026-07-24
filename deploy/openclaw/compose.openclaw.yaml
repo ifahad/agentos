@@ -1,0 +1,73 @@
+# Run an OpenClaw worker as a governed, contained client of the AgentOS gateway.
+#
+#   docker compose -f compose.yaml -f openclaw/compose.openclaw.yaml up -d openclaw
+#
+# Adapt the image and the provider env var names to your OpenClaw version — the
+# containment below is exact, the OpenClaw-specific settings are a template.
+#
+# THE CONTROL THAT MATTERS: `governed-net` is `internal: true`, so this container
+# has NO route to the internet. It is not configured to prefer the gateway; the
+# gateway is the only thing it can physically reach. Point OPENAI_BASE_URL at
+# api.openai.com and the connection fails — there is no route and no DNS. That
+# turns "please route model traffic through governance" from a setting someone
+# can change into a property of the network, which is the only form of it worth
+# relying on. Same technique the sandbox already uses (see sandbox-net).
+#
+# SKILLS ARE DISABLED. OpenClaw's skill ecosystem is its largest attack surface
+# (~36% of ClawHub skills found carrying prompt injection; 341+ malicious skills
+# published). No skills directory is mounted and the registry is switched off, so
+# there is nothing to poison. Do not add a skills volume here without a separate
+# review — "vetted directory" is a promise a human has to keep forever, whereas
+# "no skills at all" keeps itself.
+services:
+  gateway:
+    # The gateway bridges both networks: `default` to reach providers and
+    # Postgres, `governed-net` to serve clients that must not reach anything
+    # else. It is the sole crossing point, which is the whole design.
+    networks:
+      - default
+      - governed-net
+
+  openclaw:
+    image: ${OPENCLAW_IMAGE:?pin an image by digest, e.g. ghcr.io/org/openclaw@sha256:...}
+    environment:
+      # Models are reachable ONLY via the gateway. Enforced by routing, above.
+      OPENAI_BASE_URL: http://gateway:8080/v1
+      OPENAI_API_KEY: ${AGENTOS_OPENCLAW_KEY:?set a scoped agos- virtual key with its own budget and rate limit}
+      OPENCLAW_MODEL: ${OPENCLAW_MODEL:-ollama/qwen3.6:latest}
+      # Skills off. Both switches set: no local directory to load, and no
+      # registry to fetch from at runtime.
+      OPENCLAW_SKILLS_DIR: ""
+      OPENCLAW_DISABLE_SKILLS: "true"
+      OPENCLAW_DISABLE_REGISTRY: "true"
+      # Execution goes to the egress-less Rust sandbox, never a host shell.
+      OPENCLAW_EXEC_BACKEND: ${OPENCLAW_EXEC_BACKEND:-http}
+      OPENCLAW_EXEC_URL: http://sandbox:8070
+    # Only internal networks. `default` is deliberately absent — that absence is
+    # the containment. Adding it back would restore direct internet egress and
+    # silently undo every guarantee in this file.
+    networks:
+      - governed-net
+      - sandbox-net
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 1g
+    pids_limit: 256
+    restart: unless-stopped
+    # The control plane (:18789) is never published. On an internal network
+    # Docker forbids host port publishing anyway, so this is enforced rather
+    # than merely omitted. Reach it for debugging with `docker compose exec`.
+    depends_on:
+      - gateway
+
+networks:
+  # Egress-less network for governed agent workers. Containers here can reach
+  # the gateway (which is also attached) and each other, and nothing else —
+  # no host, no internet, no DNS beyond the compose network.
+  governed-net:
+    internal: true
