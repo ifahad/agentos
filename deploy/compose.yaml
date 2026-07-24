@@ -92,6 +92,7 @@ services:
       AGENTOS_AGENT_PROFILE: ${AGENTOS_AGENT_PROFILE:-react}
       AGENTOS_JUDGE_MODEL: ${AGENTOS_JUDGE_MODEL:-anthropic/claude-haiku-4-5}
       AGENTOS_RUNTIME_AUTH_TOKEN: ${AGENTOS_RUNTIME_AUTH_TOKEN:-runtime-local-dev}
+      AGENTOS_MAX_CONTEXT_TOKENS: ${AGENTOS_MAX_CONTEXT_TOKENS:-0}
     ports:
       - "${AGENTOS_RUNTIME_PORT:-8000}:8000"
     # On both networks: `default` to reach gateway/postgres/connectors, and

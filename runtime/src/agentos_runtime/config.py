@@ -26,6 +26,10 @@ class Settings(BaseSettings):
         AGENTOS_SANDBOX_URL: Sandbox service base URL; empty -> run_python tool off.
         AGENTOS_JUDGE_MODEL: Provider-prefixed model used to judge eval cases
             that carry a ``judge`` block (routed via the gateway).
+        AGENTOS_MAX_CONTEXT_TOKENS: Cap on the history sent to the model on each
+            turn; older messages are dropped first (0 -> no trimming). Applies
+            to the ``react`` profile: the ``deep`` profile bounds its own
+            context via deepagents' built-in summarization middleware.
     """
 
     model_config = SettingsConfigDict(env_prefix="AGENTOS_", extra="ignore")
@@ -43,6 +47,12 @@ class Settings(BaseSettings):
     otel_endpoint: str | None = None
     sandbox_url: str = ""
     judge_model: str = "anthropic/claude-haiku-4-5"
+    # Every turn resends the whole thread, so a long-running react agent
+    # eventually exceeds its model's window and fails mid-run. Trimming keeps
+    # the newest messages plus the system prompt. Default 0 (off) preserves
+    # existing behaviour exactly; autonomous multi-cycle runs should set it.
+    # The deep profile ignores this: deepagents summarises on its own.
+    max_context_tokens: int = 0
 
     def require_runtime_auth_token(self) -> str:
         """Return the configured runtime auth token or fail closed.

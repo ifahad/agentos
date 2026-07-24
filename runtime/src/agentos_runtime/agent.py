@@ -13,6 +13,7 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.prebuilt import create_react_agent
 
 from agentos_runtime.config import Settings
+from agentos_runtime.window import build_trim_hook
 
 SYSTEM_PROMPT = (
     "You are a careful data analyst operating over legacy enterprise systems "
@@ -92,6 +93,17 @@ def build_agent(
         # profile only (documented deviation).
         from deepagents import create_deep_agent
 
+        # It also takes no pre_model_hook — but it does not need one:
+        # create_deep_agent already includes SummarizationMiddleware in its base
+        # stack, so this profile bounds its own context by summarising older
+        # turns. AGENTOS_MAX_CONTEXT_TOKENS therefore applies to the react
+        # profile only.
+        #
+        # Do not add another SummarizationMiddleware here to honour the setting.
+        # deepagents rejects duplicate middleware instances outright, so the
+        # attempt raises at build time and the service fails to start rather
+        # than degrading — verified the hard way, and now covered by
+        # test_deep_profile_builds_with_context_bounding.
         return create_deep_agent(
             model=model,
             tools=list(tools),
@@ -99,12 +111,17 @@ def build_agent(
             checkpointer=checkpointer,
         )
     interrupt_before = ["tools"] if settings.approval_tool_names else None
+    # Bound the history sent to the model when AGENTOS_MAX_CONTEXT_TOKENS is set.
+    # The hook writes llm_input_messages, so the checkpointed thread stays whole
+    # and remains resumable and auditable — only this call's input is trimmed.
+    pre_model_hook = build_trim_hook(settings.max_context_tokens)
     return create_react_agent(
         model,
         tools=list(tools),
         prompt=system_prompt,
         checkpointer=checkpointer,
         interrupt_before=interrupt_before,
+        pre_model_hook=pre_model_hook,
     )
 
 
