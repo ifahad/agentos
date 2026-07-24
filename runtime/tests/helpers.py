@@ -242,3 +242,95 @@ class InMemoryImprovementStore:
             "proposal_id": proposal_id,
             "updated_at": "2026-07-21T00:00:00+00:00",
         }
+
+
+class FakeCouncilStore:
+    """In-memory CouncilStore with the same method surface as the real one."""
+
+    def __init__(self) -> None:
+        self.objectives: dict[str, dict] = {}
+        self.cycles: list[dict] = []
+        self.member_runs: list[dict] = []
+        self.proposals: dict[str, dict] = {}
+        self.paused = False
+        self._seq = 0
+
+    def _next_id(self, prefix: str) -> str:
+        self._seq += 1
+        return f"{prefix}-{self._seq}"
+
+    async def create_objective(self, input_text, max_cycles=None, budget_usd=5.0):
+        oid = self._next_id("obj")
+        obj = {
+            "id": oid, "input": input_text, "status": "pending", "stop_reason": None,
+            "cycles_run": 0, "spend_usd": 0.0, "max_cycles": max_cycles,
+            "budget_usd": budget_usd, "claimed_by": None,
+        }
+        self.objectives[oid] = obj
+        return dict(obj)
+
+    async def get_objective(self, objective_id):
+        obj = self.objectives.get(objective_id)
+        return dict(obj) if obj else None
+
+    async def list_objectives(self, limit=20):
+        return [dict(o) for o in list(self.objectives.values())[:limit]]
+
+    async def claim_next_objective(self, worker):
+        for obj in self.objectives.values():
+            if obj["status"] == "pending":
+                obj["status"] = "running"
+                obj["claimed_by"] = worker
+                return dict(obj)
+        return None
+
+    async def update_objective(self, objective_id, **fields):
+        obj = self.objectives[objective_id]
+        for key, value in fields.items():
+            if value is not None:
+                obj[key] = value
+
+    async def insert_cycle(self, objective_id, cycle_no, verdict, agreement, dissent):
+        cid = self._next_id("cycle")
+        self.cycles.append({
+            "id": cid, "objective_id": objective_id, "cycle_no": cycle_no,
+            "verdict": verdict, "agreement": agreement, "dissent": dissent,
+        })
+        return cid
+
+    async def insert_member_run(self, cycle_id, member_id, model_used, thread_id,
+                                status, output, steps, cost_usd, error):
+        self.member_runs.append({
+            "cycle_id": cycle_id, "member_id": member_id, "model_used": model_used,
+            "thread_id": thread_id, "status": status, "output": output,
+            "steps": steps, "cost_usd": cost_usd, "error": error,
+        })
+
+    async def list_cycles(self, objective_id):
+        return [dict(c) for c in self.cycles if c["objective_id"] == objective_id]
+
+    async def insert_proposal(self, objective_id, member_id, tool, arguments):
+        pid = self._next_id("prop")
+        self.proposals[pid] = {
+            "id": pid, "objective_id": objective_id, "member_id": member_id,
+            "tool": tool, "arguments": arguments, "status": "pending",
+        }
+        return pid
+
+    async def get_proposal(self, proposal_id):
+        prop = self.proposals.get(proposal_id)
+        return dict(prop) if prop else None
+
+    async def list_proposals(self, status=None, limit=50):
+        out = [dict(p) for p in self.proposals.values()
+               if status is None or p["status"] == status]
+        return out[:limit]
+
+    async def update_proposal_status(self, proposal_id, status):
+        self.proposals[proposal_id]["status"] = status
+
+    async def set_paused(self, paused):
+        self.paused = paused
+
+    async def is_paused(self):
+        return self.paused
