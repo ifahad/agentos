@@ -41,6 +41,7 @@ export interface PageProps {
   role: AuthRole;
   orgId: string;
   openSettings: () => void;
+  navigate: (path: string) => void;
 }
 
 interface Route {
@@ -60,7 +61,7 @@ const ROUTES: Route[] = [
   { path: "/documents", label: "Documents", icon: "documents", Component: Documents },
   { path: "/improve", label: "Improve", icon: "improve", Component: Improve },
   { path: "/multiverse", label: "Multiverse", icon: "multiverse", Component: Multiverse },
-  { path: "/operators", label: "Operators", icon: "provisioning", Component: Operators },
+  { path: "/operators", label: "Operators", icon: "operators", Component: Operators },
   {
     path: "/orgs",
     label: "Orgs",
@@ -171,12 +172,22 @@ export function App() {
 
   const reducedMotion = useReducedMotion();
   const page = (
-    <route.Component adminKey={adminKey} role={role} orgId={orgId} openSettings={openSettings} />
+    <route.Component
+      adminKey={adminKey}
+      role={role}
+      orgId={orgId}
+      openSettings={openSettings}
+      navigate={navigate}
+    />
   );
 
   return (
     <ToastProvider>
       <div className="shell">
+        {/* Keyboard users jump straight past the chrome to the panel. */}
+        <a className="skip-link" href="#main-content">
+          Skip to content
+        </a>
         <Sidebar
           routes={visibleRoutes}
           activePath={route.path}
@@ -185,7 +196,7 @@ export function App() {
           role={role}
           openSettings={openSettings}
         />
-        <main className="main">
+        <main className="main" id="main-content">
           {/* The gauntlet every request runs, pinned above the content: it is the
               one thing true of the whole platform regardless of which page you
               are on. */}

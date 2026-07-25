@@ -7,6 +7,7 @@ import { formatInt, formatTimestamp, formatUSD } from "../lib/format";
 import type { AuditEntry, KeyInfo, KeyUsage } from "../lib/types";
 import {
   Badge,
+  Button,
   Card,
   EASE,
   EmptyState,
@@ -87,7 +88,7 @@ function meterTone(fraction: number): string {
   return "";
 }
 
-export function Overview({ adminKey, openSettings }: PageProps) {
+export function Overview({ adminKey, openSettings, navigate }: PageProps) {
   const reduced = useReducedMotion();
 
   // Existing data hook — unchanged (per-key usage totals).
@@ -256,6 +257,11 @@ export function Overview({ adminKey, openSettings }: PageProps) {
                 <EmptyState
                   title="No budgets set"
                   description="Monthly budgets are set per key on the Keys page."
+                  action={
+                    <Button small onClick={() => navigate("/keys")}>
+                      Open Keys
+                    </Button>
+                  }
                 />
               ) : (
                 <div className="ov-meters">

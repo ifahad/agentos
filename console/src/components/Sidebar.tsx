@@ -102,6 +102,7 @@ export function Sidebar({
             <button
               key={r.path}
               className={`nav-item${active ? " active" : ""}`}
+              aria-current={active ? "page" : undefined}
               onClick={() => onNavigate(r.path)}
             >
               {active &&

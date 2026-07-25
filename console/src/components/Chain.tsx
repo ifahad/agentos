@@ -21,6 +21,15 @@ const STAGE_LABELS: Record<(typeof CHAIN_STAGES)[number], string> = {
   audit: "audit",
 };
 
+/** What each stage actually checks — the tooltip for someone new to the gauntlet. */
+const STAGE_TITLES: Record<(typeof CHAIN_STAGES)[number], string> = {
+  auth: "auth — the caller presented a valid credential",
+  rbac: "rbac — the caller's role may make this call",
+  budget: "budget — the key is within its spend budget",
+  rate: "rate — the key is within its rate limit",
+  audit: "audit — the request was recorded",
+};
+
 /** What the trailing status glyph should say about the last observed request. */
 function outcomeGlyph(state: ChainState, active: boolean) {
   if (active) return { state: "live" as const, label: "request in flight" };
@@ -116,13 +125,14 @@ export function Chain({ adminKey }: ChainProps) {
       </div>
       <ol className="chain-stages">
         {CHAIN_STAGES.map((stage, i) => (
-          <li key={stage} className="chain-stage" data-render={renders[i]}>
+          <li key={stage} className="chain-stage" data-render={renders[i]} title={STAGE_TITLES[stage]}>
             <span className="chain-node" aria-hidden />
             <span className="chain-label">{STAGE_LABELS[stage]}</span>
           </li>
         ))}
       </ol>
-      <div className="chain-outcome">
+      {/* A denial is the most important sentence the console speaks — announce it. */}
+      <div className="chain-outcome" aria-live="polite">
         <StateIcon state={glyph.state} title={glyph.label} size={12} />
       </div>
     </div>

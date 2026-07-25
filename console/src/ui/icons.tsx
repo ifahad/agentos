@@ -31,7 +31,8 @@ export type IconName =
   | "secrets"
   | "provisioning"
   | "settings"
-  | "multiverse";
+  | "multiverse"
+  | "operators";
 
 /** Glyph geometry. Each entry is the inner artwork of a 16x16 icon. */
 const GLYPHS: Record<IconName, JSX.Element> = {
@@ -155,6 +156,18 @@ const GLYPHS: Record<IconName, JSX.Element> = {
       <circle cx="13.2" cy="8" r="1.3" />
       <circle cx="8" cy="13.2" r="1.3" />
       <circle cx="2.8" cy="8" r="1.3" />
+    </>
+  ),
+
+  // Trigger — a standing order firing. Ticks strike a square node, the same
+  // node the governance chain seats on its rule: the signal arrives, the
+  // machine runs. Provisioning fans OUT of a circle; this strikes INTO a square.
+  operators: (
+    <>
+      <rect x="6" y="9" width="4" height="4" />
+      <path d="M8 2.5v3" />
+      <path d="M3.5 4.5 5.5 6.5" />
+      <path d="M12.5 4.5 10.5 6.5" />
     </>
   ),
 };

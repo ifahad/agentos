@@ -32,7 +32,9 @@
   /* ---- Ink ---- */
   --text: #e6e9eb;
   --text-dim: #98a1a8;
-  --text-faint: #626b71;
+  /* Faint is the quietest ink allowed to carry information: 4.9:1 on --bg,
+     the floor for eyebrow-size text. Anything quieter is decoration only. */
+  --text-faint: #7e878e;
 
   /* ---- SIGNAL. The only chroma in the interface. Each one means a specific
      machine state; never use them for emphasis, branding, or decoration. ---- */
@@ -137,6 +139,27 @@ a:hover {
 
 /* ---- Layout ---- */
 
+/* Visible only when focused: keyboard users jump past the chrome straight to
+   the panel. */
+.skip-link {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 200;
+  padding: 8px 14px;
+  background: var(--raised-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  text-decoration: none;
+  transform: translateY(-300%);
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.skip-link:focus-visible {
+  transform: none;
+}
+
 .shell {
   display: flex;
   height: 100%;
@@ -164,13 +187,6 @@ a:hover {
   font-weight: 600;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-}
-
-.brand-tag {
-  font-size: 10.5px;
-  color: var(--text-faint);
-  text-transform: uppercase;
-  letter-spacing: 0.14em;
 }
 
 .nav {
@@ -556,6 +572,8 @@ button {
   border-color: rgba(108, 196, 143, 0.4);
 }
 
+/* "Denied" here names a dormant thing (an inactive key), not a denial event —
+   a category, so it stays monochrome. Live denials are guardrail_block above. */
 .badge.denied,
 .badge.inactive {
   color: var(--text-faint);
@@ -588,9 +606,11 @@ button {
   color: var(--amber);
 }
 
+/* A freshly minted credential is shown once and demands attention: that is a
+   held moment, so it takes the hold hue — never a brand blue. */
 .secret-reveal {
   background: var(--accent-dim);
-  border: 1px solid rgba(91, 140, 255, 0.4);
+  border: 1px solid rgba(227, 168, 81, 0.45);
   border-radius: var(--radius-md);
   padding: 16px 18px;
   margin-bottom: 20px;
