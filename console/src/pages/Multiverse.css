@@ -1,0 +1,185 @@
+/* Multiverse — the council. Tokens and primitives from styles.css / ui.css. */
+
+.mv-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mv-pad {
+  padding: 16px 18px;
+}
+
+/* Member roster: one row per model-bound agent. Enabled members read in ink,
+   disabled ones recede — the council you have vs the council you could have. */
+.mv-members {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1px;
+  background: var(--border);
+}
+
+.mv-member {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--raised);
+  opacity: 0.55;
+}
+
+.mv-member[data-enabled] {
+  opacity: 1;
+}
+
+.mv-member-icon {
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.mv-member[data-enabled] .mv-member-icon {
+  color: var(--text-dim);
+}
+
+.mv-member-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.mv-member-id {
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.mv-member-model {
+  font-size: 11px;
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mv-member-tags {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Objective launcher. */
+.mv-launch {
+  display: flex;
+  gap: 10px;
+  padding: 16px 18px;
+}
+
+.mv-launch > :first-child {
+  flex: 1;
+}
+
+/* Objectives list beside the selected verdict. Collapses to one column when
+   the viewport is narrow. */
+.mv-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .mv-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.mv-input-cell {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mv-detail {
+  padding: 4px 18px 16px;
+}
+
+.mv-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.mv-obj-input {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* One cycle: its agreement band and synthesized answer, dissent below. */
+.mv-cycle {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.mv-cycle:last-child {
+  border-bottom: none;
+}
+
+.mv-cycle-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.mv-answer {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+/* Dissent is the signature of the council: disagreement kept, not averaged
+   away. The member who dissented is named in the hold signal. */
+.mv-dissent {
+  list-style: none;
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mv-dissent li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  padding: 8px 10px;
+  background: var(--inset);
+  border-left: 2px solid var(--hold);
+  border-radius: var(--radius-sm);
+}
+
+.mv-dissent-member {
+  grid-row: span 2;
+  align-self: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--hold);
+}
+
+.mv-dissent-claim {
+  font-size: 12.5px;
+  color: var(--text);
+}
+
+.mv-dissent-basis {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.mv-action-cell {
+  text-align: right;
+}

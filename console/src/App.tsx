@@ -26,6 +26,7 @@ import { ToastProvider, pageTransition } from "./ui";
 import { Audit } from "./pages/Audit";
 import { Documents } from "./pages/Documents";
 import { Improve } from "./pages/Improve";
+import { Multiverse } from "./pages/Multiverse";
 import { Keys } from "./pages/Keys";
 import { Orgs } from "./pages/Orgs";
 import { Overview } from "./pages/Overview";
@@ -57,6 +58,7 @@ const ROUTES: Route[] = [
   { path: "/playground", label: "Playground", icon: "playground", Component: Playground },
   { path: "/documents", label: "Documents", icon: "documents", Component: Documents },
   { path: "/improve", label: "Improve", icon: "improve", Component: Improve },
+  { path: "/multiverse", label: "Multiverse", icon: "multiverse", Component: Multiverse },
   {
     path: "/orgs",
     label: "Orgs",

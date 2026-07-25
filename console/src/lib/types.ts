@@ -187,3 +187,69 @@ export interface ActivePrompt {
   prompt: string;
   proposal_id: number | null;
 }
+
+// ---- Multiverse council (Task 14) ----
+
+// GET /council/members row — never carries a credential.
+export interface CouncilMember {
+  id: string;
+  model: string;
+  enabled: boolean;
+  profile: string;
+}
+
+// GET /council/objectives row.
+export interface CouncilObjective {
+  id: string;
+  input: string;
+  status: string;
+  stop_reason: string | null;
+  cycles_run: number;
+  spend_usd: number;
+  max_cycles: number | null;
+  budget_usd: number;
+  created_at: string;
+  claimed_by: string | null;
+}
+
+// One member's contribution to a cycle.
+export interface CouncilMemberRun {
+  member_id: string;
+  model_used: string;
+  status: string;
+  output: string;
+  error: string;
+}
+
+// A member that materially disagreed with the verdict.
+export interface CouncilDissent {
+  member: string;
+  claim: string;
+  basis: string;
+}
+
+// GET /council/objectives/{id} cycle row.
+export interface CouncilCycle {
+  id: string;
+  cycle_no: number;
+  agreement: number;
+  dissent: CouncilDissent[];
+  verdict: {
+    answer: string;
+    cited_members?: string[];
+    done?: boolean;
+    status?: string;
+  };
+  started_at: string;
+}
+
+// GET /council/proposals row — a held write-class action awaiting approval.
+export interface CouncilProposal {
+  id: string;
+  objective_id: string;
+  member_id: string;
+  tool: string;
+  arguments: Record<string, unknown>;
+  status: string;
+  created_at: string;
+}
