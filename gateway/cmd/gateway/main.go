@@ -111,6 +111,14 @@ func main() {
 		server.WithProviders(registry),
 	}
 
+	// The council/* model is served by the runtime's council API. Enabled only
+	// when the runtime URL is set; the runtime auth token is the same one the
+	// console injects, so the gateway authenticates to the runtime the same way.
+	if runtimeURL := os.Getenv("AGENTOS_COUNCIL_RUNTIME_URL"); runtimeURL != "" {
+		opts = append(opts, server.WithCouncil(runtimeURL, os.Getenv("AGENTOS_RUNTIME_AUTH_TOKEN")))
+		log.Printf("council model enabled via runtime %s", runtimeURL)
+	}
+
 	guardMode := os.Getenv("AGENTOS_GUARDRAILS_MODE")
 	if guardMode == "" {
 		guardMode = guardrail.ModeOff

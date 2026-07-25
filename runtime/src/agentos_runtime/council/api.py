@@ -95,6 +95,36 @@ async def run_objective_now(objective_id: str, council: CouncilDep) -> dict:
     return {"id": objective_id, "stop_reason": reason, "objective": refreshed}
 
 
+@router.post("/objectives/run")
+async def create_and_run_objective(body: ObjectiveRequest, council: CouncilDep) -> dict:
+    """Create an objective and run it to a verdict synchronously.
+
+    This is what the gateway's council/* model calls: one full objective, not a
+    queued one. It defaults to a single cycle — a synchronous OpenAI-style call
+    must return in one round, not loop while an HTTP client waits — and the same
+    caps still apply (budget ceiling, pause).
+    """
+    objective = await council.store.create_objective(
+        input_text=body.input,
+        max_cycles=body.max_cycles or 1,
+        budget_usd=body.budget_usd
+        if body.budget_usd is not None
+        else council.default_budget_usd,
+    )
+    reason = await run_objective(council.deps, objective)
+    cycles = await council.store.list_cycles(objective["id"])
+    last = cycles[-1] if cycles else {}
+    verdict = dict(last.get("verdict") or {})
+    verdict["agreement"] = last.get("agreement", 0.0)
+    verdict["dissent"] = last.get("dissent", [])
+    final = await council.store.get_objective(objective["id"])
+    return {
+        "objective": {"id": objective["id"], "stop_reason": reason},
+        "verdict": verdict,
+        "spend_usd": float((final or {}).get("spend_usd") or 0.0),
+    }
+
+
 @router.post("/pause")
 async def pause(council: CouncilDep) -> dict:
     await council.store.set_paused(True)

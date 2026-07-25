@@ -78,7 +78,19 @@ type Server struct {
 	// providers is the operator provider registry, reported by GET
 	// /admin/providers. Nil until WithProviders is set.
 	providers *provider.Registry
+	// councilURL/councilToken point at the runtime's council API, enabling the
+	// council/* model. Empty councilURL leaves that model unsupported.
+	councilURL   string
+	councilToken string
 }
+
+// Council model routing. A request for a council/* model is served by the
+// runtime's synchronous council run rather than a single upstream provider.
+const (
+	CouncilPrefix       = "council/"
+	CouncilDepthHeader  = "X-AgentOS-Council-Depth"
+	errCouncilRecursion = "council_recursion"
+)
 
 // DefaultMaxBodyBytes caps a single request body. Chat payloads carry whole
 // conversations and retrieved documents, so the ceiling is generous — it exists
@@ -171,6 +183,15 @@ func WithMaxBodyBytes(n int64) Option {
 // can report what is configured.
 func WithProviders(reg *provider.Registry) Option {
 	return func(s *Server) { s.providers = reg }
+}
+
+// WithCouncil enables the council/* model by pointing the gateway at the
+// runtime's council API.
+func WithCouncil(runtimeURL, runtimeToken string) Option {
+	return func(s *Server) {
+		s.councilURL = strings.TrimSuffix(runtimeURL, "/")
+		s.councilToken = runtimeToken
+	}
 }
 
 // WithRateLimits sets the global default requests-per-minute applied to orgs
@@ -536,6 +557,29 @@ func (s *Server) handleChatCompletions(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// The council/* model is served by the runtime, not a single provider. This
+	// sits after rate-limit, budget admission, and guardrail, so the council is
+	// never a governance bypass; the reserved budget is released by the deferred
+	// release() on return here as on any other path.
+	if strings.HasPrefix(model, CouncilPrefix) {
+		// Recursion guard: a council member's own call carries the depth marker.
+		// Letting it request a council model again would make the council call
+		// itself — unbounded recursion and unbounded spend. This is the gateway
+		// half of the two independent guards (council.yaml is the other).
+		if r.Header.Get(CouncilDepthHeader) != "" {
+			writeError(w, http.StatusBadRequest, errCouncilRecursion,
+				"a council member may not request a council model (recursion)")
+			return
+		}
+		if s.councilURL == "" {
+			writeError(w, http.StatusBadRequest, errUnsupported,
+				fmt.Sprintf("model %q requires the council runtime (AGENTOS_COUNCIL_RUNTIME_URL)", model))
+			return
+		}
+		s.proxyCouncil(w, r, key, model, body)
+		return
+	}
+
 	route, err := s.router.Route(model)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, errUnsupported,
@@ -811,6 +855,101 @@ func parseSSEUsageLine(line []byte) (inputTokens, outputTokens int64, ok bool) {
 	}
 	in, out := parsed.Usage.tokens()
 	return in, out, true
+}
+
+// proxyCouncil runs one synchronous council cycle via the runtime and shapes the
+// verdict as an OpenAI chat completion, so any OpenAI-compatible client gets the
+// whole council behind one model name.
+//
+// Member spend is billed to the members' own virtual keys by the runtime. This
+// request therefore records ZERO direct cost and reports the summed member spend
+// in the council extension, so one client call cannot be double-counted.
+func (s *Server) proxyCouncil(
+	w http.ResponseWriter, r *http.Request, key *store.Key, model string, body map[string]any,
+) {
+	ctx, span := s.tracer.Start(r.Context(), "gateway.council")
+	defer span.End()
+
+	payload, err := json.Marshal(map[string]any{"input": latestUserMessage(body)})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, errUnsupported, "failed to encode council request")
+		return
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
+		s.councilURL+"/council/objectives/run", bytes.NewReader(payload))
+	if err != nil {
+		writeError(w, http.StatusBadGateway, errProviderError, "failed to build council request")
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+s.councilToken)
+	// Stamp the depth marker so a member's own gateway call is refused a council
+	// model (see the recursion guard in handleChatCompletions).
+	req.Header.Set(CouncilDepthHeader, "1")
+
+	start := time.Now()
+	resp, err := s.client.Do(req)
+	latencyMS := time.Since(start).Milliseconds()
+	if err != nil {
+		s.record(r, span, store.Usage{
+			SecretHash: key.SecretHash, OrgID: key.OrgID, KeyName: key.Name,
+			Model: model, LatencyMS: latencyMS, Status: http.StatusBadGateway, Kind: store.KindChat,
+		})
+		writeError(w, http.StatusBadGateway, errProviderError,
+			fmt.Sprintf("council runtime unreachable: %v", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		writeError(w, http.StatusBadGateway, errProviderError,
+			fmt.Sprintf("council runtime returned status %d: %s", resp.StatusCode, string(raw)))
+		return
+	}
+
+	var run struct {
+		Objective struct {
+			ID string `json:"id"`
+		} `json:"objective"`
+		Verdict struct {
+			Answer       string           `json:"answer"`
+			Agreement    float64          `json:"agreement"`
+			Dissent      []map[string]any `json:"dissent"`
+			CitedMembers []string         `json:"cited_members"`
+			Status       string           `json:"status"`
+		} `json:"verdict"`
+		SpendUSD float64 `json:"spend_usd"`
+	}
+	if err := json.Unmarshal(raw, &run); err != nil {
+		writeError(w, http.StatusBadGateway, errProviderError, "unparseable council response")
+		return
+	}
+
+	completion := map[string]any{
+		"object": "chat.completion",
+		"model":  model,
+		"choices": []map[string]any{{
+			"index":         0,
+			"message":       map[string]any{"role": "assistant", "content": run.Verdict.Answer},
+			"finish_reason": "stop",
+		}},
+		"x_agentos_council": map[string]any{
+			"objective_id":  run.Objective.ID,
+			"agreement":     run.Verdict.Agreement,
+			"dissent":       run.Verdict.Dissent,
+			"cited_members": run.Verdict.CitedMembers,
+			"status":        run.Verdict.Status,
+			"spend_usd":     run.SpendUSD,
+		},
+	}
+
+	// CostUSD stays 0: members were billed on their own keys.
+	s.record(r, span, store.Usage{
+		SecretHash: key.SecretHash, OrgID: key.OrgID, KeyName: key.Name,
+		Model: model, LatencyMS: latencyMS, Status: http.StatusOK, Kind: store.KindChat,
+	})
+	writeJSON(w, http.StatusOK, completion)
 }
 
 // latestUserMessage returns the text of the last "user" message in an

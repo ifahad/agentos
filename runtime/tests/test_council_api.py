@@ -158,3 +158,26 @@ async def test_council_endpoints_503_without_a_store(council_client_no_store):
     """No council configured means every route reports 503, not a crash."""
     resp = await council_client_no_store.post("/council/objectives", json={"input": "q"})
     assert resp.status_code == 503
+
+
+async def test_run_endpoint_returns_a_verdict(council_client, council_store):
+    """The gateway's council/* model calls this: create + run in one request."""
+    from agentos_runtime.council.fanout import MemberAnswer
+    from agentos_runtime.council.judge import Verdict
+
+    async def fake_fanout(**kwargs):
+        return [MemberAnswer("alpha", "ollama/a", "t", "answered", "42", [], "")]
+
+    async def fake_synthesize(*args, **kwargs):
+        return Verdict(answer="42", agreement=1.0, dissent=[], cited_members=["alpha"], done=True)
+
+    app.state.council.deps.fanout_fn = fake_fanout
+    app.state.council.deps.synthesize_fn = fake_synthesize
+
+    resp = await council_client.post("/council/objectives/run", json={"input": "q"})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "verdict" in body and "objective" in body
+    assert body["verdict"]["answer"] == "42"
+    assert "agreement" in body["verdict"]
+    assert body["objective"]["stop_reason"] == "converged"

@@ -67,6 +67,9 @@ services:
       AGENTOS_ALIBABA_API_KEY: ${AGENTOS_ALIBABA_API_KEY:-}
       AGENTOS_DEEPSEEK_API_KEY: ${AGENTOS_DEEPSEEK_API_KEY:-}
       AGENTOS_MINIMAX_API_KEY: ${AGENTOS_MINIMAX_API_KEY:-}
+      # The council/* model: the gateway proxies it to the runtime's council API.
+      AGENTOS_COUNCIL_RUNTIME_URL: ${AGENTOS_COUNCIL_RUNTIME_URL:-http://runtime:8000}
+      AGENTOS_RUNTIME_AUTH_TOKEN: ${AGENTOS_RUNTIME_AUTH_TOKEN:-runtime-local-dev}
     volumes:
       - ./providers.json:/app/providers.json:ro
     extra_hosts:
