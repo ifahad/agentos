@@ -253,3 +253,39 @@ export interface CouncilProposal {
   status: string;
   created_at: string;
 }
+
+// ---- Operators (native autonomy) ----
+
+// A trigger as returned by the API (webhook_token is null on reads).
+export interface OperatorTrigger {
+  type: "interval" | "cron" | "webhook";
+  interval_s?: number;
+  cron?: string;
+  webhook_token?: string | null;
+}
+
+// GET /operators row.
+export interface Operator {
+  id: string;
+  name: string;
+  goal: string;
+  trigger: OperatorTrigger;
+  enabled: boolean;
+  max_cycles: number;
+  created_at: string;
+  last_fired_at: string | null;
+}
+
+// One autonomous run of an operator.
+export interface OperatorRun {
+  id: string;
+  operator_id: string;
+  thread_id: string;
+  status: "completed" | "needs_approval" | "error";
+  output: string;
+  steps: { tool: string; input: Record<string, unknown> }[];
+  cycles: number;
+  trigger_source: string;
+  error: string;
+  created_at: string;
+}

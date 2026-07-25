@@ -27,6 +27,7 @@ import { Audit } from "./pages/Audit";
 import { Documents } from "./pages/Documents";
 import { Improve } from "./pages/Improve";
 import { Multiverse } from "./pages/Multiverse";
+import { Operators } from "./pages/Operators";
 import { Keys } from "./pages/Keys";
 import { Orgs } from "./pages/Orgs";
 import { Overview } from "./pages/Overview";
@@ -59,6 +60,7 @@ const ROUTES: Route[] = [
   { path: "/documents", label: "Documents", icon: "documents", Component: Documents },
   { path: "/improve", label: "Improve", icon: "improve", Component: Improve },
   { path: "/multiverse", label: "Multiverse", icon: "multiverse", Component: Multiverse },
+  { path: "/operators", label: "Operators", icon: "provisioning", Component: Operators },
   {
     path: "/orgs",
     label: "Orgs",

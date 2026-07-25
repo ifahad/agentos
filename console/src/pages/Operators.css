@@ -1,0 +1,112 @@
+/* Operators — native autonomy. Tokens and primitives from styles.css / ui.css. */
+
+.op-form {
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.op-form-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr;
+  gap: 12px;
+  align-items: end;
+}
+
+.op-webhook-note {
+  padding-bottom: 10px;
+}
+
+.op-pad {
+  padding: 16px 18px;
+}
+
+.op-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .op-form-row {
+    grid-template-columns: 1fr;
+  }
+  .op-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+.op-row-icon {
+  color: var(--text-faint);
+  vertical-align: -1px;
+  margin-right: 4px;
+}
+
+.op-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.op-detail {
+  padding: 4px 18px 16px;
+}
+
+.op-detail-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.op-goal {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* One run: its status, source, cycle count, and output. */
+.op-run {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.op-run:last-child {
+  border-bottom: none;
+}
+
+.op-run-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.op-run-cycles {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.op-run-time {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.op-run-output {
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text);
+  white-space: pre-wrap;
+}
+
+/* A run error takes the deny signal — the one place this view raises its voice. */
+.op-run-error {
+  font-size: 12px;
+  color: var(--deny);
+  font-family: var(--mono);
+}
