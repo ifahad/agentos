@@ -64,6 +64,14 @@ EMBED_DIM = 1024  # must match runtime/src/agentos_runtime/context.py EMBED_DIM 
 EMBED_VALUE = 0.001  # non-zero so the vector has a defined norm for cosine distance
 USAGE = {"prompt_tokens": 32, "completion_tokens": 16, "total_tokens": 48}
 
+# Failure injection for retry tests. A request carrying X-Mock-Fail-Times: N
+# fails the next N times with 503, then the gateway's retry delivers a success —
+# so the retry path is verifiable in CI without depending on a real provider
+# flaking. State is a single module-level counter, which is enough because the
+# retry test drives the mock serially. It never affects a request that omits the
+# header, so the deterministic eval gate is untouched.
+_FAILURES = {"count": 0}
+
 # Markers that identify special (non-agent) turns by their prompt text.
 JUDGE_MARKER = "you are grading an ai agent's answer"  # evals.JUDGE_TEMPLATE header
 CLASSIFIER_MARKER = "prompt-injection classifier"  # guardrail classifierSystemPrompt
@@ -315,6 +323,21 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0].rstrip("/")
         body = self._read_body()
         if path.endswith("/v1/chat/completions") or path.endswith("/chat/completions"):
+            # Failure injection (retry tests only). Fail the next N requests with
+            # the configured status, then reset so the retry succeeds.
+            fail_times = int(self.headers.get("X-Mock-Fail-Times", "0") or 0)
+            if fail_times and _FAILURES["count"] < fail_times:
+                _FAILURES["count"] += 1
+                status = int(self.headers.get("X-Mock-Status", "503") or 503)
+                payload = b'{"error":"injected failure"}'
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Retry-After", "0")
+                self.send_header("Content-Length", str(len(payload)))
+                self.end_headers()
+                self.wfile.write(payload)
+                return
+            _FAILURES["count"] = 0
             if body.get("stream") is True:
                 payload = _sse_chat(body)
                 self.send_response(200)
