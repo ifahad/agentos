@@ -34,6 +34,7 @@ from agentos_runtime.hitl import (
     run_until_settled,
 )
 from agentos_runtime.messages import extract_output, message_text
+from agentos_runtime.operators import api as operators_api
 from agentos_runtime.otel import record_tool_spans, run_span, setup_tracing
 from agentos_runtime.sandbox import sandbox_tools
 from agentos_runtime.store import ImprovementStore
@@ -44,6 +45,10 @@ INTERNAL_ERROR = "internal error"
 INVALID_TOKEN = "invalid runtime token"
 # GET /healthz stays open so container/orchestrator probes need no credential.
 OPEN_PATHS = frozenset({"/healthz"})
+# Operator webhook fires authenticate by their opaque token in the path, not by
+# the runtime bearer — an external system firing a webhook does not hold it. The
+# token (whk-, 24 random bytes) is the credential, and an unknown token 404s.
+OPEN_PREFIXES = ("/operators/webhooks/",)
 
 
 def _expected_auth_token(request: Request) -> str:
@@ -65,6 +70,8 @@ async def require_auth(request: Request) -> None:
     (constant-time). Any missing/malformed/mismatched token -> 401.
     """
     if request.url.path in OPEN_PATHS:
+        return
+    if any(request.url.path.startswith(prefix) for prefix in OPEN_PREFIXES):
         return
     expected = _expected_auth_token(request)
     header = request.headers.get("authorization", "")
@@ -125,8 +132,37 @@ async def lifespan(app: FastAPI):
         else:
             app.state.improve_store = None
 
+        # Skills: reviewed in-repo SKILL.md instructions the agent pulls on
+        # demand. Loaded unconditionally (whether autonomy is on or not); a
+        # missing directory simply yields no skills. The use_skill tool is added
+        # to the toolset and the skill names are appended to the system prompt so
+        # the model knows what exists without their full text bloating each turn.
+        from agentos_runtime.operators.skills import (
+            load_skills,
+            make_use_skill_tool,
+            skills_prompt_section,
+        )
+
+        skills_dir = settings.skills_dir or str(
+            __import__("pathlib").Path(__file__).resolve().parents[2] / "skills"
+        )
+        skills = load_skills(skills_dir)
+        agent_tools = list(tools)
+        if skills:
+            agent_tools.append(make_use_skill_tool(skills))
+        skill_section = skills_prompt_section(skills)
+        app.state.skills = skills
+
         def agent_builder(prompt: str | None):
-            return build_agent(settings, tools, checkpointer, prompt=prompt)
+            # Append the skills list AFTER the persona/default prompt, so it adds
+            # to the instructions rather than replacing them. build_agent still
+            # prepends the immutable SAFETY_PREAMBLE regardless.
+            if skill_section:
+                base = prompt if prompt is not None else SYSTEM_PROMPT
+                effective: str | None = base + skill_section
+            else:
+                effective = prompt
+            return build_agent(settings, agent_tools, checkpointer, prompt=effective)
 
         app.state.agent_builder = agent_builder
         app.state.reflection_model = build_chat_model(settings)
@@ -171,15 +207,47 @@ async def lifespan(app: FastAPI):
                     heartbeat(deps, settings.council_heartbeat_s, stop_event)
                 )
                 logger.info("council heartbeat enabled (%ss)", settings.council_heartbeat_s)
+
+        # Operators: the single-agent autonomy engine, parallel to the council.
+        # Its store lives in the checkpoint DB, so it is available whenever that
+        # is; the scheduler is separately opt-in via AGENTOS_AUTONOMY_ENABLED.
+        app.state.operators = None
+        app.state.operators_task = None
+        app.state.operators_stop = None
+        if settings.checkpoint_database_url:
+            from agentos_runtime.operators.engine import OperatorDeps, Scheduler
+            from agentos_runtime.operators.store import OperatorStore
+
+            operator_store = OperatorStore(settings.checkpoint_database_url)
+            operator_deps = OperatorDeps(
+                store=operator_store,
+                agent_builder=agent_builder,
+                approval_tools=settings.approval_tool_names,
+                max_cycles_default=settings.autonomy_max_cycles,
+            )
+            app.state.operators = SimpleNamespace(store=operator_store, deps=operator_deps)
+            if settings.autonomy_enabled:
+                ops_stop = asyncio.Event()
+                app.state.operators_stop = ops_stop
+                scheduler = Scheduler(operator_deps, tick_s=settings.autonomy_tick_s)
+                app.state.operators_task = asyncio.create_task(scheduler.run(ops_stop))
+                logger.info("operator scheduler enabled (tick=%ss)", settings.autonomy_tick_s)
+
         try:
             yield
         finally:
-            if app.state.council_stop is not None:
-                app.state.council_stop.set()
-            if app.state.council_task is not None:
-                app.state.council_task.cancel()
-                with suppress(asyncio.CancelledError):
-                    await app.state.council_task
+            for stop_attr, task_attr in (
+                ("council_stop", "council_task"),
+                ("operators_stop", "operators_task"),
+            ):
+                stop = getattr(app.state, stop_attr, None)
+                task = getattr(app.state, task_attr, None)
+                if stop is not None:
+                    stop.set()
+                if task is not None:
+                    task.cancel()
+                    with suppress(asyncio.CancelledError):
+                        await task
 
 
 app = FastAPI(
@@ -191,6 +259,7 @@ app.include_router(evals.router)
 app.include_router(improve.router)
 app.include_router(prompts.router)
 app.include_router(council_api.router)
+app.include_router(operators_api.router)
 
 
 def get_agent(request: Request):

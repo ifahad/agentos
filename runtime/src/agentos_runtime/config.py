@@ -60,6 +60,15 @@ class Settings(BaseSettings):
     council_config: str = ""
     council_heartbeat_s: int = 0
     council_max_spend_usd: float = 5.0
+    # Operators: governed always-on autonomy for the single agent. The scheduler
+    # runs only when autonomy_enabled is true (opt-in — the runtime serves the
+    # operators API but never fires on its own by default). tick_s is how often
+    # the scheduler checks for due operators; max_cycles is an operator's default
+    # tool-iteration cap; skills_dir is the in-repo SKILL.md directory.
+    autonomy_enabled: bool = False
+    autonomy_tick_s: int = 15
+    autonomy_max_cycles: int = 8
+    skills_dir: str = ""
 
     def require_runtime_auth_token(self) -> str:
         """Return the configured runtime auth token or fail closed.

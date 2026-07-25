@@ -113,6 +113,11 @@ services:
       AGENTOS_COUNCIL_CONFIG: ${AGENTOS_COUNCIL_CONFIG:-/app/council.yaml}
       AGENTOS_COUNCIL_HEARTBEAT_S: ${AGENTOS_COUNCIL_HEARTBEAT_S:-0}
       AGENTOS_COUNCIL_MAX_SPEND_USD: ${AGENTOS_COUNCIL_MAX_SPEND_USD:-5}
+      # Operators: single-agent autonomy. Scheduler OFF by default — the runtime
+      # serves the operators API but never fires on its own unless enabled.
+      AGENTOS_AUTONOMY_ENABLED: ${AGENTOS_AUTONOMY_ENABLED:-false}
+      AGENTOS_AUTONOMY_TICK_S: ${AGENTOS_AUTONOMY_TICK_S:-15}
+      AGENTOS_AUTONOMY_MAX_CYCLES: ${AGENTOS_AUTONOMY_MAX_CYCLES:-8}
     ports:
       - "${AGENTOS_RUNTIME_PORT:-8000}:8000"
     # On both networks: `default` to reach gateway/postgres/connectors, and
