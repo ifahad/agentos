@@ -1,6 +1,6 @@
 GO ?= $(HOME)/.local/go/bin/go
 
-.PHONY: test test-go test-python test-console up down logs smoke smoke2 smoke9 fmt
+.PHONY: test test-go test-python test-console up down logs smoke smoke2 smoke8 smoke9 fmt
 
 test: test-go test-python test-console
 
@@ -37,6 +37,9 @@ smoke4:
 
 smoke7:
 	bash scripts/smoke7.sh
+
+smoke8: ## live operators (autonomy) end-to-end
+	bash scripts/smoke8.sh
 
 smoke9: ## live five-model council end-to-end
 	bash scripts/smoke9.sh

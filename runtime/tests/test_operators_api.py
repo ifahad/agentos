@@ -167,3 +167,28 @@ async def test_operators_503_without_a_store(client_no_store):
         json={"name": "x", "goal": "g", "trigger": {"type": "interval", "interval_s": 60}},
     )
     assert resp.status_code == 503
+
+
+async def test_skills_endpoint_lists_names_not_bodies(client):
+    from agentos_runtime.api import app
+    from agentos_runtime.operators.skills import Skill
+    app.state.skills = {
+        "erp-analysis": Skill("erp-analysis", "read the ERP", "ERP qs", "BODY", "abc123")
+    }
+    resp = await client.get("/operators/skills")
+    assert resp.status_code == 200
+    skills = resp.json()["skills"]
+    assert skills[0]["name"] == "erp-analysis"
+    assert skills[0]["sha256"] == "abc123"
+    assert "BODY" not in resp.text  # bodies are never listed
+    del app.state.skills
+
+
+async def test_skills_route_is_not_shadowed_by_operator_id(client):
+    # /operators/skills must resolve to the skills list, not GET /operators/{id}.
+    from agentos_runtime.api import app
+    app.state.skills = {}
+    resp = await client.get("/operators/skills")
+    assert resp.status_code == 200
+    assert "skills" in resp.json()
+    del app.state.skills

@@ -68,6 +68,29 @@ async def list_operators(ops: OpsDep) -> dict:
     return {"operators": await ops.store.list_operators()}
 
 
+@router.get("/skills")
+async def list_skills(request: Request) -> dict:
+    """The loaded SKILL.md skills — names, descriptions, and provenance hashes.
+
+    Declared before /{operator_id} so the static path wins over the parameter.
+    Reads app.state.skills directly (skills load unconditionally, independent of
+    the operator store), so this works even when autonomy has no checkpoint DB.
+    Never returns a skill body — that is fetched by the agent via use_skill.
+    """
+    skills = getattr(request.app.state, "skills", None) or {}
+    return {
+        "skills": [
+            {
+                "name": s.name,
+                "description": s.description,
+                "when_to_use": s.when_to_use,
+                "sha256": s.sha256,
+            }
+            for s in skills.values()
+        ]
+    }
+
+
 @router.get("/{operator_id}")
 async def get_operator(operator_id: str, ops: OpsDep) -> dict:
     operator = await ops.store.get_operator(operator_id)

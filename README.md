@@ -227,6 +227,33 @@ every push, plus an **eval gate** (`evals.yml`) that scores the runtime eval
 suite against a deterministic mock model and fails under 0.8 — label a PR
 `run-evals` to run it, or wire real provider secrets to grade real models.
 
+## Operators — native autonomy
+
+**Operators** are standing objectives the runtime pursues on its own, driving the
+single governed agent (parallel to the council, which drives many models). Each
+operator has a goal and a **trigger**:
+
+- **interval** — fire every N seconds (floor 30s);
+- **cron** — a 5-field schedule (validated with `croniter`);
+- **webhook** — fired by an inbound `POST /operators/webhooks/{token}`, where the
+  opaque `whk-` token *is* the credential (the one route exempt from the runtime
+  bearer; an unknown token 404s). The token is returned once at creation and
+  redacted on every read.
+
+Every operator run goes through the gateway on the runtime's key, so budgets,
+rate limits, guardrails, and the audit trail all apply; it is bounded by
+`max_cycles`; and a run that hits a human-approval interrupt is recorded
+`needs_approval` and is **not** auto-resumed — autonomy never approves its own
+writes. The scheduler is **opt-in** (`AGENTOS_AUTONOMY_ENABLED`, off by default):
+the runtime serves the operators API but never fires on its own unless enabled.
+
+**Skills** (`SKILL.md`) are reviewed, in-repo instruction sheets the agent pulls
+on demand via a `use_skill` tool. They load **only** from the image-baked
+`runtime/skills/` directory — never fetched at runtime, never from a registry —
+and each records a sha256 for provenance (see `runtime/skills/README.md`). This
+is the direct lesson of the OpenClaw supply chain: a skill is code, so it is
+reviewed in-repo, not downloaded. `make smoke8` exercises the whole surface live.
+
 ## Multiverse council
 
 A **council** of model-bound agents answers one objective in parallel, and a
@@ -294,7 +321,10 @@ The frontier five remain unverified and disabled.
    a council of model-bound deep agents with judge synthesis and dissent
    reporting, governed autonomous loop, and `council/multiverse` as an
    OpenAI-compatible model.~~ ✅
-10. Next: SAML SSO, cloud-KMS secret backends, Redis limiter option, secret
+10. ~~**Operators**: governed single-agent autonomy — interval/cron/webhook
+   triggers toward stored objectives, bounded and audited, with in-repo
+   checksummed `SKILL.md` skills the agent pulls on demand.~~ ✅
+11. Next: SAML SSO, cloud-KMS secret backends, Redis limiter option, secret
    rotation webhooks, SCIM Groups.
 
 License: [Apache-2.0](LICENSE)
