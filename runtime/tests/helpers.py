@@ -334,3 +334,95 @@ class FakeCouncilStore:
 
     async def is_paused(self):
         return self.paused
+
+
+class FakeOperatorStore:
+    """In-memory OperatorStore mirroring the real method surface."""
+
+    def __init__(self) -> None:
+        self.operators: dict[str, dict] = {}
+        self.runs: list[dict] = []
+        self._seq = 0
+
+    def _next_id(self, prefix: str) -> str:
+        self._seq += 1
+        return f"{prefix}-{self._seq}"
+
+    def _row(self, op, redact=True):
+        cfg = dict(op["trigger_config"])
+        if redact and "webhook_token" in cfg:
+            cfg = {**cfg, "webhook_token": None}
+        return {
+            "id": op["id"], "name": op["name"], "goal": op["goal"],
+            "trigger": {"type": op["trigger_type"], **cfg},
+            "enabled": op["enabled"], "max_cycles": op["max_cycles"],
+            "created_at": op["created_at"], "last_fired_at": op["last_fired_at"],
+        }
+
+    async def create_operator(self, name, goal, trigger_type, trigger_config, enabled, max_cycles):
+        oid = self._next_id("op")
+        op = {
+            "id": oid, "name": name, "goal": goal, "trigger_type": trigger_type,
+            "trigger_config": dict(trigger_config), "enabled": enabled,
+            "max_cycles": max_cycles, "created_at": "2026-07-25T00:00:00+00:00",
+            "last_fired_at": None,
+        }
+        self.operators[oid] = op
+        return self._row(op, redact=False)
+
+    async def get_operator(self, operator_id):
+        op = self.operators.get(operator_id)
+        return self._row(op) if op else None
+
+    async def list_operators(self):
+        return [self._row(op) for op in self.operators.values()]
+
+    async def find_by_webhook(self, token):
+        for op in self.operators.values():
+            if (op["trigger_type"] == "webhook" and op["enabled"]
+                    and op["trigger_config"].get("webhook_token") == token):
+                return self._row(op, redact=False)
+        return None
+
+    async def enabled_scheduled(self):
+        return [self._row(op, redact=False) for op in self.operators.values()
+                if op["enabled"] and op["trigger_type"] in ("interval", "cron")]
+
+    async def update_operator(self, operator_id, *, enabled=None, goal=None,
+                              max_cycles=None, trigger_type=None, trigger_config=None):
+        op = self.operators.get(operator_id)
+        if op is None:
+            return None
+        if enabled is not None:
+            op["enabled"] = enabled
+        if goal is not None:
+            op["goal"] = goal
+        if max_cycles is not None:
+            op["max_cycles"] = max_cycles
+        if trigger_type is not None:
+            op["trigger_type"] = trigger_type
+        if trigger_config is not None:
+            op["trigger_config"] = dict(trigger_config)
+        return self._row(op)
+
+    async def mark_fired(self, operator_id):
+        if operator_id in self.operators:
+            self.operators[operator_id]["last_fired_at"] = "2026-07-25T00:01:00+00:00"
+
+    async def delete_operator(self, operator_id):
+        return self.operators.pop(operator_id, None) is not None
+
+    async def insert_run(self, operator_id, thread_id, status, output, steps, cycles,
+                         trigger_source, error=""):
+        run = {
+            "id": self._next_id("run"), "operator_id": operator_id, "thread_id": thread_id,
+            "status": status, "output": output, "steps": steps, "cycles": cycles,
+            "trigger_source": trigger_source, "error": error,
+            "created_at": "2026-07-25T00:02:00+00:00",
+        }
+        self.runs.append(run)
+        return dict(run)
+
+    async def list_runs(self, operator_id, limit=20):
+        out = [dict(r) for r in reversed(self.runs) if r["operator_id"] == operator_id]
+        return out[:limit]
