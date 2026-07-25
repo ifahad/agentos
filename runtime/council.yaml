@@ -48,18 +48,20 @@ members:
     tools: [query, list_tables, describe_table, search_knowledge, run_python]
 
   # --- local members: a real five-way council at $0 ---
-  # Deep members carry an explicit read-only tools list (see caveat above);
-  # react members are gated in-graph by the council, so they may load all tools.
+  # These run the REACT profile, not deep. Empirically (scripts/smoke9.sh) the
+  # local models on the deep profile exhaust the recursion limit inside
+  # deepagents' own graph — its todo/filesystem/subagent middleware is deeper
+  # than max_tool_steps allows — and answer nothing. On react they call tools
+  # reliably and are gated in-graph by the council (no explicit tools list
+  # needed). The frontier members keep deep, but they are disabled and unverified.
   - id: local-qwen36
     model: ollama/qwen3.6:latest
     enabled: true
-    profile: deep
-    tools: [query, list_tables, describe_table, search_knowledge, run_python]
+    profile: react
   - id: local-qwen35
     model: ollama/qwen3.5:latest
     enabled: true
-    profile: deep
-    tools: [query, list_tables, describe_table, search_knowledge, run_python]
+    profile: react
   - id: local-gemma4-31b
     model: ollama/gemma4:31b
     enabled: true

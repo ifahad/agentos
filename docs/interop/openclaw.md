@@ -99,6 +99,11 @@ injection-screened at the gateway before it reaches a provider. When the org's
 budget or rpm is exceeded, the gateway returns `402`/`429` — OpenClaw cannot run
 away with your spend.
 
+Point `OPENCLAW_MODEL` at `council/multiverse` and the OpenClaw worker thinks
+through the whole council — several models, one synthesized verdict with
+dissent — with no OpenClaw-side change. The same budget, rate limit, and audit
+apply, and the recursion guard prevents the council calling itself.
+
 ## Step 2 — Jail the execution (kills unsandboxed RCE)
 
 OpenClaw's shell/skill execution must **never touch the host**. Two safe surfaces:

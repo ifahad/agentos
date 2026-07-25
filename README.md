@@ -227,6 +227,48 @@ every push, plus an **eval gate** (`evals.yml`) that scores the runtime eval
 suite against a deterministic mock model and fails under 0.8 — label a PR
 `run-evals` to run it, or wire real provider secrets to grade real models.
 
+## Multiverse council
+
+A **council** of model-bound agents answers one objective in parallel, and a
+judge synthesizes their answers into a single verdict **with an explicit dissent
+report** — disagreement is recorded, not averaged away.
+
+- **Members** are configured in `runtime/council.yaml`: each is an agent bound
+  to one model, with its own profile, persona, tool subset, and checkpoint
+  thread. The five frontier members (Kimi K3, GLM-5.2, Qwen 3.8 Max,
+  DeepSeek-V4 Pro, MiniMax M3) ship **disabled** — their vendor endpoints, model
+  ids, and pricing in `deploy/providers.json` are **unverified placeholders** an
+  operator must confirm before enabling. Five local Ollama models ship enabled,
+  so a real five-way council runs at **$0**.
+- **Provider registry** (`deploy/providers.json`): any OpenAI-compatible vendor
+  is reachable by config, with real per-1M-token pricing that makes budgets and
+  `/admin/usage` accurate for non-builtin models. Base URLs are SSRF-screened
+  (https-only except loopback; no private/link-local hosts). `GET /admin/providers`
+  reports what is configured without ever leaking a key.
+- **Governance defaults are conservative.** The autonomous heartbeat is **off**
+  (`AGENTOS_COUNCIL_HEARTBEAT_S=0`); the action surface is **read freely, propose
+  writes** (write-class tool calls become human-approved proposals, fail-closed —
+  an unclassified tool is a write); each objective is bounded by a cycle cap and
+  a spend ceiling; and a **kill switch** (`POST /council/pause`) halts the loop
+  within one cycle.
+- **`council/multiverse`** is exposed as an OpenAI-compatible model: any OpenAI
+  client gets the whole council behind one model name, with dissent in an
+  `x_agentos_council` extension. **Two independent recursion guards** stop the
+  council calling itself: the gateway refuses a council model on any request
+  carrying the depth marker, and `council.yaml` rejects members on a `council/`
+  model.
+- **Try it:** `make smoke9` runs a real five-model council against the seeded
+  legacy ERP database.
+
+**Honest note on the local models** (from `scripts/smoke9.sh`): the local
+council runs the **react** profile, not deep. On the deep profile the local
+models exhaust the recursion limit inside deepagents' own graph and answer
+nothing; on react they call tools reliably. Of the five local models, four
+(qwen3.5, qwen3.6, gemma4, gemma4:31b) call tools and answer consistently;
+gemma3 is flaky (intermittent 502s) but the council tolerates it by design —
+quorum and failure isolation mean one or two bad members never deny the verdict.
+The frontier five remain unverified and disabled.
+
 ## Roadmap
 
 1. ~~**Core loop**: gateway + runtime + SQL connector + compose demo.~~ ✅
@@ -244,7 +286,15 @@ suite against a deterministic mock model and fails under 0.8 — label a PR
    limits, `whoami` endpoint.~~ ✅
 7. ~~**Scale & provisioning**: SCIM 2.0 user provisioning, distributed
    (Postgres) rate-limit store, secret rotation/reload.~~ ✅
-8. Next: SAML SSO, cloud-KMS secret backends, Redis limiter option, secret
+8. ~~**Hardening & efficiency**: atomic budget reservation (TOCTOU),
+   request-body caps + server timeouts + graceful drain, non-root images with
+   K8s `securityContext`, SQL `statement_timeout`, opt-in audit retention,
+   runtime context trimming.~~ ✅
+9. ~~**Multiverse**: config-driven provider registry, upstream retry/fallback,
+   a council of model-bound deep agents with judge synthesis and dissent
+   reporting, governed autonomous loop, and `council/multiverse` as an
+   OpenAI-compatible model.~~ ✅
+10. Next: SAML SSO, cloud-KMS secret backends, Redis limiter option, secret
    rotation webhooks, SCIM Groups.
 
 License: [Apache-2.0](LICENSE)
