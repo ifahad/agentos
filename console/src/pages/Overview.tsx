@@ -22,7 +22,7 @@ import {
   Tbody,
   Tr,
 } from "../ui";
-import { Sparkline, normalizeSeries, seriesFromEvents } from "../charts";
+import { Sparkline, SpendBreakdown, breakdownFromRows, normalizeSeries, seriesFromEvents } from "../charts";
 import { budgetMeters, feedEntryId, isInflight, mergeFeedEntries } from "./overviewFeed";
 import "./Overview.css";
 
@@ -249,6 +249,15 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
                   ))}
                 </div>
               )}
+            </Panel>
+
+            <Panel>
+              <PanelHead title="Spend by key" />
+              <SpendBreakdown
+                rows={breakdownFromRows(usage, { label: (u) => u.name, value: (u) => u.spend_usd })}
+                label="Spend by key"
+                formatValue={formatUSD}
+              />
             </Panel>
           </div>
 

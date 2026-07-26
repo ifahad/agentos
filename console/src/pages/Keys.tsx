@@ -3,8 +3,13 @@ import { useState, type CSSProperties } from "react";
 import type { PageProps } from "../App";
 import { CopyButton, ErrorNotice, NeedsKey, PageHead, errorMessage } from "../components/common";
 import { Freshness } from "../components/Freshness";
+import { SortableTh } from "../components/SortableTh";
+import { TableToolbar } from "../components/TableToolbar";
 import { useLiveResource } from "../hooks/useLiveResource";
+import { useTableView } from "../hooks/useTableView";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
+import { downloadBlob, toCSV, toJSON } from "../lib/export";
+import type { Column } from "../lib/export";
 import { budgetFraction, formatUSD } from "../lib/format";
 import { can } from "../lib/rbac";
 import type { CreatedKey, KeyInfo } from "../lib/types";
@@ -23,6 +28,19 @@ import {
 } from "../ui";
 import "./Keys.css";
 
+// Hoisted to module scope so useTableView's memo dependency is stable.
+const SEARCH_FIELDS = ["name"] as const;
+
+const KEYS_COLUMNS: Column<KeyInfo>[] = [
+  { header: "Name", value: (k) => k.name },
+  { header: "Monthly budget", value: (k) => formatUSD(k.monthly_budget_usd) },
+  { header: "Spend", value: (k) => formatUSD(k.spend_usd) },
+  {
+    header: "Budget used",
+    value: (k) => `${Math.round(budgetFraction(k.spend_usd, k.monthly_budget_usd) * 100)}%`,
+  },
+];
+
 export function Keys({ adminKey, role, openSettings }: PageProps) {
   const canCreate = can(role, "key.create");
   const toast = useToast();
@@ -33,6 +51,8 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
     { enabled: Boolean(adminKey), cadence: 5000 },
   );
   const keysLoading = status === "loading";
+  const keys = data ?? [];
+  const t = useTableView(keys, { searchFields: SEARCH_FIELDS, initialSort: { key: "name", dir: "asc" } });
 
   const [name, setName] = useState("");
   const [budget, setBudget] = useState("25");
@@ -64,7 +84,13 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
     }
   };
 
-  const keys = data ?? [];
+  function onExport(format: "csv" | "json") {
+    if (format === "csv") {
+      downloadBlob("keys.csv", "text/csv;charset=utf-8", toCSV(t.view.filtered, KEYS_COLUMNS));
+    } else {
+      downloadBlob("keys.json", "application/json", toJSON(t.view.filtered, KEYS_COLUMNS));
+    }
+  }
 
   return (
     <>
@@ -127,17 +153,47 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
           )}
 
           <Panel>
-            <PanelHead title="Existing keys" actions={<Freshness updatedAt={updatedAt} />} />
+            <PanelHead
+              title="Existing keys"
+              actions={
+                <span className="head-group">
+                  <TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />
+                  <Freshness updatedAt={updatedAt} />
+                </span>
+              }
+            />
             <Table>
               <thead>
                 <tr>
-                  <th>Name</th>
-                  <th className="num">Monthly budget</th>
-                  <th className="num">Spend</th>
+                  <SortableTh<KeyInfo>
+                    label="Name"
+                    sortKey="name"
+                    active={t.sort?.key === "name"}
+                    dir={t.sort?.dir ?? "asc"}
+                    onSort={t.toggleSort}
+                  />
+                  <SortableTh<KeyInfo>
+                    className="num"
+                    label="Monthly budget"
+                    sortKey="monthly_budget_usd"
+                    active={t.sort?.key === "monthly_budget_usd"}
+                    dir={t.sort?.dir ?? "asc"}
+                    numeric
+                    onSort={t.toggleSort}
+                  />
+                  <SortableTh<KeyInfo>
+                    className="num"
+                    label="Spend"
+                    sortKey="spend_usd"
+                    active={t.sort?.key === "spend_usd"}
+                    dir={t.sort?.dir ?? "asc"}
+                    numeric
+                    onSort={t.toggleSort}
+                  />
                   <th>Budget used</th>
                 </tr>
               </thead>
-              <Tbody staggerKey={keys.length}>
+              <Tbody staggerKey={`${t.view.rows.length}-${t.sort ? `${String(t.sort.key)}:${t.sort.dir}` : "none"}`}>
                 {keysLoading && keys.length === 0 &&
                   [0, 1, 2].map((i) => (
                     <Tr animate={false} key={`skeleton-${i}`}>
@@ -157,7 +213,7 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
                   ))}
                 {/* Key names are not unique and the gateway exposes no id, so
                     rows are identified by name plus position. */}
-                {keys.map((k, i) => {
+                {t.view.rows.map((k, i) => {
                   const frac = budgetFraction(k.spend_usd, k.monthly_budget_usd);
                   const pct = Math.round(frac * 100);
                   return (
@@ -174,10 +230,10 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
                     </Tr>
                   );
                 })}
-                {keys.length === 0 && !keysLoading && (
+                {t.view.rows.length === 0 && !keysLoading && (
                   <Tr animate={false}>
                     <td colSpan={4} className="empty">
-                      No keys yet — create one above.
+                      {keys.length === 0 ? "No keys yet — create one above." : "No keys match your search."}
                     </td>
                   </Tr>
                 )}

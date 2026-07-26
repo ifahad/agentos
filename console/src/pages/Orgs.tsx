@@ -1,11 +1,27 @@
 import { useState } from "react";
 import type { PageProps } from "../App";
 import { ErrorNotice, ForbiddenNotice, NeedsKey, PageHead, errorMessage, useLoad } from "../components/common";
+import { SortableTh } from "../components/SortableTh";
+import { TableToolbar } from "../components/TableToolbar";
+import { useTableView } from "../hooks/useTableView";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
+import { downloadBlob, toCSV, toJSON } from "../lib/export";
+import type { Column } from "../lib/export";
 import { budgetFraction, formatRpm, formatUSD } from "../lib/format";
 import { can } from "../lib/rbac";
 import type { Org } from "../lib/types";
 import { Button, Input, Panel, PanelHead, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
+
+// Hoisted to module scope so useTableView's memo dependency is stable.
+const SEARCH_FIELDS = ["name", "id"] as const;
+
+const ORGS_COLUMNS: Column<Org>[] = [
+  { header: "Name", value: (o) => o.name },
+  { header: "Id", value: (o) => o.id },
+  { header: "Monthly budget", value: (o) => formatUSD(o.monthly_budget_usd) },
+  { header: "Aggregate spend", value: (o) => formatUSD(o.spend_usd) },
+  { header: "Rate limit", value: (o) => formatRpm(o.rate_limit_rpm) },
+];
 
 export function Orgs({ adminKey, role, openSettings }: PageProps) {
   const allowed = can(role, "org.view");
@@ -89,6 +105,15 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
 
   const orgs = data ?? [];
   const showSkeleton = loading && orgs.length === 0;
+  const t = useTableView(orgs, { searchFields: SEARCH_FIELDS, initialSort: { key: "name", dir: "asc" } });
+
+  function onExport(format: "csv" | "json") {
+    if (format === "csv") {
+      downloadBlob("orgs.csv", "text/csv;charset=utf-8", toCSV(t.view.filtered, ORGS_COLUMNS));
+    } else {
+      downloadBlob("orgs.json", "application/json", toJSON(t.view.filtered, ORGS_COLUMNS));
+    }
+  }
 
   return (
     <>
@@ -139,19 +164,36 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
           )}
 
           <Panel>
-            <PanelHead title="Organizations" />
+            <PanelHead
+              title="Organizations"
+              actions={<TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />}
+            />
             <Table>
               <thead>
                 <tr>
-                  <th>Name</th>
+                  <SortableTh<Org>
+                    label="Name"
+                    sortKey="name"
+                    active={t.sort?.key === "name"}
+                    dir={t.sort?.dir ?? "asc"}
+                    onSort={t.toggleSort}
+                  />
                   <th>Id</th>
                   <th className="num">Monthly budget</th>
-                  <th className="num">Aggregate spend</th>
+                  <SortableTh<Org>
+                    className="num"
+                    label="Aggregate spend"
+                    sortKey="spend_usd"
+                    active={t.sort?.key === "spend_usd"}
+                    dir={t.sort?.dir ?? "asc"}
+                    numeric
+                    onSort={t.toggleSort}
+                  />
                   <th>Budget used</th>
                   <th>Rate limit (rpm)</th>
                 </tr>
               </thead>
-              <Tbody staggerKey={orgs.length}>
+              <Tbody staggerKey={`${t.view.rows.length}-${t.sort ? `${String(t.sort.key)}:${t.sort.dir}` : "none"}`}>
                 {showSkeleton &&
                   Array.from({ length: 3 }, (_, i) => (
                     <Tr key={`skel-${i}`} animate={false}>
@@ -163,7 +205,7 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
                       <td><Skeleton width={160} /></td>
                     </Tr>
                   ))}
-                {orgs.map((o) => {
+                {t.view.rows.map((o) => {
                   const frac = budgetFraction(o.spend_usd, o.monthly_budget_usd);
                   const draft = rpmEdits[o.id] ?? String(o.rate_limit_rpm);
                   const dirty = draft !== String(o.rate_limit_rpm);
@@ -208,10 +250,12 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
                     </Tr>
                   );
                 })}
-                {orgs.length === 0 && !loading && (
+                {t.view.rows.length === 0 && !loading && (
                   <Tr animate={false}>
                     <td colSpan={6} className="empty">
-                      No orgs yet{canCreate ? " — create one above." : "."}
+                      {orgs.length === 0
+                        ? `No orgs yet${canCreate ? " — create one above." : "."}`
+                        : "No orgs match your search."}
                     </td>
                   </Tr>
                 )}
