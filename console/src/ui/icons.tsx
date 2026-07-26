@@ -262,7 +262,7 @@ const GLYPHS: Record<IconName, JSX.Element> = {
   search: (
     <>
       <circle cx="7" cy="7" r="3.5" />
-      <path d="M9.6 9.6 13 13" />
+      <path d="M9.5 9.5 13 13" />
     </>
   ),
 
