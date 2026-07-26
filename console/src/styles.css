@@ -894,6 +894,13 @@ button {
   font-size: 12.5px;
 }
 
+/* Panel freshness label — faint, mono, no chroma (not a machine-state signal). */
+.freshness {
+  font-size: 10px;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
 /* ---- Reduced motion: all non-essential animation off ---- */
 
 @media (prefers-reduced-motion: reduce) {
