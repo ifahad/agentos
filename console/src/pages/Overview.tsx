@@ -159,7 +159,7 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
               <PanelHead
                 title="Activity"
                 actions={
-                  <>
+                  <span className="head-group">
                     {anyLive && (
                       <span className="ov-live">
                         <span className="ov-dot live" aria-hidden="true" />
@@ -167,7 +167,7 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
                       </span>
                     )}
                     <Freshness updatedAt={auditRes.updatedAt} />
-                  </>
+                  </span>
                 }
               />
               {auditRes.error && <ErrorNotice error={auditRes.error} />}
