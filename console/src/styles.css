@@ -992,6 +992,21 @@ button {
   appearance: none;
 }
 
+/* ---- Table pager ---- */
+
+.pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.pager-info {
+  font-size: 11px;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
 /* ---- Reduced motion: all non-essential animation off ---- */
 
 @media (prefers-reduced-motion: reduce) {
