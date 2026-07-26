@@ -91,15 +91,7 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
           </div>
           <div className="muted">
             Store this secret now — it will not be shown again.{" "}
-            <a
-              href="#dismiss"
-              onClick={(e) => {
-                e.preventDefault();
-                setCreated(null);
-              }}
-            >
-              Dismiss
-            </a>
+            <Button small iconOnly icon="close" aria-label="Dismiss" onClick={() => setCreated(null)} />
           </div>
         </motion.div>
       )}
@@ -127,7 +119,7 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
                     onChange={(e) => setBudget(e.target.value)}
                   />
                 </div>
-                <Button variant="primary" onClick={() => void create()} disabled={creating}>
+                <Button variant="primary" icon="plus" onClick={() => void create()} disabled={creating}>
                   {creating ? "Creating…" : "Create key"}
                 </Button>
               </div>

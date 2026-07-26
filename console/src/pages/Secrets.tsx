@@ -58,10 +58,15 @@ export function Secrets({ adminKey, role, openSettings }: PageProps) {
             title="Secret status"
             actions={
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Button small onClick={() => void reloadSecrets()} disabled={reloading || loading}>
+                <Button
+                  small
+                  icon="refresh"
+                  onClick={() => void reloadSecrets()}
+                  disabled={reloading || loading}
+                >
                   {reloading ? "Reloading…" : "Reload secrets"}
                 </Button>
-                <Button small onClick={reload} disabled={loading}>
+                <Button small icon="refresh" onClick={reload} disabled={loading}>
                   {loading ? "Loading…" : "Refresh"}
                 </Button>
               </div>

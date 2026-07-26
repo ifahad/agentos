@@ -144,15 +144,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
               </div>
               <div className="muted">
                 Give this token to the user now — it will not be shown again.{" "}
-                <a
-                  href="#dismiss"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setCreated(null);
-                  }}
-                >
-                  Dismiss
-                </a>
+                <Button small iconOnly icon="close" aria-label="Dismiss" onClick={() => setCreated(null)} />
               </div>
             </div>
           )}
@@ -183,6 +175,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
                 </div>
                 <Button
                   variant="primary"
+                  icon="plus"
                   onClick={() => void invite()}
                   disabled={inviting || !activeOrg}
                 >

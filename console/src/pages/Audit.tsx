@@ -49,7 +49,7 @@ export function Audit({ adminKey, openSettings }: PageProps) {
                   {paused ? "Paused" : "Live"}
                 </Button>
                 <Freshness updatedAt={rowsAt} />
-                <Button small onClick={res.reload}>
+                <Button small icon="refresh" onClick={res.reload}>
                   Refresh
                 </Button>
               </span>

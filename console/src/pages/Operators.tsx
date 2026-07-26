@@ -184,7 +184,7 @@ export function Operators(_props: PageProps) {
                 placeholder="What should this operator do each time it fires?"
                 rows={3}
               />
-              <Button onClick={create} disabled={!name.trim() || !goal.trim()}>
+              <Button icon="plus" onClick={create} disabled={!name.trim() || !goal.trim()}>
                 Create operator
               </Button>
             </div>
@@ -239,6 +239,7 @@ export function Operators(_props: PageProps) {
                           <td className="op-actions">
                             <Button
                               variant="ghost"
+                              icon="run"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 runNow(op);
@@ -248,6 +249,7 @@ export function Operators(_props: PageProps) {
                             </Button>
                             <Button
                               variant="ghost"
+                              icon="pause"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 act(async () => {
@@ -283,6 +285,7 @@ export function Operators(_props: PageProps) {
                     <span className="mono op-goal">{detail.data.operator.goal}</span>
                     <Button
                       variant="ghost"
+                      icon="trash"
                       onClick={() =>
                         act(async () => {
                           await apiFetchRaw(deleteOperatorRequest(selected));

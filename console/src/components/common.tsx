@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ApiError, formatRetryAfter } from "../lib/api";
+import { Button } from "../ui/Button";
 
 /** Standard page header. */
 export function PageHead({ title, subtitle }: { title: string; subtitle?: string }) {
@@ -92,8 +93,9 @@ export function useLoad<T>(loader: () => Promise<T>, deps: unknown[]) {
 export function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
-    <button
-      className="btn small"
+    <Button
+      small
+      icon="copy"
       onClick={() => {
         void navigator.clipboard?.writeText(text).then(() => {
           setCopied(true);
@@ -102,6 +104,6 @@ export function CopyButton({ text }: { text: string }) {
       }}
     >
       {copied ? "Copied" : "Copy"}
-    </button>
+    </Button>
   );
 }

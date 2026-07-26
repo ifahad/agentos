@@ -195,7 +195,13 @@ export function Improve(_props: PageProps) {
           actions={
             <span className="head-group">
               <Freshness updatedAt={runs.updatedAt} />
-              <Button variant="primary" small onClick={() => void runEvals()} disabled={running}>
+              <Button
+                variant="primary"
+                small
+                icon="run"
+                onClick={() => void runEvals()}
+                disabled={running}
+              >
                 {running ? "Running evals…" : "Run evals"}
               </Button>
             </span>
@@ -445,6 +451,7 @@ function ProposalCard({
               <Button
                 variant="primary"
                 small
+                icon="approve"
                 disabled={busy}
                 onClick={() => void onDecide(proposal, true)}
               >
@@ -453,6 +460,7 @@ function ProposalCard({
               <Button
                 variant="danger"
                 small
+                icon="deny"
                 disabled={busy}
                 onClick={() => void onDecide(proposal, false)}
               >
