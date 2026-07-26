@@ -1,23 +1,35 @@
+import { useEffect, useState } from "react";
 import type { PageProps } from "../App";
-import { ErrorNotice, NeedsKey, PageHead, useLoad } from "../components/common";
+import { ErrorNotice, NeedsKey, PageHead } from "../components/common";
+import { Freshness } from "../components/Freshness";
+import { useLiveResource } from "../hooks/useLiveResource";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import { formatInt, formatLatency, formatTimestamp, formatUSD } from "../lib/format";
 import type { AuditEntry } from "../lib/types";
 import { Badge, Button, Panel, PanelHead, Table, Tbody, Tr } from "../ui";
+import { feedEntryId, mergeFeedEntries } from "./overviewFeed";
 import "./Audit.css";
 
 const GUARDRAIL_KINDS = new Set<AuditEntry["kind"]>(["guardrail_flag", "guardrail_block"]);
 
 export function Audit({ adminKey, openSettings }: PageProps) {
-  const { data, error, loading, reload } = useLoad(
-    () =>
-      adminKey
-        ? apiFetch<AuditEntry[]>(gatewayAdminRequest("/admin/audit?limit=100", adminKey))
-        : Promise.resolve<AuditEntry[]>([]),
-    [adminKey],
+  // Same audit resource Overview/Chain subscribe to (identical key + cadence),
+  // so the registry dedupes onto a single shared poll.
+  const res = useLiveResource<AuditEntry[]>(
+    `admin/audit?limit=100#${adminKey}`,
+    () => apiFetch<AuditEntry[]>(gatewayAdminRequest("/admin/audit?limit=100", adminKey)),
+    { enabled: Boolean(adminKey), cadence: 5000 },
   );
 
-  const entries = data ?? [];
+  const [rows, setRows] = useState<AuditEntry[]>([]);
+  const [rowsAt, setRowsAt] = useState<number | null>(null);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    if (paused || !res.data) return;
+    setRows((cur) => mergeFeedEntries(cur, res.data!, 100));
+    setRowsAt(res.updatedAt);
+  }, [res.data, res.updatedAt, paused]);
 
   return (
     <>
@@ -26,15 +38,21 @@ export function Audit({ adminKey, openSettings }: PageProps) {
         subtitle="Latest 100 gateway events, newest first — chat and embedding calls plus guardrail verdicts."
       />
       {!adminKey && <NeedsKey openSettings={openSettings} />}
-      <ErrorNotice error={error} />
+      <ErrorNotice error={res.error} />
       {adminKey && (
         <Panel>
           <PanelHead
             title="Events"
             actions={
-              <Button small onClick={reload} disabled={loading}>
-                {loading ? "Loading…" : "Refresh"}
-              </Button>
+              <span className="head-group">
+                <Button small onClick={() => setPaused((p) => !p)}>
+                  {paused ? "Paused" : "Live"}
+                </Button>
+                <Freshness updatedAt={rowsAt} />
+                <Button small onClick={res.reload}>
+                  Refresh
+                </Button>
+              </span>
             }
           />
           <Table>
@@ -50,9 +68,9 @@ export function Audit({ adminKey, openSettings }: PageProps) {
                 <th className="num">Status</th>
               </tr>
             </thead>
-            <Tbody staggerKey={`${entries[0]?.ts ?? "none"}-${entries.length}`}>
-              {entries.map((e, i) => (
-                <Tr key={`${e.ts}-${i}`}>
+            <Tbody staggerKey={`${rows[0] ? feedEntryId(rows[0]) : "none"}-${rows.length}`}>
+              {rows.map((e) => (
+                <Tr key={feedEntryId(e)}>
                   <td className="dim mono">{formatTimestamp(e.ts)}</td>
                   <td className="mono">{e.key_name}</td>
                   <td className="mono">{e.model}</td>
@@ -71,7 +89,7 @@ export function Audit({ adminKey, openSettings }: PageProps) {
                   </td>
                 </Tr>
               ))}
-              {entries.length === 0 && !loading && (
+              {rows.length === 0 && (
                 <Tr animate={false}>
                   <td colSpan={8} className="empty">
                     No audit events yet.
