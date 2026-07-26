@@ -200,7 +200,6 @@ export function App() {
   useEffect(() => installVisibilityPause(defaultRegistry), []);
 
   const reducedMotion = useReducedMotion();
-
   const connGlyph = connectionGlyph(connection);
   const page = (
     <route.Component
