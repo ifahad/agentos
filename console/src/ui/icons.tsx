@@ -32,7 +32,22 @@ export type IconName =
   | "provisioning"
   | "settings"
   | "multiverse"
-  | "operators";
+  | "operators"
+  | "copy"
+  | "refresh"
+  | "run"
+  | "pause"
+  | "approve"
+  | "deny"
+  | "export"
+  | "search"
+  | "filter"
+  | "sort"
+  | "close"
+  | "external-link"
+  | "chevron"
+  | "trash"
+  | "plus";
 
 /** Glyph geometry. Each entry is the inner artwork of a 16x16 icon. */
 const GLYPHS: Record<IconName, JSX.Element> = {
@@ -67,7 +82,9 @@ const GLYPHS: Record<IconName, JSX.Element> = {
   ),
 
   // Prompt — chevron and entry rule. A play triangle would suggest media; this
-  // is a place where you type at the system.
+  // is a place where you type at the system. Same chevron motif as the
+  // standalone `chevron` action glyph below, kept inline at its own offset
+  // because this canvas is shared with the entry rule.
   playground: (
     <>
       <path d="M3 4.5 6.5 8 3 11.5" />
@@ -168,6 +185,144 @@ const GLYPHS: Record<IconName, JSX.Element> = {
       <path d="M8 2.5v3" />
       <path d="M3.5 4.5 5.5 6.5" />
       <path d="M12.5 4.5 10.5 6.5" />
+    </>
+  ),
+
+  // --- Action glyphs -------------------------------------------------------
+  // Monochrome marks for row/toolbar affordances. Never colored: color is
+  // reserved for StateIcon.
+
+  // Two overlapping squares. The back sheet is drawn only where the front one
+  // doesn't already cover it — that partial outline is what reads as
+  // "duplicate" rather than "two files".
+  copy: (
+    <>
+      <rect x="5.5" y="5.5" width="7" height="7" />
+      <path d="M9.5 5.5V3.5h-6v6h2" />
+    </>
+  ),
+
+  // Circular arrows — two arcs in 180-degree rotational symmetry, each closed
+  // off by an L-bracket arrowhead. Two arcs + two heads keeps this off
+  // `improve`'s single return-loop arc (one arc, one hook).
+  refresh: (
+    <>
+      <path d="M12.5 7A4.5 4.5 0 0 0 4.5 4.5" />
+      <path d="M3.5 9A4.5 4.5 0 0 0 11.5 11.5" />
+      <path d="M4.5 2v2.5h2.5" />
+      <path d="M11.5 14v-2.5H9" />
+    </>
+  ),
+
+  // Execute — a shaft and arrowhead striking into a square node, echoing
+  // `operators`' "signal strikes a node" motif. Deliberately not a lone
+  // wedge, so it can't be mistaken for a media play-triangle.
+  run: (
+    <>
+      <path d="M3 8h3" />
+      <path d="M6 6 8 8 6 10" />
+      <rect x="9" y="6" width="4" height="4" />
+    </>
+  ),
+
+  // Two bars. Pause needs no metaphor beyond the plainest possible mark.
+  pause: (
+    <>
+      <path d="M6 4.5v7" />
+      <path d="M10 4.5v7" />
+    </>
+  ),
+
+  // Bare check. `StateIcon.ok` rings its check because that's a persisted
+  // verdict; this is a momentary action, so no ring.
+  approve: <path d="M3.5 8.5 6.5 11.5 12.5 4.5" />,
+
+  // Bare cross at full scale (3..13 — as wide as a glyph gets on this grid).
+  // Distinguished from `close` by size alone, and from `StateIcon.deny` by
+  // carrying no ring and two bars instead of one.
+  deny: (
+    <>
+      <path d="M3 3 13 13" />
+      <path d="M13 3 3 13" />
+    </>
+  ),
+
+  // Arrow down into a tray — data leaving the system to a file.
+  export: (
+    <>
+      <path d="M8 3v6" />
+      <path d="M5.5 6.5 8 9 10.5 6.5" />
+      <path d="M3.5 11.5h9" />
+    </>
+  ),
+
+  // Magnifying glass. The handle's start point sits just off the ring's true
+  // tangent — the same tolerance `keys` and `users` already use where a
+  // diagonal meets a curve.
+  search: (
+    <>
+      <circle cx="7" cy="7" r="3.5" />
+      <path d="M9.6 9.6 13 13" />
+    </>
+  ),
+
+  // Funnel — one outline, tapering on straight diagonals (no curves) to a
+  // narrow stem. Sieving, not a document fold.
+  filter: <path d="M2.5 4h11L9.5 8.5V12H6.5V8.5Z" />,
+
+  // Descending bars plus a directional arrow: the bars are the rows, the
+  // arrow is which way they're ordered.
+  sort: (
+    <>
+      <path d="M3.5 4.5h6" />
+      <path d="M3.5 8h4" />
+      <path d="M3.5 11.5h2" />
+      <path d="M11.5 4.5v7" />
+      <path d="M10 10 11.5 11.5 13 10" />
+    </>
+  ),
+
+  // Bare cross at a fraction of `deny`'s scale (6..10 vs 3..13) — a chrome
+  // dismiss, not a verdict.
+  close: (
+    <>
+      <path d="M6 6 10 10" />
+      <path d="M10 6 6 10" />
+    </>
+  ),
+
+  // Box with the arrow exiting through its own top-right corner; the
+  // arrowhead is an open bracket rather than a filled wedge, matching this
+  // set's line-only vocabulary.
+  "external-link": (
+    <>
+      <path d="M8 3.5H4.5v9h9V9" />
+      <path d="M9.5 2.5h4v4" />
+      <path d="M13.5 2.5 8 8" />
+    </>
+  ),
+
+  // Standalone chevron, factored out for reuse elsewhere. `playground` inlines
+  // the same motif at a different offset (see its comment above) rather than
+  // referencing this one, since it shares its canvas with an entry rule.
+  chevron: <path d="M6 4.5 9.5 8 6 11.5" />,
+
+  // Bin with a tapered body — wider at the lid than at the base. The taper is
+  // what keeps a two-line silhouette from reading as a plain box.
+  trash: (
+    <>
+      <path d="M3.5 4.5h9" />
+      <path d="M5.5 4.5V3h5v1.5" />
+      <path d="M4.5 4.5 5 13h6l.5-8.5" />
+    </>
+  ),
+
+  // Plus — two bars crossing at centre, snapped to the same half-unit spine
+  // as `pause`.
+  plus: (
+    <>
+      <path d="M8 3.5v9" />
+      <path d="M3.5 8h9" />
     </>
   ),
 };

@@ -39,6 +39,8 @@ import { Playground } from "./pages/Playground";
 import { Provisioning } from "./pages/Provisioning";
 import { Secrets } from "./pages/Secrets";
 import { Users } from "./pages/Users";
+// TEMP: icon review, remove in S2 Task 6
+import { IconSheet } from "./pages/_IconSheet";
 
 export interface PageProps {
   adminKey: string;
@@ -200,6 +202,12 @@ export function App() {
   useEffect(() => installVisibilityPause(defaultRegistry), []);
 
   const reducedMotion = useReducedMotion();
+
+  // TEMP: icon review, remove in S2 Task 6
+  if (path === "/_icons") {
+    return <IconSheet />;
+  }
+
   const connGlyph = connectionGlyph(connection);
   const page = (
     <route.Component
