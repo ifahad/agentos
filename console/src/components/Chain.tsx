@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import { useLiveResource } from "../hooks/useLiveResource";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import type { ChainState } from "../lib/chain";
 import { CHAIN_STAGES, IDLE_CHAIN, latestChainState, stageRenders } from "../lib/chain";
@@ -7,8 +8,6 @@ import type { AuditEntry } from "../lib/types";
 import { StateIcon } from "../ui/icons";
 import "./Chain.css";
 
-/** Poll cadence. Matches the sidebar's usage poll so the two agree on "now". */
-const POLL_MS = 4000;
 /** How long a newly observed request keeps the chain lit before it dims. */
 const LINGER_MS = 6000;
 
@@ -61,6 +60,14 @@ interface ChainProps {
  */
 export function Chain({ adminKey }: ChainProps) {
   const reduced = useReducedMotion();
+  // Same audit resource Overview subscribes to (identical key + cadence), so
+  // the registry dedupes the two onto a single shared poll.
+  const audit = useLiveResource<AuditEntry[]>(
+    `admin/audit?limit=100#${adminKey}`,
+    () => apiFetch<AuditEntry[]>(gatewayAdminRequest("/admin/audit?limit=100", adminKey)),
+    { enabled: Boolean(adminKey), cadence: 5000 },
+  );
+
   const [state, setState] = useState<ChainState>(IDLE_CHAIN);
   const [active, setActive] = useState(false);
   const seenCount = useRef<number | null>(null);
@@ -71,37 +78,23 @@ export function Chain({ adminKey }: ChainProps) {
       setState(IDLE_CHAIN);
       setActive(false);
       seenCount.current = null;
+      activeUntil.current = 0;
       return;
     }
-    let cancelled = false;
-
-    const poll = async () => {
-      try {
-        const entries = await apiFetch<AuditEntry[]>(
-          gatewayAdminRequest("/admin/audit?limit=20", adminKey),
-        );
-        if (cancelled) return;
-        // Growth in the feed means new traffic since the last poll; that is the
-        // only thing that lights the chain.
-        if (seenCount.current !== null && entries.length > seenCount.current) {
-          activeUntil.current = Date.now() + LINGER_MS;
-        }
-        seenCount.current = entries.length;
-        setState(latestChainState(entries));
-        setActive(Date.now() < activeUntil.current);
-      } catch {
-        // A failed poll tells us nothing about governance, so the chain holds
-        // its last known reading rather than falsely reporting a denial.
-      }
-    };
-
-    void poll();
-    const timer = setInterval(() => void poll(), POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [adminKey]);
+    const entries = audit.data;
+    // A failed (or still in-flight) poll tells us nothing about governance, so
+    // the chain holds its last known reading rather than falsely reporting a
+    // denial.
+    if (!entries) return;
+    // Growth in the feed means new traffic since the last poll; that is the
+    // only thing that lights the chain.
+    if (seenCount.current !== null && entries.length > seenCount.current) {
+      activeUntil.current = Date.now() + LINGER_MS;
+    }
+    seenCount.current = entries.length;
+    setState(latestChainState(entries));
+    setActive(Date.now() < activeUntil.current);
+  }, [adminKey, audit.data]);
 
   const renders = stageRenders(state);
   const glyph = outcomeGlyph(state, active);

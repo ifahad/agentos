@@ -1,5 +1,6 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
+import { useLiveResource } from "../hooks/useLiveResource";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import type { AuthRole } from "../lib/rbac";
 import { roleLabel } from "../lib/rbac";
@@ -24,17 +25,23 @@ interface SidebarProps {
   openSettings: () => void;
 }
 
-/** Poll cadence for the brand live-dot — the same /admin/usage feed Overview reads. */
-const POLL_MS = 4000;
 /** How long the dot stays lit after the request count last moved. */
 const LIVE_LINGER_MS = 8000;
 
 /**
- * Cheap activity signal for the brand live-dot: poll the same usage endpoint
- * Overview renders and treat any growth in the total request count as "an
- * agent run is in flight". No new endpoints — presentation only.
+ * Cheap activity signal for the brand live-dot: read the same usage resource
+ * Overview subscribes to (identical key + cadence, so the registry dedupes
+ * the two onto a single shared poll) and treat any growth in the total
+ * request count as "an agent run is in flight". No new endpoints —
+ * presentation only.
  */
 function useRunsInFlight(adminKey: string): boolean {
+  const usage = useLiveResource<KeyUsage[]>(
+    `admin/usage#${adminKey}`,
+    () => apiFetch<KeyUsage[]>(gatewayAdminRequest("/admin/usage", adminKey)),
+    { enabled: Boolean(adminKey), cadence: 5000 },
+  );
+
   const [live, setLive] = useState(false);
   const prevTotal = useRef<number | null>(null);
   const liveUntil = useRef(0);
@@ -43,32 +50,20 @@ function useRunsInFlight(adminKey: string): boolean {
     if (!adminKey) {
       setLive(false);
       prevTotal.current = null;
+      liveUntil.current = 0;
       return;
     }
-    let cancelled = false;
-
-    const poll = async () => {
-      try {
-        const usage = await apiFetch<KeyUsage[]>(gatewayAdminRequest("/admin/usage", adminKey));
-        if (cancelled) return;
-        const total = usage.reduce((acc, u) => acc + u.requests, 0);
-        if (prevTotal.current !== null && total > prevTotal.current) {
-          liveUntil.current = Date.now() + LIVE_LINGER_MS;
-        }
-        prevTotal.current = total;
-        setLive(Date.now() < liveUntil.current);
-      } catch {
-        // The dot is decorative — poll failures never surface in the UI.
-      }
-    };
-
-    void poll();
-    const timer = setInterval(() => void poll(), POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [adminKey]);
+    const data = usage.data;
+    // The dot is decorative — poll failures never surface in the UI; hold
+    // the last known reading rather than flipping it off.
+    if (!data) return;
+    const total = data.reduce((acc, u) => acc + u.requests, 0);
+    if (prevTotal.current !== null && total > prevTotal.current) {
+      liveUntil.current = Date.now() + LIVE_LINGER_MS;
+    }
+    prevTotal.current = total;
+    setLive(Date.now() < liveUntil.current);
+  }, [adminKey, usage.data]);
 
   return live;
 }
