@@ -167,6 +167,24 @@
   margin-top: 14px;
 }
 
+/* ---- Button ---- */
+
+/* Leading glyph in a button — separated from the label, inherits button ink. */
+.btn-icon {
+  margin-right: 6px;
+  vertical-align: -1px;
+}
+
+/* Icon-only buttons are square: no label, symmetric padding. */
+.btn.icon-only {
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+.btn.icon-only .btn-icon {
+  margin-right: 0;
+}
+
 /* ---- Reduced motion ---- */
 
 @media (prefers-reduced-motion: reduce) {
