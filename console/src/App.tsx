@@ -4,7 +4,9 @@ import { Chain } from "./components/Chain";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import type { IconName } from "./ui/icons";
+import { StateIcon } from "./ui/icons";
 import { errorMessage } from "./components/common";
+import { useConnectionState } from "./hooks/useLiveResource";
 import {
   apiFetch,
   getAdminKey,
@@ -18,6 +20,8 @@ import {
   saveStoredRole,
   whoamiRequest,
 } from "./lib/api";
+import { defaultRegistry, installVisibilityPause } from "./lib/live/registry";
+import type { ConnectionState } from "./lib/live/status";
 import type { AuthRole } from "./lib/rbac";
 import { asAuthRole, can } from "./lib/rbac";
 import { identityFromWhoAmI, parseAuthFragment } from "./lib/sso";
@@ -92,6 +96,24 @@ const ROUTES: Route[] = [
   },
 ];
 
+/**
+ * Connection state → topbar status glyph. `idle` (no key, or no traffic yet)
+ * renders nothing: quiet must not look like a state, only a machine reading
+ * (live/stale/offline) may speak.
+ */
+function connectionGlyph(conn: ConnectionState): { state: "live" | "hold" | "deny"; label: string } | null {
+  switch (conn) {
+    case "live":
+      return { state: "live", label: "synced" };
+    case "stale":
+      return { state: "hold", label: "reconnecting" };
+    case "offline":
+      return { state: "deny", label: "offline" };
+    default:
+      return null;
+  }
+}
+
 function usePath(): [string, (p: string) => void] {
   const [path, setPath] = useState(window.location.pathname);
   useEffect(() => {
@@ -118,6 +140,7 @@ export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
+  const connection = useConnectionState();
 
   const route = ROUTES.find((r) => r.path === path) ?? ROUTES[0];
   const openSettings = useCallback(() => setSettingsOpen(true), []);
@@ -170,7 +193,12 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Shell-wide: pause every registry poll while the tab is hidden, and refetch
+  // on return, so a backgrounded tab does not keep hammering the gateway.
+  useEffect(() => installVisibilityPause(defaultRegistry), []);
+
   const reducedMotion = useReducedMotion();
+  const connGlyph = connectionGlyph(connection);
   const page = (
     <route.Component
       adminKey={adminKey}
@@ -202,6 +230,12 @@ export function App() {
               are on. */}
           <header className="topbar">
             <span className="eyebrow topbar-legend">governance chain</span>
+            {connGlyph && (
+              <span className="topbar-status">
+                <StateIcon state={connGlyph.state} title={connGlyph.label} size={12} />
+                <span className="eyebrow">{connGlyph.label}</span>
+              </span>
+            )}
             <Chain adminKey={adminKey} />
           </header>
           {reducedMotion ? (

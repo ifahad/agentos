@@ -256,6 +256,16 @@ a:hover {
   flex-shrink: 0;
 }
 
+/* Shell connection reading, beside the legend. Idle renders nothing (see
+   connectionGlyph in App.tsx), so this never competes for space until there
+   is something to report. */
+.topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 /* The run spans the full content width so it reads as one continuous circuit
    across the top of the panel rather than a widget parked in a corner. */
 .topbar .chain {
