@@ -24,7 +24,10 @@
   overflow-y: auto;
 }
 
-.ov-feed-item {
+/* Row styling targets the <li> directly: <LiveList> owns the list item
+   element (no per-item className slot), so `.ov-feed-item` can't live on a
+   wrapper without breaking `:last-child`. */
+.ov-feed > li {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -32,7 +35,7 @@
   border-bottom: 1px solid var(--border);
 }
 
-.ov-feed-item:last-child {
+.ov-feed > li:last-child {
   border-bottom: 0;
 }
 

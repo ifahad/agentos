@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import type { PageProps } from "../App";
-import { ErrorNotice, NeedsKey, PageHead, errorMessage, useLoad } from "../components/common";
+import { ErrorNotice, NeedsKey, PageHead } from "../components/common";
+import { Freshness } from "../components/Freshness";
+import { LiveList } from "../components/LiveList";
+import { useLiveResource } from "../hooks/useLiveResource";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import { formatInt, formatTimestamp, formatUSD } from "../lib/format";
 import type { AuditEntry, KeyInfo, KeyUsage } from "../lib/types";
@@ -18,9 +21,6 @@ import {
   Table,
   Tbody,
   Tr,
-  transitionFast,
-  staggerItem,
-  staggerItemReduced,
 } from "../ui";
 import { Sparkline, normalizeSeries, seriesFromEvents } from "../charts";
 import { budgetMeters, feedEntryId, isInflight, mergeFeedEntries } from "./overviewFeed";
@@ -34,45 +34,6 @@ const AUDIT_LIMIT = 100;
 const FEED_DISPLAY = 20;
 /** Sparkline width in hourly buckets. */
 const SPARK_HOURS = 24;
-
-/**
- * Poll GET /admin/audit (an endpoint the console already exposes) every
- * POLL_MS; merges into a deduped, capped feed so new entries can slide in.
- * Cleans up the interval on unmount / key change. Errors surface once and
- * clear on the next successful poll.
- */
-function useActivity(adminKey: string) {
-  const [entries, setEntries] = useState<AuditEntry[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!adminKey) {
-      setEntries(null);
-      setError(null);
-      return;
-    }
-    let cancelled = false;
-    const tick = () => {
-      apiFetch<AuditEntry[]>(gatewayAdminRequest(`/admin/audit?limit=${AUDIT_LIMIT}`, adminKey))
-        .then((fresh) => {
-          if (cancelled) return;
-          setEntries((cur) => mergeFeedEntries(cur ?? [], fresh, AUDIT_LIMIT));
-          setError(null);
-        })
-        .catch((err: unknown) => {
-          if (!cancelled) setError(errorMessage(err));
-        });
-    };
-    tick();
-    const id = window.setInterval(tick, POLL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(id);
-    };
-  }, [adminKey]);
-
-  return { entries, error, loading: entries === null && error === null };
-}
 
 /** Status dot class for a feed entry — live pulse, error, flag, or quiet. */
 function dotClass(e: AuditEntry, live: boolean): string {
@@ -91,30 +52,38 @@ function meterTone(fraction: number): string {
 export function Overview({ adminKey, openSettings, navigate }: PageProps) {
   const reduced = useReducedMotion();
 
-  // Existing data hook — unchanged (per-key usage totals).
-  const { data, error, loading } = useLoad(
-    () =>
-      adminKey
-        ? apiFetch<KeyUsage[]>(gatewayAdminRequest("/admin/usage", adminKey))
-        : Promise.resolve<KeyUsage[]>([]),
-    [adminKey],
+  // Usage totals — was useLoad (fetch-once); now live.
+  const usageRes = useLiveResource<KeyUsage[]>(
+    `admin/usage#${adminKey}`,
+    () => apiFetch<KeyUsage[]>(gatewayAdminRequest("/admin/usage", adminKey)),
+    { enabled: Boolean(adminKey), cadence: 5000 },
   );
+  const usage = usageRes.data ?? [];
+  const usageLoading = usageRes.status === "loading";
 
-  // Key budgets for the meters. Errors (e.g. a role that can't list keys)
-  // degrade to an empty meter panel rather than a page-level error.
-  const { data: keysData, loading: keysLoading } = useLoad(
+  // Keys/budgets — degrade to empty on a role that can't list keys.
+  const keysRes = useLiveResource<KeyInfo[]>(
+    `admin/keys#${adminKey}`,
     () =>
-      adminKey
-        ? apiFetch<KeyInfo[]>(gatewayAdminRequest("/admin/keys", adminKey)).catch(
-            () => [] as KeyInfo[],
-          )
-        : Promise.resolve<KeyInfo[]>([]),
-    [adminKey],
+      apiFetch<KeyInfo[]>(gatewayAdminRequest("/admin/keys", adminKey)).catch(
+        () => [] as KeyInfo[],
+      ),
+    { enabled: Boolean(adminKey), cadence: 5000 },
   );
+  const keysLoading = keysRes.status === "loading";
 
-  const activity = useActivity(adminKey);
+  // Activity feed — the shared audit resource; keep the client-side merge/cap.
+  const auditRes = useLiveResource<AuditEntry[]>(
+    `admin/audit?limit=${AUDIT_LIMIT}#${adminKey}`,
+    () => apiFetch<AuditEntry[]>(gatewayAdminRequest(`/admin/audit?limit=${AUDIT_LIMIT}`, adminKey)),
+    { enabled: Boolean(adminKey), cadence: POLL_MS },
+  );
+  const [feedEntries, setFeedEntries] = useState<AuditEntry[]>([]);
+  useEffect(() => {
+    if (auditRes.data) setFeedEntries((cur) => mergeFeedEntries(cur, auditRes.data!, AUDIT_LIMIT));
+  }, [auditRes.data]);
+  const activityLoading = auditRes.status === "loading";
 
-  const usage = data ?? [];
   const totals = usage.reduce(
     (acc, u) => ({
       requests: acc.requests + u.requests,
@@ -126,23 +95,22 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
 
   // Live request sparkline: audit events bucketed hourly, last 24 buckets.
   const sparkValues = useMemo(() => {
-    const entries = activity.entries;
-    if (!entries || entries.length === 0) return [];
+    if (feedEntries.length === 0) return [];
     const series = seriesFromEvents(
-      entries.map((e) => ({ timestamp: e.ts })),
+      feedEntries.map((e) => ({ timestamp: e.ts })),
       { bucket: "hour" },
     );
     return normalizeSeries(
       series.map((p) => p.value),
       SPARK_HOURS,
     );
-  }, [activity.entries]);
+  }, [feedEntries]);
 
-  const feed = (activity.entries ?? []).slice(0, FEED_DISPLAY);
+  const feed = feedEntries.slice(0, FEED_DISPLAY);
   const now = Date.now();
   const anyLive = feed.some((e) => isInflight(e, now));
 
-  const meters = budgetMeters(keysData ?? []);
+  const meters = budgetMeters(keysRes.data ?? []);
 
   return (
     <>
@@ -151,11 +119,11 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
         subtitle="Per-key usage across the gateway: requests, tokens and spend for the current period."
       />
       {!adminKey && <NeedsKey openSettings={openSettings} />}
-      <ErrorNotice error={error} />
+      <ErrorNotice error={usageRes.error} />
       {adminKey && (
         <>
           <div className="cards">
-            {loading && data === null ? (
+            {usageLoading ? (
               [0, 1, 2, 3].map((i) => (
                 <Card key={i}>
                   <Skeleton width={72} height={11} />
@@ -191,65 +159,61 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
               <PanelHead
                 title="Activity"
                 actions={
-                  anyLive ? (
-                    <span className="ov-live">
-                      <span className="ov-dot live" aria-hidden="true" />
-                      live
-                    </span>
-                  ) : undefined
+                  <>
+                    {anyLive && (
+                      <span className="ov-live">
+                        <span className="ov-dot live" aria-hidden="true" />
+                        live
+                      </span>
+                    )}
+                    <Freshness updatedAt={auditRes.updatedAt} />
+                  </>
                 }
               />
-              {activity.error && <ErrorNotice error={activity.error} />}
-              {activity.loading ? (
+              {auditRes.error && <ErrorNotice error={auditRes.error} />}
+              {activityLoading ? (
                 <div style={{ padding: "14px 18px" }}>
                   <Skeleton lines={5} height={13} />
                 </div>
-              ) : feed.length === 0 && !activity.error ? (
+              ) : feed.length === 0 && !auditRes.error ? (
                 <EmptyState
                   title="No recent activity"
                   description="Agent runs and guardrail verdicts will stream in here as they happen."
                 />
               ) : (
-                <ul className="ov-feed">
-                  <AnimatePresence initial={false}>
-                    {feed.map((e) => {
-                      const live = isInflight(e, now);
-                      const err = e.kind === "guardrail_block" || e.status >= 400;
-                      return (
-                        <motion.li
-                          key={feedEntryId(e)}
-                          className="ov-feed-item"
-                          layout={!reduced}
-                          variants={reduced ? staggerItemReduced : staggerItem}
-                          initial="hidden"
-                          animate="show"
-                          exit={{ opacity: 0, transition: transitionFast }}
-                        >
-                          <span className={dotClass(e, live)} aria-hidden="true" />
-                          <div className="ov-feed-main">
-                            <div className="ov-feed-title">
-                              <Badge variant={e.kind}>{e.kind.replace("_", " ")}</Badge>
-                              <span className="mono">{e.key_name}</span>
-                            </div>
-                            <div className="ov-feed-sub mono">
-                              {e.model} · {formatInt(e.input_tokens + e.output_tokens)} tok ·{" "}
-                              {formatTimestamp(e.ts)}
-                            </div>
+                <LiveList
+                  className="ov-feed"
+                  items={feed}
+                  getKey={feedEntryId}
+                  renderItem={(e) => {
+                    const live = isInflight(e, now);
+                    const err = e.kind === "guardrail_block" || e.status >= 400;
+                    return (
+                      <>
+                        <span className={dotClass(e, live)} aria-hidden="true" />
+                        <div className="ov-feed-main">
+                          <div className="ov-feed-title">
+                            <Badge variant={e.kind}>{e.kind.replace("_", " ")}</Badge>
+                            <span className="mono">{e.key_name}</span>
                           </div>
-                          <span className={`ov-feed-cost${err ? " err" : ""}`}>
-                            {formatUSD(e.cost_usd)}
-                          </span>
-                        </motion.li>
-                      );
-                    })}
-                  </AnimatePresence>
-                </ul>
+                          <div className="ov-feed-sub mono">
+                            {e.model} · {formatInt(e.input_tokens + e.output_tokens)} tok ·{" "}
+                            {formatTimestamp(e.ts)}
+                          </div>
+                        </div>
+                        <span className={`ov-feed-cost${err ? " err" : ""}`}>
+                          {formatUSD(e.cost_usd)}
+                        </span>
+                      </>
+                    );
+                  }}
+                />
               )}
             </Panel>
 
             <Panel>
               <PanelHead title="Budgets" />
-              {keysLoading && keysData === null ? (
+              {keysLoading ? (
                 <div style={{ padding: "14px 18px" }}>
                   <Skeleton lines={3} height={13} />
                 </div>
@@ -290,7 +254,7 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
 
           <Panel>
             <PanelHead title="Usage by key" />
-            {usage.length === 0 && !loading ? (
+            {usage.length === 0 && !usageLoading ? (
               <EmptyState
                 title="No usage recorded yet"
                 description="Requests made through the gateway will appear here, grouped by key."
@@ -306,7 +270,7 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
                     <th className="num">Spend</th>
                   </tr>
                 </thead>
-                {loading && data === null ? (
+                {usageLoading ? (
                   <tbody>
                     {[0, 1, 2, 3].map((i) => (
                       <tr key={i}>
