@@ -56,3 +56,15 @@ export function runStatusTone(status: string): "ok" | "hold" | "error" {
   if (status === "needs_approval") return "hold";
   return "error";
 }
+
+/** ms until an interval operator's next fire (0 if overdue); null when not derivable. */
+export function operatorEta(
+  op: { trigger: OperatorTrigger; last_fired_at: string | null },
+  now: number,
+): number | null {
+  if (op.trigger.type !== "interval" || !op.trigger.interval_s || !op.last_fired_at) return null;
+  const last = Date.parse(op.last_fired_at);
+  if (Number.isNaN(last)) return null;
+  const next = last + op.trigger.interval_s * 1000;
+  return Math.max(0, next - now);
+}

@@ -4,6 +4,7 @@ import {
   deleteOperatorRequest,
   getOperatorRequest,
   listOperatorsRequest,
+  operatorEta,
   runOperatorRequest,
   runStatusTone,
   setEnabledRequest,
@@ -52,5 +53,27 @@ describe("operator helpers", () => {
     expect(runStatusTone("needs_approval")).toBe("hold");
     expect(runStatusTone("error")).toBe("error");
     expect(runStatusTone("weird")).toBe("error");
+  });
+});
+
+describe("operatorEta", () => {
+  const now = Date.parse("2026-07-26T10:00:00Z");
+  it("returns ms remaining for an interval operator that has fired", () => {
+    const op = {
+      trigger: { type: "interval" as const, interval_s: 300 },
+      last_fired_at: "2026-07-26T09:56:00Z", // 240s ago → 60s left
+    };
+    expect(operatorEta(op, now)).toBe(60_000);
+  });
+  it("returns 0 when overdue", () => {
+    const op = {
+      trigger: { type: "interval" as const, interval_s: 60 },
+      last_fired_at: "2026-07-26T09:56:00Z",
+    };
+    expect(operatorEta(op, now)).toBe(0);
+  });
+  it("returns null for cron/webhook or missing last_fired_at", () => {
+    expect(operatorEta({ trigger: { type: "cron", cron: "* * * * *" }, last_fired_at: null }, now)).toBeNull();
+    expect(operatorEta({ trigger: { type: "interval", interval_s: 60 }, last_fired_at: null }, now)).toBeNull();
   });
 });
