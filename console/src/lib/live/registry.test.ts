@@ -85,4 +85,14 @@ describe("createRegistry", () => {
     expect(created).toHaveLength(2);
     expect(created[1].stopped).toBe(false);
   });
+
+  it("reload stops the old transport and builds a fresh one", () => {
+    const { factory, created } = fakeFactory();
+    const reg = createRegistry({ transportFactory: factory, now: () => 1 });
+    reg.subscribe("k", async () => 1, 4000, () => {});
+    reg.reload("k");
+    expect(created[0].stopped).toBe(true);
+    expect(created).toHaveLength(2);
+    expect(created[1].stopped).toBe(false);
+  });
 });
