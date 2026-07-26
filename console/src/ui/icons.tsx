@@ -360,6 +360,38 @@ export function Icon({ name, size = 15, title, className }: IconProps) {
   );
 }
 
+/**
+ * BrandMark — the console's logomark: three nodes seated on a rule, the
+ * governance-chain motif that recurs across the icon set (`audit`'s spine,
+ * `operators`' node struck by a signal). Monochrome by construction — no
+ * fill, no hue — because chroma in this system is reserved for machine
+ * state; the sidebar's teal `.live` dot is a separate sibling element and
+ * carries the brand row's only color. Same grid as every other glyph here
+ * (16x16, artwork in 2..14, half-unit snapping) so it sits at native size
+ * beside the wordmark rather than needing its own scale correction.
+ */
+export function BrandMark({ size = 18 }: { size?: number }): JSX.Element {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.25}
+      strokeLinecap="square"
+      strokeLinejoin="miter"
+      aria-hidden
+      focusable="false"
+    >
+      <path d="M2.5 8h11" />
+      <rect x="2.5" y="6.5" width="3" height="3" />
+      <rect x="7" y="6.5" width="2" height="3" />
+      <rect x="10.5" y="6.5" width="3" height="3" />
+    </svg>
+  );
+}
+
 /** Machine states a run can be in. Drives every status glyph in the console. */
 export type StateName = "live" | "ok" | "hold" | "deny";
 

@@ -7,7 +7,7 @@ import { roleLabel } from "../lib/rbac";
 import type { KeyUsage } from "../lib/types";
 import { transition } from "../ui";
 import type { IconName } from "../ui/icons";
-import { Icon } from "../ui/icons";
+import { BrandMark, Icon } from "../ui/icons";
 import "./Sidebar.css";
 
 export interface NavRoute {
@@ -87,6 +87,7 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <div className="brand">
+        <BrandMark size={18} />
         <span className="brand-name">AgentOS</span>
         {live && <span className="live" title="run in flight" aria-label="agent run in flight" />}
       </div>
