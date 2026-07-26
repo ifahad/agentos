@@ -232,7 +232,7 @@ export function App() {
             <span className="eyebrow topbar-legend">governance chain</span>
             {connGlyph && (
               <span className="topbar-status">
-                <StateIcon state={connGlyph.state} title={connGlyph.label} size={12} />
+                <StateIcon state={connGlyph.state} size={12} />
                 <span className="eyebrow">{connGlyph.label}</span>
               </span>
             )}
