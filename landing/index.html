@@ -342,7 +342,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
         <div class="chain-caption">Every request runs the gauntlet <b>before a provider is ever called</b> — retries and autonomous runs included.</div>
 
         <div class="chain-live">
-          <div class="audit-feed" id="audit-feed" aria-live="polite"></div>
+          <div class="audit-feed" id="audit-feed" aria-hidden="true"></div>
           <div class="spark-wrap">
             <div class="spark-label">Throughput</div>
             <svg viewBox="0 0 240 40" preserveAspectRatio="none" width="100%" height="40" aria-hidden="true">
@@ -855,7 +855,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     row.appendChild(mid);
 
     body.insertBefore(row, body.firstChild);
-    while (body.children.length > CAP) { body.removeChild(body.lastChild); }
+    while (body.children.length > CAP) { body.removeChild(body.lastElementChild); }
   }
 
   setInterval(tick, 4000);
