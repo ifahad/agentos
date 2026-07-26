@@ -181,10 +181,28 @@ h1 em { font-style: normal; color: var(--live); }
   .stage .node .core { transition: none !important; }
   .stage.active .node .core, .stage.hold .node .core, .stage.deny .node .core { opacity: 1; transform: scale(1); }
   .brand .dot, .chain-head .status .d { animation: none; }
+  .feed-row.new { animation: none; }
 }
 .chain-caption { margin-top: 26px; text-align: center; font-size: 13px; color: var(--faint); }
 .chain-caption b { color: var(--dim); font-weight: 600; }
 @media (max-width: 620px){ .chain { grid-template-columns: repeat(5, 1fr); } .stage .sub { display: none; } .stage .lbl { font-size: 9px; letter-spacing: 0.08em; } }
+
+/* ---------- audit-tail feed + throughput sparkline ---------- */
+.chain-live { margin-top: 18px; display: flex; flex-direction: column; gap: 14px; }
+@media (min-width: 621px) {
+  .chain-live { flex-direction: row; align-items: flex-start; }
+  .audit-feed { flex: 1; min-width: 0; }
+  .spark-wrap { width: 180px; flex: none; }
+}
+.audit-feed { display: flex; flex-direction: column; gap: 6px; }
+.feed-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
+.feed-row .mono { font-size: 11.5px; color: var(--dim); }
+.feed-row .pill { margin-left: auto; }
+@keyframes feedIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
+.feed-row.new { animation: feedIn .28s ease; }
+.spark-label { font-family: var(--mono); font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--faint); margin-bottom: 6px; }
+.spark-base { stroke: var(--border-strong); stroke-width: 1; }
+.spark-line { fill: none; stroke: var(--ink); stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ---------- readings strip ---------- */
 .readings { margin-top: 30px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -239,6 +257,7 @@ h2 { font-size: clamp(26px, 3.6vw, 38px); font-weight: 660; letter-spacing: -0.0
 .pill { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 3px; border: 1px solid var(--border-strong); color: var(--dim); }
 .pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
 .pill.hold { color: var(--hold); border-color: color-mix(in srgb, var(--hold) 45%, transparent); }
+.pill.deny { color: var(--deny); border-color: color-mix(in srgb, var(--deny) 45%, transparent); }
 .verdict { margin-top: 4px; padding: 12px; border-left: 2px solid var(--live); background: var(--bg); border-radius: 4px; }
 .verdict .vh { display: flex; gap: 9px; align-items: center; margin-bottom: 6px; }
 .verdict .va { font-size: 14px; }
@@ -321,14 +340,25 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
           <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Audit</div><div class="sub">Every call recorded</div></div>
         </div>
         <div class="chain-caption">Every request runs the gauntlet <b>before a provider is ever called</b> — retries and autonomous runs included.</div>
+
+        <div class="chain-live">
+          <div class="audit-feed" id="audit-feed" aria-live="polite"></div>
+          <div class="spark-wrap">
+            <div class="spark-label">Throughput</div>
+            <svg viewBox="0 0 240 40" preserveAspectRatio="none" width="100%" height="40" aria-hidden="true">
+              <line class="spark-base" x1="0" y1="38" x2="240" y2="38"></line>
+              <polyline class="spark-line" id="spark-line" points=""></polyline>
+            </svg>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="readings reveal">
-      <div class="reading"><div class="n">5</div><div class="k">stages, every request</div></div>
-      <div class="reading"><div class="n">$0</div><div class="k">on local models</div></div>
-      <div class="reading"><div class="n">0</div><div class="k">external services required</div></div>
-      <div class="reading"><div class="n">Any</div><div class="k">OpenAI-compatible model</div></div>
+      <div class="reading"><div class="n" id="rd-count">0</div><div class="k">requests governed</div></div>
+      <div class="reading"><div class="n" id="rd-spend">$0.00</div><div class="k">spend reserved</div></div>
+      <div class="reading"><div class="n" id="rd-p95">0 ms</div><div class="k">p95 latency</div></div>
+      <div class="reading"><div class="n" id="rd-audit">0</div><div class="k">audit rows</div></div>
     </div>
   </header>
 
@@ -532,6 +562,130 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     navigator.clipboard && navigator.clipboard.writeText('git clone && cd agentos/deploy && docker compose up -d');
     var o = btn.textContent; btn.textContent = 'copied ✓';
     setTimeout(function(){ btn.textContent = o; }, 1400);
+  };
+})();
+
+// --- Live readouts + audit-tail feed + throughput sparkline. This defines
+// the real window.__agentosOnSettled BEFORE the governance-chain sim IIFE
+// below runs, so the sim's `window.__agentosOnSettled || function(){}` stub
+// fallback never engages. Every value here derives from the settled request
+// object handed in by the sim — no Math.random, no network, no timers of
+// its own (Date.now() is only used to bucket the sparkline; it introduces
+// no interval and nothing awaits it).
+(function () {
+  var elCount = document.getElementById('rd-count');
+  var elSpend = document.getElementById('rd-spend');
+  var elP95   = document.getElementById('rd-p95');
+  var elAudit = document.getElementById('rd-audit');
+  var feed      = document.getElementById('audit-feed');
+  var sparkLine = document.getElementById('spark-line');
+  if (!elCount || !elSpend || !elP95 || !elAudit || !feed || !sparkLine) return;
+
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var requestCount = 0;
+  var auditRows = 0;
+  var spend = 0;
+  var latencies = [];
+  var LAT_WINDOW = 40;
+
+  function fmtMoney(n) { return '$' + n.toFixed(2); }
+  function fmtLatency(n) { return Math.round(n) + ' ms'; }
+
+  function p95(arr) {
+    if (!arr.length) return 0;
+    var sorted = arr.slice().sort(function (a, b) { return a - b; });
+    var idx = Math.floor(0.95 * (sorted.length - 1));
+    return sorted[idx];
+  }
+
+  function updateReadings(r) {
+    requestCount += 1;
+    auditRows += 1;
+    if (r.outcome === 'ok') spend += r.cost;
+    latencies.push(r.latency);
+    if (latencies.length > LAT_WINDOW) latencies.shift();
+
+    elCount.textContent = String(requestCount);
+    elSpend.textContent = fmtMoney(spend);
+    elP95.textContent = fmtLatency(p95(latencies));
+    elAudit.textContent = String(auditRows);
+  }
+
+  var FEED_CAP = 6;
+  function prependFeedRow(r) {
+    var row = document.createElement('div');
+    row.className = 'feed-row' + (reduce ? '' : ' new');
+
+    var text = document.createElement('span');
+    text.className = 'mono';
+    text.textContent = r.model + ' · ' + r.org + ' · ' + r.tokens + ' tok · ' + fmtMoney(r.cost);
+
+    var chip = document.createElement('span');
+    chip.className = 'pill ' + r.outcome;
+    chip.textContent = r.outcome;
+
+    row.appendChild(text);
+    row.appendChild(chip);
+    feed.insertBefore(row, feed.firstChild);
+    while (feed.children.length > FEED_CAP) { feed.removeChild(feed.lastChild); }
+  }
+
+  // Throughput sparkline: bucket settled requests into fixed-width real-time
+  // windows so the line reads as "recent requests per few seconds", then
+  // draw a rolling window of the last ~24 buckets (the in-progress bucket
+  // is always the rightmost point). Reduced-motion calls this exactly once,
+  // which yields a flat baseline with a single live point at the end — a
+  // representative still, no interval involved.
+  var SPARK_POINTS = 24;
+  var BUCKET_MS = 2500;
+  var buckets = [];
+  var bucketStart = null;
+  var bucketCount = 0;
+
+  function seriesFromBuckets() {
+    var series = buckets.concat([bucketCount]);
+    if (series.length > SPARK_POINTS) series = series.slice(series.length - SPARK_POINTS);
+    while (series.length < SPARK_POINTS) series.unshift(0);
+    return series;
+  }
+
+  function drawSpark() {
+    var series = seriesFromBuckets();
+    var max = 0;
+    for (var i = 0; i < series.length; i++) { if (series[i] > max) max = series[i]; }
+    if (max === 0) max = 1;
+    var W = 240, H = 40, PAD = 3;
+    var n = series.length;
+    var pts = [];
+    for (var j = 0; j < n; j++) {
+      var x = n === 1 ? 0 : j * (W / (n - 1));
+      var y = (H - PAD) - (series[j] / max) * (H - PAD * 2);
+      pts.push(x.toFixed(1) + ',' + y.toFixed(1));
+    }
+    sparkLine.setAttribute('points', pts.join(' '));
+  }
+
+  function pushThroughput() {
+    var now = Date.now();
+    if (bucketStart === null) {
+      bucketStart = now;
+      bucketCount = 1;
+    } else if (now - bucketStart >= BUCKET_MS) {
+      buckets.push(bucketCount);
+      if (buckets.length > SPARK_POINTS) buckets.shift();
+      bucketStart = now;
+      bucketCount = 1;
+    } else {
+      bucketCount += 1;
+    }
+    drawSpark();
+  }
+
+  window.__agentosOnSettled = function (r) {
+    updateReadings(r);
+    prependFeedRow(r);
+    pushThroughput();
   };
 })();
 
