@@ -167,20 +167,19 @@ h1 em { font-style: normal; color: var(--live); }
 @keyframes sweep { 0%{right:100%;} 55%,100%{right:0;} }
 .stage { text-align: center; position: relative; }
 .node { width: 16px; height: 16px; border-radius: 50%; margin: 0 auto; background: var(--bg); border: 2px solid var(--border-strong); position: relative; z-index: 2; }
-.stage .node .core { position: absolute; inset: 3px; border-radius: 50%; background: var(--live); opacity: 0; transform: scale(.4); }
-.stage[data-lit] .node { border-color: var(--live); }
-.stage[data-lit] .node .core { animation: litcore 4.2s ease-in-out infinite; }
-@keyframes litcore { 0%,100%{opacity:0;transform:scale(.4);} 50%{opacity:1;transform:scale(1);} }
-.stage:nth-child(1) .node .core { animation-delay: .2s; }
-.stage:nth-child(2) .node .core { animation-delay: .7s; }
-.stage:nth-child(3) .node .core { animation-delay: 1.2s; }
-.stage:nth-child(4) .node .core { animation-delay: 1.7s; }
-.stage:nth-child(5) .node .core { animation-delay: 2.2s; }
+.stage .node .core { position: absolute; inset: 3px; border-radius: 50%; background: var(--live); opacity: 0; transform: scale(.4); transition: opacity .18s ease, transform .18s ease; }
+.stage.active .node { border-color: var(--live); }
+.stage.active .node .core { opacity: 1; transform: scale(1); background: var(--live); }
+.stage.hold  .node { border-color: var(--hold); }
+.stage.hold  .node .core { opacity: 1; transform: scale(1); background: var(--hold); }
+.stage.deny  .node { border-color: var(--deny); }
+.stage.deny  .node .core { opacity: 1; transform: scale(1); background: var(--deny); }
 .stage .lbl { margin-top: 14px; font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
 .stage .sub { margin-top: 4px; font-size: 12px; color: var(--faint); line-height: 1.35; padding: 0 6px; }
 @media (prefers-reduced-motion: reduce) {
   .rail .fill { animation: none; right: 0; }
-  .stage .node .core { animation: none !important; opacity: 1; transform: scale(1); }
+  .stage .node .core { transition: none !important; }
+  .stage.active .node .core, .stage.hold .node .core, .stage.deny .node .core { opacity: 1; transform: scale(1); }
   .brand .dot, .chain-head .status .d { animation: none; }
 }
 .chain-caption { margin-top: 26px; text-align: center; font-size: 13px; color: var(--faint); }
@@ -315,11 +314,11 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
       <div class="chain-body">
         <div class="chain">
           <div class="rail"><span class="fill"></span></div>
-          <div class="stage" data-lit><span class="node"><span class="core"></span></span><div class="lbl">Auth</div><div class="sub">Virtual key or SSO token</div></div>
-          <div class="stage" data-lit><span class="node"><span class="core"></span></span><div class="lbl">RBAC</div><div class="sub">Org &amp; role scoping</div></div>
-          <div class="stage" data-lit><span class="node"><span class="core"></span></span><div class="lbl">Budget</div><div class="sub">Atomic spend reserve</div></div>
-          <div class="stage" data-lit><span class="node"><span class="core"></span></span><div class="lbl">Rate</div><div class="sub">Per-tenant limits</div></div>
-          <div class="stage" data-lit><span class="node"><span class="core"></span></span><div class="lbl">Audit</div><div class="sub">Every call recorded</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Auth</div><div class="sub">Virtual key or SSO token</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">RBAC</div><div class="sub">Org &amp; role scoping</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Budget</div><div class="sub">Atomic spend reserve</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Rate</div><div class="sub">Per-tenant limits</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Audit</div><div class="sub">Every call recorded</div></div>
         </div>
         <div class="chain-caption">Every request runs the gauntlet <b>before a provider is ever called</b> — retries and autonomous runs included.</div>
       </div>
@@ -534,6 +533,77 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     var o = btn.textContent; btn.textContent = 'copied ✓';
     setTimeout(function(){ btn.textContent = o; }, 1400);
   };
+})();
+
+// --- Governance-chain live preview: a deterministic in-file simulation.
+// No Math.random / no network — the demo sequence is reproducible.
+(function () {
+  var panel = document.querySelector('.chain-panel');
+  if (!panel) return;
+  var stages = Array.prototype.slice.call(panel.querySelectorAll('.stage')); // Auth,RBAC,Budget,Rate,Audit
+  if (stages.length !== 5) return;
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      var t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  var rand = mulberry32(0x5EED);
+  var MODELS = ['qwen3.8-max', 'deepseek-v4', 'kimi-k3', 'llama-4-70b'];
+  var ORGS = ['acme', 'globex', 'initech', 'umbrella'];
+
+  // Decide a request's fate: index of the stage it stops at (0..4) and outcome.
+  // Most clear all 5 (ok); some are held (amber) or denied (red) mid-chain.
+  function nextRequest() {
+    var roll = rand();
+    var stop, outcome;
+    if (roll < 0.8) { stop = 4; outcome = 'ok'; }
+    else if (roll < 0.92) { stop = 2 + Math.floor(rand() * 2); outcome = 'hold'; } // Budget/Rate
+    else { stop = 1 + Math.floor(rand() * 3); outcome = 'deny'; }                   // RBAC/Budget/Rate
+    return {
+      stop: stop, outcome: outcome,
+      model: MODELS[Math.floor(rand() * MODELS.length)],
+      org: ORGS[Math.floor(rand() * ORGS.length)],
+      tokens: 200 + Math.floor(rand() * 1800),
+      cost: Math.round((0.4 + rand() * 6) * 100) / 100,
+      latency: 120 + Math.floor(rand() * 900),
+    };
+  }
+
+  function clearStages() { stages.forEach(function (s) { s.classList.remove('active', 'hold', 'deny'); }); }
+
+  var req = null, at = -1;
+  function tick() {
+    if (!req) { req = nextRequest(); at = -1; clearStages(); }
+    at += 1;
+    if (at <= req.stop) {
+      var stage = stages[at];
+      var terminal = at === req.stop && req.outcome !== 'ok';
+      stage.classList.add(terminal ? req.outcome : 'active');
+      if (at === req.stop) {
+        // request settled — emit it, then start a fresh one next tick
+        onSettled(req);
+        req = null;
+      }
+    }
+  }
+
+  if (reduce) {
+    // one representative still: a cleared request lighting all five, no loop.
+    stages.forEach(function (s) { s.classList.add('active'); });
+    onSettled({ stop: 4, outcome: 'ok', model: MODELS[0], org: ORGS[0], tokens: 1024, cost: 2.4, latency: 380 });
+    return;
+  }
+  setInterval(tick, 520);
+  tick();
+
+  // onSettled is defined in Task 2 (readouts + feed). For Task 1, stub it:
+  window.__agentosOnSettled = window.__agentosOnSettled || function () {};
+  function onSettled(r) { window.__agentosOnSettled(r); }
 })();
 </script>
 </body>
