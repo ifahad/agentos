@@ -15,6 +15,10 @@ export interface Snapshot<T> {
 interface Entry {
   fetcher: () => Promise<unknown>;
   cadence: number;
+  // Refcount of active subscriptions for this key. Relies on callback-identity
+  // uniqueness: React's `useSyncExternalStore` hands each subscription a
+  // distinct callback, so a `Set` correctly tracks add/remove without
+  // collisions between subscribers.
   subscribers: Set<() => void>;
   transport: Transport | null;
   data: unknown;
@@ -84,6 +88,12 @@ export function createRegistry(
   }
 
   return {
+    // The FIRST subscriber for a given `key` wins: its `fetcher` and `cadence`
+    // are captured on the entry and reused by every later subscriber to the
+    // same key, regardless of what they pass. Callers MUST therefore encode
+    // everything that changes the fetch (endpoint + auth token) into `key`
+    // itself — a shared key with divergent fetchers makes behavior depend on
+    // subscription order, not on which caller you think you're looking at.
     subscribe(key, fetcher, cadence, onChange) {
       let e = entries.get(key);
       if (!e) {

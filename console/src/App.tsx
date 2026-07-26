@@ -109,6 +109,8 @@ function connectionGlyph(conn: ConnectionState): { state: "live" | "hold" | "den
       return { state: "hold", label: "reconnecting" };
     case "offline":
       return { state: "deny", label: "offline" };
+    case "idle":
+      return null;
     default:
       return null;
   }

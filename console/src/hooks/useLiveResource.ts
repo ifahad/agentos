@@ -5,7 +5,7 @@ import { deriveStatus } from "../lib/live/status";
 import type { ConnectionState, ResourceStatus } from "../lib/live/status";
 import { useNowTick } from "./useNowTick";
 
-/** Default poll cadence — matches the legacy Overview/Chain intervals. */
+/** Fallback cadence when a caller omits one; all current call sites pass an explicit cadence. */
 export const DEFAULT_CADENCE = 4000;
 
 const IDLE_SNAPSHOT: Snapshot<unknown> = {

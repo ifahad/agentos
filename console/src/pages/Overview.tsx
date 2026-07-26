@@ -63,7 +63,7 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
 
   // Keys/budgets — degrade to empty on a role that can't list keys.
   const keysRes = useLiveResource<KeyInfo[]>(
-    `admin/keys#${adminKey}`,
+    `admin/keys#${adminKey}#ov`,
     () =>
       apiFetch<KeyInfo[]>(gatewayAdminRequest("/admin/keys", adminKey)).catch(
         () => [] as KeyInfo[],
