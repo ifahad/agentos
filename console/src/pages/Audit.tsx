@@ -31,6 +31,9 @@ const AUDIT_COLUMNS: Column<AuditEntry>[] = [
   { header: "Status", value: (e) => e.status },
 ];
 
+// Hoisted so useTableView's memo dependency is stable across renders.
+const SEARCH_FIELDS = ["key_name", "model"] as const;
+
 export function Audit({ adminKey, openSettings }: PageProps) {
   // Same audit resource Overview/Chain subscribe to (identical key + cadence),
   // so the registry dedupes onto a single shared poll.
@@ -52,7 +55,7 @@ export function Audit({ adminKey, openSettings }: PageProps) {
 
   // Search/filter/sort/paginate over the live feed — sort null preserves the
   // merge's newest-first order; picking a sort intentionally overrides it.
-  const t = useTableView(rows, { searchFields: ["key_name", "model"], pageSize: 25 });
+  const t = useTableView(rows, { searchFields: SEARCH_FIELDS, pageSize: 25 });
 
   // Daily spend, bucketed from the same feed the table renders.
   const series = useMemo(
