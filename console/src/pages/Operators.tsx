@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { PageProps } from "../App";
 import { ErrorNotice, PageHead, errorMessage, useLoad } from "../components/common";
+import { useLiveResource } from "../hooks/useLiveResource";
+import { useNowTick } from "../hooks/useNowTick";
 import { apiFetch, apiFetchRaw } from "../lib/api";
 import { formatTimestamp } from "../lib/format";
 import {
@@ -8,6 +10,7 @@ import {
   deleteOperatorRequest,
   getOperatorRequest,
   listOperatorsRequest,
+  operatorEta,
   runOperatorRequest,
   setEnabledRequest,
   triggerSummary,
@@ -43,7 +46,7 @@ async function orDisabled<T>(promise: Promise<T>): Promise<T | typeof DISABLED> 
   }
 }
 
-export function Operators({ adminKey }: PageProps) {
+export function Operators(_props: PageProps) {
   const toast = useToast();
   const [name, setName] = useState("");
   const [goal, setGoal] = useState("");
@@ -52,10 +55,15 @@ export function Operators({ adminKey }: PageProps) {
   const [cron, setCron] = useState("0 9 * * *");
   const [selected, setSelected] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  // Manual "Run" clicks in flight — the only "currently running" signal the
+  // API surfaces client-side (a run's own status only exists once it has
+  // already completed, needs approval, or errored).
+  const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
 
-  const operators = useLoad(
+  const operators = useLiveResource<{ operators: Operator[] } | typeof DISABLED>(
+    "operators",
     () => orDisabled(apiFetch<{ operators: Operator[] }>(listOperatorsRequest())),
-    [adminKey, tick],
+    { cadence: 4000 },
   );
   const detail = useLoad(
     () =>
@@ -69,15 +77,32 @@ export function Operators({ adminKey }: PageProps) {
 
   const disabled = operators.data === DISABLED;
   const list = operators.data !== DISABLED ? (operators.data?.operators ?? []) : [];
+  const operatorsLoading = operators.status === "loading";
+  const now = useNowTick(1000);
 
   async function act(run: () => Promise<void>, ok: string) {
     try {
       await run();
       toast.success(ok);
       setTick((n) => n + 1);
+      operators.reload();
     } catch (err) {
       toast.error(errorMessage(err));
     }
+  }
+
+  function runNow(op: Operator) {
+    setRunningIds((prev) => new Set(prev).add(op.id));
+    act(async () => {
+      await apiFetchRaw(runOperatorRequest(op.id));
+    }, "Operator run started").finally(() => {
+      setRunningIds((prev) => {
+        if (!prev.has(op.id)) return prev;
+        const next = new Set(prev);
+        next.delete(op.id);
+        return next;
+      });
+    });
   }
 
   function buildTrigger(): OperatorTrigger {
@@ -168,7 +193,7 @@ export function Operators({ adminKey }: PageProps) {
           <div className="op-split">
             <Panel>
               <PanelHead title="Operators" />
-              {operators.loading && !operators.data ? (
+              {operatorsLoading && !operators.data ? (
                 <div className="op-pad">
                   <Skeleton lines={3} height={14} />
                 </div>
@@ -185,47 +210,57 @@ export function Operators({ adminKey }: PageProps) {
                     </tr>
                   </thead>
                   <Tbody staggerKey={list.length}>
-                    {list.map((op) => (
-                      <Tr
-                        key={op.id}
-                        onClick={() => setSelected(op.id)}
-                        data-selected={op.id === selected || undefined}
-                      >
-                        <td>
-                          <Icon name="improve" size={13} className="op-row-icon" /> {op.name}
-                        </td>
-                        <td className="mono">{triggerSummary(op.trigger)}</td>
-                        <td>
-                          <Badge variant={op.enabled ? "pass" : "inactive"}>
-                            {op.enabled ? "enabled" : "paused"}
-                          </Badge>
-                        </td>
-                        <td className="op-actions">
-                          <Button
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              act(async () => {
-                                await apiFetchRaw(runOperatorRequest(op.id));
-                              }, "Operator run started");
-                            }}
-                          >
-                            Run
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              act(async () => {
-                                await apiFetchRaw(setEnabledRequest(op.id, !op.enabled));
-                              }, op.enabled ? "Paused" : "Enabled");
-                            }}
-                          >
-                            {op.enabled ? "Pause" : "Enable"}
-                          </Button>
-                        </td>
-                      </Tr>
-                    ))}
+                    {list.map((op) => {
+                      const eta = op.enabled ? operatorEta(op, now) : null;
+                      const running = runningIds.has(op.id);
+                      return (
+                        <Tr
+                          key={op.id}
+                          onClick={() => setSelected(op.id)}
+                          data-selected={op.id === selected || undefined}
+                        >
+                          <td>
+                            <Icon name="improve" size={13} className="op-row-icon" /> {op.name}
+                            {running && <span className="op-live-dot" aria-hidden="true" />}
+                          </td>
+                          <td className="mono">
+                            {triggerSummary(op.trigger)}
+                            {eta !== null && (
+                              <div className="freshness op-eta">
+                                next run in {Math.floor(eta / 1000)}s
+                              </div>
+                            )}
+                          </td>
+                          <td>
+                            <Badge variant={op.enabled ? "pass" : "inactive"}>
+                              {op.enabled ? "enabled" : "paused"}
+                            </Badge>
+                          </td>
+                          <td className="op-actions">
+                            <Button
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                runNow(op);
+                              }}
+                            >
+                              Run
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                act(async () => {
+                                  await apiFetchRaw(setEnabledRequest(op.id, !op.enabled));
+                                }, op.enabled ? "Paused" : "Enabled");
+                              }}
+                            >
+                              {op.enabled ? "Pause" : "Enable"}
+                            </Button>
+                          </td>
+                        </Tr>
+                      );
+                    })}
                   </Tbody>
                 </Table>
               )}

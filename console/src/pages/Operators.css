@@ -110,3 +110,42 @@
   color: var(--deny);
   font-family: var(--mono);
 }
+
+/* Ticking countdown to an interval operator's next fire, under the trigger
+   summary. `.freshness` already gives it the faint/small treatment used for
+   "updated Ns ago" elsewhere — this just tightens the gap above it. */
+.op-eta {
+  margin-top: 2px;
+}
+
+/* A manual run in flight — the one moment this row asserts liveness. Same
+   token and pulse shape as the sidebar/overview live dots, kept local since
+   each view owns its own small motion. */
+.op-live-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 6px;
+  border-radius: 50%;
+  background: var(--live);
+  vertical-align: 1px;
+  animation: op-live-pulse 1.6s var(--ease) infinite;
+}
+
+@keyframes op-live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(90, 209, 196, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .op-live-dot {
+    animation: none;
+  }
+}
