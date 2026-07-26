@@ -1,6 +1,8 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useState } from "react";
 import { Chain } from "./components/Chain";
+import type { Command } from "./components/CommandPalette";
+import { CommandPalette } from "./components/CommandPalette";
 import { SettingsModal } from "./components/SettingsModal";
 import { Sidebar } from "./components/Sidebar";
 import type { IconName } from "./ui/icons";
@@ -140,6 +142,7 @@ export function App() {
   const [orgId, setOrgId] = useState(getStoredOrgId);
   const [email, setEmail] = useState(getStoredEmail);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
   const connection = useConnectionState();
@@ -147,6 +150,30 @@ export function App() {
   const route = ROUTES.find((r) => r.path === path) ?? ROUTES[0];
   const openSettings = useCallback(() => setSettingsOpen(true), []);
   const visibleRoutes = ROUTES.filter((r) => !r.visible || r.visible(role));
+
+  // ⌘K command source: nav destinations (already role-filtered via
+  // visibleRoutes, so a viewer never sees an admin-only route here either)
+  // plus the one chrome-level action that isn't a route.
+  const commands: Command[] = [
+    ...visibleRoutes.map((r) => ({
+      id: r.path,
+      label: `Go to ${r.label}`,
+      icon: r.icon,
+      run: () => {
+        navigate(r.path);
+        setPaletteOpen(false);
+      },
+    })),
+    {
+      id: "settings",
+      label: "Open Settings",
+      icon: "settings",
+      run: () => {
+        openSettings();
+        setPaletteOpen(false);
+      },
+    },
+  ];
 
   // Resolve the caller's identity from the gateway. On success the UI is driven
   // by the real role/org/email; on failure (401) we prompt for credentials.
@@ -198,6 +225,19 @@ export function App() {
   // Shell-wide: pause every registry poll while the tab is hidden, and refetch
   // on return, so a backgrounded tab does not keep hammering the gateway.
   useEffect(() => installVisibilityPause(defaultRegistry), []);
+
+  // The first global hotkey: ⌘K / Ctrl-K toggles the command palette from
+  // anywhere in the shell.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const reducedMotion = useReducedMotion();
   const connGlyph = connectionGlyph(connection);
@@ -273,6 +313,11 @@ export function App() {
           void refreshIdentity(k);
         }}
         onClose={() => setSettingsOpen(false)}
+      />
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={commands}
       />
     </ToastProvider>
   );
