@@ -1,7 +1,9 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { useState, type CSSProperties } from "react";
 import type { PageProps } from "../App";
-import { CopyButton, ErrorNotice, NeedsKey, PageHead, errorMessage, useLoad } from "../components/common";
+import { CopyButton, ErrorNotice, NeedsKey, PageHead, errorMessage } from "../components/common";
+import { Freshness } from "../components/Freshness";
+import { useLiveResource } from "../hooks/useLiveResource";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import { budgetFraction, formatUSD } from "../lib/format";
 import { can } from "../lib/rbac";
@@ -25,13 +27,12 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
   const canCreate = can(role, "key.create");
   const toast = useToast();
   const reduced = useReducedMotion();
-  const { data, error, loading, reload } = useLoad(
-    () =>
-      adminKey
-        ? apiFetch<KeyInfo[]>(gatewayAdminRequest("/admin/keys", adminKey))
-        : Promise.resolve<KeyInfo[]>([]),
-    [adminKey],
+  const { data, error, status, updatedAt, reload } = useLiveResource<KeyInfo[]>(
+    `admin/keys#${adminKey}`,
+    () => apiFetch<KeyInfo[]>(gatewayAdminRequest("/admin/keys", adminKey)),
+    { enabled: Boolean(adminKey), cadence: 5000 },
   );
+  const keysLoading = status === "loading";
 
   const [name, setName] = useState("");
   const [budget, setBudget] = useState("25");
@@ -134,7 +135,7 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
           )}
 
           <Panel>
-            <PanelHead title="Existing keys" />
+            <PanelHead title="Existing keys" actions={<Freshness updatedAt={updatedAt} />} />
             <Table>
               <thead>
                 <tr>
@@ -145,7 +146,7 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
                 </tr>
               </thead>
               <Tbody staggerKey={keys.length}>
-                {loading && keys.length === 0 &&
+                {keysLoading && keys.length === 0 &&
                   [0, 1, 2].map((i) => (
                     <Tr animate={false} key={`skeleton-${i}`}>
                       <td>
@@ -181,7 +182,7 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
                     </Tr>
                   );
                 })}
-                {keys.length === 0 && !loading && (
+                {keys.length === 0 && !keysLoading && (
                   <Tr animate={false}>
                     <td colSpan={4} className="empty">
                       No keys yet — create one above.

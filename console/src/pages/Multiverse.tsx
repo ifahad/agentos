@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { PageProps } from "../App";
 import { ErrorNotice, PageHead, errorMessage, useLoad } from "../components/common";
+import { Freshness } from "../components/Freshness";
+import { useLiveResource } from "../hooks/useLiveResource";
 import { apiFetch, apiFetchRaw } from "../lib/api";
 import {
   agreementLabel,
@@ -49,13 +51,15 @@ export function Multiverse({ adminKey }: PageProps) {
     () => orDisabled(apiFetch<{ members: CouncilMember[] }>(listMembersRequest())),
     [adminKey],
   );
-  const objectives = useLoad(
+  const objectives = useLiveResource<{ objectives: CouncilObjective[] } | typeof DISABLED>(
+    `council/objectives#${adminKey}`,
     () => orDisabled(apiFetch<{ objectives: CouncilObjective[] }>(listObjectivesRequest())),
-    [adminKey, busy],
+    { enabled: Boolean(adminKey), cadence: 4000 },
   );
-  const proposals = useLoad(
+  const proposals = useLiveResource<{ proposals: CouncilProposal[] } | typeof DISABLED>(
+    `council/proposals#${adminKey}`,
     () => orDisabled(apiFetch<{ proposals: CouncilProposal[] }>(listProposalsRequest())),
-    [adminKey, busy],
+    { enabled: Boolean(adminKey), cadence: 4000 },
   );
   const detail = useLoad(
     () =>
@@ -73,7 +77,9 @@ export function Multiverse({ adminKey }: PageProps) {
     try {
       await run();
       toast.success(ok);
-      setBusy((n) => n + 1); // reload the lists that depend on `busy`
+      setBusy((n) => n + 1); // reload the detail view, which still depends on `busy`
+      objectives.reload();
+      proposals.reload();
     } catch (err) {
       toast.error(errorMessage(err));
     }
@@ -182,7 +188,10 @@ export function Multiverse({ adminKey }: PageProps) {
 
           <div className="mv-split">
             <Panel>
-              <PanelHead title="Objectives" />
+              <PanelHead
+                title="Objectives"
+                actions={<Freshness updatedAt={objectives.updatedAt} />}
+              />
               {objectiveList.length === 0 ? (
                 <EmptyState title="No objectives yet" description="Queue one above to begin." />
               ) : (
@@ -278,7 +287,10 @@ export function Multiverse({ adminKey }: PageProps) {
 
           {proposalList.length > 0 && (
             <Panel>
-              <PanelHead title="Held write actions" />
+              <PanelHead
+                title="Held write actions"
+                actions={<Freshness updatedAt={proposals.updatedAt} />}
+              />
               <Table>
                 <thead>
                   <tr>

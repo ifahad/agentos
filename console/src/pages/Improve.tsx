@@ -2,6 +2,8 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import type { PageProps } from "../App";
 import { ErrorNotice, PageHead, errorMessage, useLoad } from "../components/common";
+import { Freshness } from "../components/Freshness";
+import { useLiveResource } from "../hooks/useLiveResource";
 import { apiFetch, runtimeRequest } from "../lib/api";
 import { formatTimestamp } from "../lib/format";
 import {
@@ -66,9 +68,10 @@ export function Improve(_props: PageProps) {
     () => orDisabled(apiFetch<ActivePrompt>(runtimeRequest("/prompts/active"))),
     [],
   );
-  const runs = useLoad(
+  const runs = useLiveResource<EvalRunSummary[] | typeof DISABLED>(
+    "evals/runs?limit=20",
     () => orDisabled(apiFetch<EvalRunSummary[]>(runtimeRequest("/evals/runs?limit=20"))),
-    [],
+    { cadence: 5000 },
   );
   const proposals = useLoad(
     () => orDisabled(apiFetch<Proposal[]>(runtimeRequest("/proposals?limit=20"))),
@@ -190,9 +193,12 @@ export function Improve(_props: PageProps) {
         <PanelHead
           title="Eval runs"
           actions={
-            <Button variant="primary" small onClick={() => void runEvals()} disabled={running}>
-              {running ? "Running evals…" : "Run evals"}
-            </Button>
+            <span className="head-group">
+              <Freshness updatedAt={runs.updatedAt} />
+              <Button variant="primary" small onClick={() => void runEvals()} disabled={running}>
+                {running ? "Running evals…" : "Run evals"}
+              </Button>
+            </span>
           }
         />
         {(runError || lastRun) && (
@@ -201,7 +207,7 @@ export function Improve(_props: PageProps) {
             {lastRun && <RunResult run={lastRun} />}
           </div>
         )}
-        {runs.loading && runRows.length === 0 ? (
+        {runs.status === "loading" && runRows.length === 0 ? (
           <div className="panel-body">
             <Skeleton lines={4} />
           </div>
