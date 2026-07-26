@@ -430,6 +430,7 @@ label.field > span {
 input[type="text"],
 input[type="number"],
 input[type="password"],
+input[type="search"],
 select,
 textarea {
   width: 100%;
@@ -909,6 +910,86 @@ button {
   font-size: 10px;
   color: var(--text-faint);
   letter-spacing: 0.02em;
+}
+
+/* ---- Sortable table headers ---- */
+
+/* The column label doubles as the sort control: a transparent button that
+   inherits the `th`'s own type (uppercase, tracked, faint). The `sort` glyph
+   stays dim until its column is the active one, then goes full-ink — and for
+   descending order it flips 180deg — so direction reads from the glyph, not
+   a color swap (chroma stays reserved for machine state). The rotation's
+   transition uses --dur-fast, which the reduced-motion block below already
+   zeroes, so no extra gating is needed here. */
+.th-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.th-sort:hover {
+  color: var(--text-dim);
+}
+
+.th-sort.active {
+  color: var(--text);
+}
+
+.th-sort-icon {
+  opacity: 0.45;
+  transition: transform var(--dur-fast) var(--ease);
+}
+
+.th-sort.active .th-sort-icon {
+  opacity: 1;
+}
+
+/* Both classes land on the same <svg> (see SortableTh), so this is a
+   compound selector, not a descendant one. */
+.th-sort-icon.dir-desc {
+  transform: rotate(180deg);
+}
+
+/* ---- Table toolbar ---- */
+
+.table-toolbar {
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.tt-search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.tt-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-faint);
+  pointer-events: none;
+}
+
+/* `input[type="search"]` picked up the shared box styling (border, background,
+   radius, focus ring) above; this narrows it and reserves left padding for
+   the overlaid search glyph, and drops the native search-input chrome
+   (WebKit's rounded corners + built-in cancel button) so our own icon and
+   the shared border are what render. */
+.tt-search input[type="search"] {
+  width: 200px;
+  padding-left: 30px;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 /* ---- Reduced motion: all non-essential animation off ---- */
