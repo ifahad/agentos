@@ -592,6 +592,10 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     }
   }
 
+  // onSettled is defined in Task 2 (readouts + feed). For Task 1, stub it:
+  window.__agentosOnSettled = window.__agentosOnSettled || function () {};
+  function onSettled(r) { window.__agentosOnSettled(r); }
+
   if (reduce) {
     // one representative still: a cleared request lighting all five, no loop.
     stages.forEach(function (s) { s.classList.add('active'); });
@@ -600,10 +604,6 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
   }
   setInterval(tick, 520);
   tick();
-
-  // onSettled is defined in Task 2 (readouts + feed). For Task 1, stub it:
-  window.__agentosOnSettled = window.__agentosOnSettled || function () {};
-  function onSettled(r) { window.__agentosOnSettled(r); }
 })();
 </script>
 </body>
