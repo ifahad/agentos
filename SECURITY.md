@@ -10,45 +10,47 @@ absent.
 
 **The runtime never holds provider credentials.** Every model call the runtime
 makes goes to the gateway with a gateway-issued virtual key
-(`runtime/src/agentos_runtime/agent.py:62-64` — the only model wiring in the
-runtime is a client pointed at `gateway_url + "/v1"` and authenticated with
-`gateway_key`). Provider secrets are resolved inside the gateway from a
-`secret.Source` and are never handed downstream.
+(`runtime/src/agentos_runtime/agent.py`, `build_chat_model` — the only model
+wiring in the runtime is a client pointed at `gateway_url + "/v1"` and
+authenticated with `gateway_key`). Provider secrets are resolved inside the
+gateway from a `secret.Source` and are never handed downstream.
 
 **Every action that runs is authorized, attributed to a caller, and recorded.**
 A served request writes both a usage record and an audit entry, together:
-`gateway/internal/server/server.go:986-990` (`s.record` → `store.RecordUsage`),
-`gateway/internal/store/postgres.go:322-364` (one transaction inserts the
-`usage` row at `:347` and the `audit_log` row at `:360`, committing at `:364`),
-`gateway/internal/store/memory.go:198-228` (the in-memory backend does the
-equivalent).
+`gateway/internal/server/server.go` (`s.record` → `store.RecordUsage`),
+`gateway/internal/store/postgres.go` (`RecordUsage` — one transaction inserts
+the `usage` row and the `audit_log` row, then commits),
+`gateway/internal/store/memory.go` (`RecordUsage`, the in-memory backend does
+the equivalent).
 
 **Coverage on the refusal side is partial, and you should plan around that.**
-The audit log records exactly seven kinds
-(`gateway/internal/store/store.go:56-68`): `chat`, `embeddings`,
-`guardrail_flag`, `guardrail_block`, `guardrail_error`, `rate_limited`,
-`secret_reload`. Among refusals, **only rate-limit rejections and guardrail
-events are audited**. A `401` auth failure, a `400` malformed request, and a
-`402` budget exhaustion write nothing
-(`gateway/internal/server/server.go:493-556`). If you need a complete record of
-rejected traffic, take it from your ingress logs, not from the audit table.
+The audit log records exactly seven kinds (`gateway/internal/store/store.go`):
+`chat`, `embeddings`, `guardrail_flag`, `guardrail_block`, `guardrail_error`,
+`rate_limited`, `secret_reload`. Among refusals, **only rate-limit rejections
+and guardrail events are audited**. A `401` auth failure, a `400` malformed
+request, and a `402` budget exhaustion write nothing
+(`gateway/internal/server/server.go`, `handleChatCompletions`). If you need a
+complete record of rejected traffic, take it from your ingress logs, not from
+the audit table.
 
 **Authorization is not uniform across the gateway's surfaces.** Role-based
 access control gates `/admin/*` only, via the root admin key or an `agu-` user
-token (`gateway/internal/server/rbac.go:34-53`, role evaluation at `:28`
+token (`gateway/internal/server/rbac.go`, `adminAuth`, with role evaluation in
 `rbac.Can`). `/scim/v2/*` uses a separate static shared-secret bearer compare
-with no role evaluation (`gateway/internal/server/scim.go:19-28`). `/auth/oidc/*`
-carries no auth wrapper at all — it is the public login and callback flow
-(`gateway/internal/server/server.go:274-276`). RBAC is never evaluated on
-`/v1/*`; org scoping there comes from the virtual key's own org.
+with no role evaluation (`gateway/internal/server/scim.go`, `scimAuth`).
+`/auth/oidc/*` carries no auth wrapper at all — it is the public login and
+callback flow (`gateway/internal/server/server.go`, the `/auth/oidc/` route
+registrations). RBAC is never evaluated on `/v1/*`; org scoping there comes
+from the virtual key's own org.
 
 **Connectors are not uniformly opt-in.** The SQL and REST connectors are wired
 into the runtime's tool list and start by default in Compose
-(`deploy/compose.yaml:101`). Only the SOAP, browser, and SSH connectors are
-opt-in — SOAP and browser behind Compose profiles
-(`deploy/compose.yaml:173`, `:183`), SSH with no Compose service at all. Do not
-assume an integration is off because it is not configured; assume it is on
-unless it is one of those three.
+(`deploy/compose.yaml`, `AGENTOS_MCP_SERVERS`). Only the SOAP, browser, and SSH
+connectors are opt-in — SOAP and browser behind Compose profiles
+(`deploy/compose.yaml`, `profiles:` on `soap-connector` and
+`browser-connector`), SSH with no Compose service at all. Do not assume an
+integration is off because it is not configured; assume it is on unless it is
+one of those three.
 
 ## Trust boundaries
 
@@ -56,19 +58,20 @@ unless it is one of those three.
   platform is configured with a provider key, and the runtime's sole model
   client points at the gateway.
 - **The sandbox has no egress at all, and no published host port.** It sits
-  alone on an `internal: true` Docker network (`deploy/compose.yaml:152`,
-  `:206-207`), so code executed inside it has no route to the internet or to the
-  other services. There is no `ports:` mapping — Docker forbids publishing a
-  host port from an internal network — so the runtime, which is attached to
-  both networks (`deploy/compose.yaml:125-127`), is the only way in.
+  alone on an `internal: true` Docker network (`deploy/compose.yaml`, the
+  `sandbox` service and the `sandbox-net` network), so code executed inside it
+  has no route to the internet or to the other services. There is no `ports:`
+  mapping — Docker forbids publishing a host port from an internal network — so
+  the runtime, which is attached to both networks (`deploy/compose.yaml`, the
+  `runtime` service's `networks:`), is the only way in.
 - **Connectors are the only path to legacy systems.** Agents do not open
   sockets; they call tools, and each connector enforces its own constraints
   before the call leaves it (read-only SQL, GET-only REST by default, SSH
   allowlist, SOAP operation allowlist, browser domain allowlist).
 - **The console's browser bundle never sees the runtime auth token.** nginx
   injects it server-side when proxying `/api/runtime/`
-  (`console/nginx.conf.template:29`, substituted at container start by
-  `console/docker-entrypoint.sh:14`), so the credential stays out of anything
+  (`console/nginx.conf.template`, substituted at container start by
+  `console/docker-entrypoint.sh`), so the credential stays out of anything
   the browser can read.
 
 ## Fail-open vs fail-closed
@@ -78,7 +81,7 @@ bypassable. The two are different failures and are handled differently.
 
 | Control | On a *verdict* | On a *backend/classifier error* |
 |---|---|---|
-| Budget (per-key and per-org) | **Fail closed** — HTTP 402 `budget_exceeded` / `org_budget_exceeded` | **Fail open**, and — unlike the guardrail row below — that admission is **not** audited (`gateway/internal/server/rbac.go:85-89` returns `func(){}, true` with no `recordAudit`); it reads as an ordinary success |
+| Budget (per-key and per-org) | **Fail closed** — HTTP 402 `budget_exceeded` / `org_budget_exceeded` | **Fail open**, and — unlike the guardrail row below — that admission is **not** audited (`gateway/internal/server/rbac.go`, `admitSpend`, returns `func(){}, true` with no `recordAudit`); it reads as an ordinary success |
 | Rate limit | **Fail closed** — HTTP 429 `rate_limited` + `Retry-After` | **Fail open** (Postgres backend only; the `memory` backend has no such path) |
 | Guardrail | **Fail closed** — request blocked, audited | **Fail open** with a `guardrail_error` audit entry |
 | OIDC `email_verified` | Fail closed | — |
@@ -87,22 +90,23 @@ bypassable. The two are different failures and are handled differently.
 | Council write gating | Fail closed — an unclassified tool is treated as write-class | — |
 
 Read the budget row precisely: exhaustion **is** enforced and returns a 402
-(`gateway/internal/server/rbac.go:77-84`). Only a store error admits, and that
+(`gateway/internal/server/rbac.go`, `admitSpend`). Only a store error admits, and that
 admission leaves no trace — which is the one blind spot in this table that is
 not self-reporting. The guardrail's equivalent blind spot *is* audited, under
-kind `guardrail_error` (`gateway/internal/server/server.go:538`).
+kind `guardrail_error` (`gateway/internal/server/server.go`, `KindGuardrailError`).
 
 Verified locations for the other rows: rate limit 429 with `Retry-After` and a
-`rate_limited` audit entry at `gateway/internal/server/server.go:1016-1033`, with
-the fail-open branch at `gateway/internal/ratelimit/postgres.go:73-74`; OIDC
-`email_verified` required at `gateway/internal/oidc/oidc.go:170-190`; SSH
-host-key verification refusing to start when `AGENTOS_SSH_KNOWN_HOSTS` is unset
-at `connectors/ssh/cmd/ssh-connector/main.go:170-184` (an explicit,
-loudly-warned dev opt-out, `AGENTOS_SSH_INSECURE_HOST_KEY=true`, is the only way
-past it); runtime auth token required at
-`runtime/src/agentos_runtime/config.py:73-82`; council write gating at
-`runtime/src/agentos_runtime/council/gating.py:34-54`, where anything outside a
-small read-safe set is held as a proposal rather than executed.
+`rate_limited` audit entry in `gateway/internal/server/server.go` (`rateLimited`),
+with the fail-open branch in `gateway/internal/ratelimit/postgres.go`; OIDC
+`email_verified` required in `gateway/internal/oidc/oidc.go`; SSH host-key
+verification refusing to start when `AGENTOS_SSH_KNOWN_HOSTS` is unset, in
+`connectors/ssh/cmd/ssh-connector/main.go` (`resolveHostKeyCallback` — an
+explicit, loudly-warned dev opt-out, `AGENTOS_SSH_INSECURE_HOST_KEY=true`, is
+the only way past it); runtime auth token required in
+`runtime/src/agentos_runtime/config.py` (`require_runtime_auth_token`); council
+write gating in `runtime/src/agentos_runtime/council/gating.py`
+(`READ_SAFE_TOOLS`, `write_class_calls`), where anything outside a small
+read-safe set is held as a proposal rather than executed.
 
 ## Hardening summary
 
@@ -123,56 +127,55 @@ verified before any autonomy work proceeded:
 | Cross-org usage/spend/audit leak via key **name** scoping | Keyed by `secret_hash` + `org_id`, with migration |
 | Secret rotation was a silent no-op for provider keys | Router reads the live `secret.Source` per call |
 
-Verified in source: the immutable preamble at
-`runtime/src/agentos_runtime/agent.py:31` and `:52`; redirect screening and
-private/loopback/link-local refusal at
-`connectors/rest/internal/safehttp/safehttp.go:25-86` and
-`connectors/soap/internal/safehttp/safehttp.go:4-26`; the SSH exec-capable
-deny-list and shell-character rejection in `connectors/ssh/internal/validate/`;
-`secret.Source` injected into provider routing at
-`gateway/internal/provider/provider.go:23,57`; secret reloads audited at
-`gateway/internal/server/secrets.go:39`.
+Verified in source: the immutable preamble in
+`runtime/src/agentos_runtime/agent.py` (`SAFETY_PREAMBLE`,
+`build_system_prompt`); redirect screening and private/loopback/link-local
+refusal in `connectors/rest/internal/safehttp/safehttp.go` and
+`connectors/soap/internal/safehttp/safehttp.go`; the SSH exec-capable deny-list
+and shell-character rejection in `connectors/ssh/internal/validate/`;
+`secret.Source` injected into provider routing in
+`gateway/internal/provider/provider.go`; secret reloads audited in
+`gateway/internal/server/secrets.go`.
 
 Also in place: request bodies capped with `http.MaxBytesReader`
-(`gateway/internal/server/server.go:301`) and opt-in audit retention via
-`PruneAudit` (`gateway/internal/store/store.go:207-211`) — never called unless
+(`gateway/internal/server/server.go`) and opt-in audit retention via
+`PruneAudit` (`gateway/internal/store/store.go`) — never called unless
 retention is explicitly configured, because an audit trail is evidence.
 
 ### Sandbox isolation
 
 Code the agent writes runs in a Rust sandbox, not a host shell. Per execution
-(`sandbox/src/executor.rs`):
+(`sandbox/src/executor.rs`, `execute_python`):
 
-- fresh temporary working directory, removed when the run ends (`:41`)
-- cleared environment — the child sees only a restricted `PATH` (`:11-12`,
-  `:49-50`)
+- fresh temporary working directory, removed when the run ends
+- cleared environment — the child sees only a restricted `PATH` (`CHILD_PATH`)
 - new process group, SIGKILL'd as a group on timeout so grandchildren die with
-  the child (`:73-74`, `:146-151`)
-- rlimits on CPU time, address space, process count, and file size (`:63-66`)
+  the child (`kill_process_group`)
+- rlimits on CPU time, address space, process count, and file size
 
-And per container (`sandbox/Dockerfile`, `deploy/compose.yaml:134-152`):
-read-only root filesystem, `tmpfs` for `/tmp`, all capabilities dropped,
-`no-new-privileges`, memory/pid/CPU caps, a non-root user
-(`sandbox/Dockerfile:15,17`), and the internal-only network described above.
+And per container (`sandbox/Dockerfile`, `deploy/compose.yaml`, the `sandbox`
+service): read-only root filesystem, `tmpfs` for `/tmp`, all capabilities
+dropped, `no-new-privileges`, memory/pid/CPU caps, a non-root user
+(`sandbox/Dockerfile`), and the internal-only network described above.
 
 ### Container users
 
 The two images reach non-root by different means, and both are worth checking
-if you re-base them: `runtime/Dockerfile:29` sets `USER 10002:10002`
-explicitly; `gateway/Dockerfile:10` inherits non-root from a
+if you re-base them: `runtime/Dockerfile` sets `USER 10002:10002`
+explicitly; `gateway/Dockerfile` inherits non-root from a
 `gcr.io/distroless/static-debian12:nonroot` base and carries no `USER` line of
 its own.
 
 ### Skills supply chain
 
-Skills live in-repo, are baked into the image (`runtime/Dockerfile:15`), and are
+Skills live in-repo, are baked into the image (`runtime/Dockerfile`), and are
 never fetched at runtime. The load path is a local directory —
 `AGENTOS_SKILLS_DIR` when set, otherwise the in-repo `runtime/skills/`
-(`runtime/src/agentos_runtime/api.py:146-149`) — and there is no network fetch
+(`runtime/src/agentos_runtime/api.py`) — and there is no network fetch
 anywhere in it. Each load computes and records a sha256 **for provenance** and
-logs it
-(`runtime/src/agentos_runtime/operators/skills.py:43`, `:88`). That digest is
-recorded, not enforced — nothing compares it against a pinned expected value.
+logs it (`runtime/src/agentos_runtime/operators/skills.py`, `load_skills`).
+That digest is recorded, not enforced — nothing compares it against a pinned
+expected value.
 The integrity guarantee here comes from the skills being in the image, not from
 the hash.
 
@@ -188,22 +191,23 @@ Stated plainly, so nothing above reads as more than it is:
   safety preamble and untrusted-content delimiters raise the cost of an attack;
   they do not close the class.
 - **The browser connector has no IP-level backstop.** Its allowlist
-  (`connectors/browser/src/agentos_browser/allowlist.py:24-46`) matches on
-  hostname only and never resolves the host to an address, so unlike the
-  REST and SOAP connectors it has no private/loopback/link-local refusal. A
+  (`connectors/browser/src/agentos_browser/allowlist.py`, `host_allowed`)
+  matches on hostname only and never resolves the host to an address, so unlike
+  the REST and SOAP connectors it has no private/loopback/link-local refusal. A
   hostname that resolves into your internal network is reachable if it is on the
   allowlist. Keep that allowlist narrow and hold it to names you control.
 - **Budget enforcement is untested end-to-end against paid models.** The
   admission race is covered by a test
-  (`gateway/internal/store/reservation_test.go:30`); the full path against a
+  (`gateway/internal/store/reservation_test.go`,
+  `TestReserveSpendClosesTheRace`); the full path against a
   real metered provider is not.
 - **The deep agent profile has no human-in-the-loop.** deepagents compiles its
   own graph and exposes no `interrupt_before` pass-through, so tool approvals
   apply to the react profile only
-  (`runtime/src/agentos_runtime/agent.py:90-93`, `:113`).
+  (`runtime/src/agentos_runtime/agent.py`, `build_agent`).
 - **HITL is off by default.** `AGENTOS_APPROVAL_TOOLS` is empty
-  (`runtime/src/agentos_runtime/config.py:43`); tools run unattended unless you
-  opt in.
+  (`runtime/src/agentos_runtime/config.py`, `approval_tools`); tools run
+  unattended unless you opt in.
 
 ## Reporting a vulnerability
 
