@@ -851,7 +851,7 @@ Two flows:
 
 Persistence: Postgres holds keys, orgs, users, usage, audit, agent checkpoints, and pgvector document embeddings; the sandbox is stateless; connectors hold no state.
 
-The credential invariant, stated once, plainly: the runtime never holds provider credentials; every action is authorized, attributed, and recorded; all external integrations are opt-in and off by default.
+The credential invariant, stated once, plainly: the runtime never holds provider credentials; every action that runs is authorized, attributed to a caller, and recorded — a served request writes both a usage record and an audit entry, while among refusals only rate-limit and guardrail events are audited (401 auth failures, 400 malformed requests, and 402 budget exhaustion are not). SQL and REST connectors are wired in and start by default; only SOAP, browser, and SSH are opt-in.
 
 - [ ] **Step 6: Verify the diagram's ports against source**
 
@@ -1183,7 +1183,7 @@ git commit -m "docs: add deployment and operations references; set canonical own
 
 Required sections, in order:
 
-1. **The invariant** — the runtime never holds provider credentials; every action is authorized, attributed, and recorded; all external integrations are opt-in and off by default.
+1. **The invariant** — the runtime never holds provider credentials; every action that runs is authorized, attributed to a caller, and recorded — a served request writes both a usage record and an audit entry (`gateway/internal/server/server.go:986-990` `s.record` → `store.RecordUsage`; `gateway/internal/store/postgres.go:347-363` inserts both the `usage` row and the `audit_log` row in the same transaction; `gateway/internal/store/memory.go:198-227` does the equivalent for the in-memory backend), while among refusals only rate-limit and guardrail events are audited — a `401` auth failure, a `400` malformed request, and a `402` budget exhaustion write nothing. SQL and REST connectors are wired in and start by default; only SOAP, browser, and SSH are opt-in.
 2. **Trust boundaries** — the gateway is the only egress to model providers; the sandbox has no egress at all and no published host port; connectors are the only path to legacy systems; the console's browser bundle never sees the runtime auth token (nginx injects it server-side).
 3. **Fail-open vs fail-closed** — reproduce the **R4** table verbatim, per failure mode. Add the sentence: *A backend outage must not take traffic down; a policy verdict must not be bypassable. The two are different failures and are handled differently.*
 4. **Hardening summary** — carry over the fixed-findings table from `project-context.md` §8 (the seven-row table is accurate and describes shipped fixes), plus the sandbox isolation layers (per-run temp workdir, cleared env, process group SIGKILL, CPU/AS/NPROC/FSIZE rlimits, read-only rootfs, all caps dropped, non-root, internal-only network) and the supply-chain stance on skills (in-repo, image-baked, never fetched; each load records a sha256 for provenance — **not** pinned).
