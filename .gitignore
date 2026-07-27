@@ -23,3 +23,6 @@ sandbox/target/
 
 # misc
 .DS_Store
+
+# SDD worktrees (local, never committed)
+.worktrees/
