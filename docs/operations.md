@@ -85,9 +85,10 @@ Compose services:
 docker compose -f deploy/compose.yaml -f deploy/compose.auth-mocks.yaml up -d
 ```
 
-The four `AGENTOS_MOCK_*` variables configure these mocks (not a deployed
-service, which is why they live here rather than in
-[`docs/configuration.md`](configuration.md)):
+The four `AGENTOS_MOCK_OIDC_ISSUER`, `AGENTOS_MOCK_OIDC_PORT`,
+`AGENTOS_MOCK_VAULT_TOKEN`, and `AGENTOS_MOCK_VAULT_PORT` variables configure
+these mocks (not a deployed service, which is why they live here rather than
+in [`docs/configuration.md`](configuration.md)):
 
 | Variable | Compose sets it to | Purpose |
 |---|---|---|

@@ -118,8 +118,8 @@ Overlays: `compose.hitl.yaml`, `compose.otel.yaml`, `compose.langfuse.yaml`,
 **Request path for `POST /v1/chat/completions`** — order matters and is enforced:
 
 ```
-authenticate key  →  guardrail screen  →  rate limit  →  key budget
-   →  org budget  →  route by model prefix  →  forward  →  record usage + audit
+authenticate key  →  rate limit  →  budget hold (key + org, atomic)
+   →  guardrail screen  →  route by model prefix  →  forward  →  record usage + audit
 ```
 
 **Model routing** is by prefix: `anthropic/claude-sonnet-5`, `openai/gpt-4o-mini`,
@@ -399,9 +399,9 @@ Phases 1–7 shipped and were each **smoke-tested live end-to-end**:
 6. Enterprise identity — OIDC SSO, Vault backend, per-tenant rate limits, `whoami`
 7. Scale & provisioning — SCIM 2.0, distributed rate-limit store, secret rotation/reload
 
-Phase 8 was **redirected from autonomy to security hardening** at the owner's
-explicit demand for a full assessment before further implementation. That
-hardening shipped (see §8).
+8. Security hardening — the next delivery slot was **redirected from autonomy
+   to a full security assessment** at the owner's explicit demand, before
+   further implementation. That hardening shipped (see §8).
 
 9. Multiverse — config-driven provider registry, upstream retry/fallback, a
    council of model-bound agents with judge synthesis and dissent reporting, a
@@ -472,7 +472,8 @@ These caused real, time-consuming failures. Respect them.
    token bucket refill during slow (5–20s) Ollama calls, so the limit never trips.
 6. **Reasoning models make bad fast classifiers.** `qwen3.6` spends its token
    budget thinking and returns an empty verdict, which fails open. Use a
-   non-reasoning classifier, and tune `AGENTOS_GUARDRAILS_{MODEL,TIMEOUT_S,MAX_TOKENS}`.
+   non-reasoning classifier, and tune `AGENTOS_GUARDRAILS_MODEL`,
+   `AGENTOS_GUARDRAILS_TIMEOUT_S`, and `AGENTOS_GUARDRAILS_MAX_TOKENS`.
 7. **Budgets can't be exercised with local Ollama** — those models are $0 in the
    price table, so spend never exceeds any cap. Unit-test budgets instead.
 8. **`present: true` must mean non-empty** — compose passes `${VAR:-}` as

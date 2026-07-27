@@ -89,7 +89,7 @@ application state; they front the legacy system and nothing else.
 | `postgres` | — | 5432 | 5432 | `AGENTOS_PG_PORT` | on | `postgres.yaml` (`enabled: true`) |
 | `gateway` | Go | 8080 | 8080 | `AGENTOS_GATEWAY_PORT` | on | `gateway.yaml` (`enabled: true`) |
 | `runtime` | Python | 8000 | 8000 | `AGENTOS_RUNTIME_PORT` | on | `runtime.yaml` (`enabled: true`) |
-| `sandbox` | Rust | 8070 | **none — no `ports:` mapping** | `AGENTOS_SANDBOX_PORT` | on (internal-only network) | `sandbox.yaml` (`enabled: true`) + `sandbox-networkpolicy.yaml` |
+| `sandbox` | Rust | 8070 (hardcoded `BIND_ADDR`) | **none — no `ports:` mapping** | — | on (internal-only network) | `sandbox.yaml` (`enabled: true`) + `sandbox-networkpolicy.yaml` |
 | `sql-connector` | Go | 8090 | 8090 | `AGENTOS_CONNECTOR_PORT` | on | `sql-connector.yaml` (`enabled: true`) |
 | `rest-connector` | Go | 8091 | 8091 | `AGENTOS_REST_PORT` | on | `rest-connector.yaml` (**`enabled: false`**) |
 | `ssh-connector` | Go | 8092 (hardcoded `listenAddr`) | **no Compose service** | — | **absent** | **none** |

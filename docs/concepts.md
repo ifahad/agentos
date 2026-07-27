@@ -1,4 +1,4 @@
-# Concepts & glossary
+# Concepts & Glossary
 
 The vocabulary the rest of the documentation assumes. Terms are grouped by the
 part of the system they belong to.

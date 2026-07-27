@@ -85,10 +85,15 @@ already runs as `sandbox`, uid 10001).
 
 ### Residual risk
 
-Code running inside the container can still make **outbound network requests**
-(in-container network egress). Mitigation is on the roadmap: an egress-less
-sidecar topology where the sandbox container has no network route except the
-API listener.
+Egress is already closed at the network level, not merely mitigated: under
+Compose the sandbox sits alone on the internal-only `sandbox-net` (`internal:
+true`, no `ports:` mapping), so a container on it has no route to the
+internet or to any other service — only the runtime, also attached to
+`sandbox-net`, can reach it. Helm ships a matching NetworkPolicy. See
+[`deploy/SANDBOX_EGRESS_VERIFY.md`](../deploy/SANDBOX_EGRESS_VERIFY.md) for a
+recorded verification run. What remains is process-level, not network-level:
+these isolation layers bound what a run can do to the host and to the network,
+not whether the Python it executes is well-intentioned.
 
 ## Development
 

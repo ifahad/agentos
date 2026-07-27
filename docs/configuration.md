@@ -269,7 +269,7 @@ container regardless of what `AGENTOS_CONSOLE_PORT` is set to on the host).
 | `AGENTOS_CONSOLE_PORT` | `3000` | Console host port (the container listens on `8080` internally; this is the one port in this table where the host side differs from the container's own listen port). |
 | `AGENTOS_OTEL_PORT` | `4318` | OTel collector host port (`compose.otel.yaml` overlay). |
 | `AGENTOS_LANGFUSE_PORT` | `3001` | Langfuse UI host port (`compose.langfuse.yaml` overlay). |
-| `AGENTOS_SANDBOX_PORT` | `8070` | Sandbox's own listen port. No Compose host mapping exists — the sandbox is reachable only from the runtime, over the internal `sandbox-net`. |
+| — | `8070` (hardcoded, not an env var) | The sandbox's own listen port. No Compose host mapping exists — the sandbox is reachable only from the runtime, over the internal `sandbox-net`. |
 | — | `8092` (hardcoded, not an env var) | The SSH connector's own listen port. Do not confuse this with `AGENTOS_SSH_PORT`, which is the *remote* SSH target port (see Connectors above). No Compose service and no host mapping exist for it. |
 
 ## Interop: OpenClaw overlay

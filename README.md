@@ -80,7 +80,7 @@ provider credential.** Every model call it makes goes back through the gateway
 on a virtual key, so an agent's spend is budgeted and audited exactly like a
 human's.
 
-## Concepts
+## Concepts & Glossary
 
 The documentation assumes a small, specific vocabulary: planes (gateway,
 runtime, sandbox, connector, console), credentials (virtual key, user token,
@@ -346,5 +346,27 @@ Shipped work is recorded in [`CHANGELOG.md`](CHANGELOG.md). Next:
 - [`docs/interop/openclaw.md`](docs/interop/openclaw.md) — running an OpenClaw worker under governance
 - [`SECURITY.md`](SECURITY.md) — enforcement, failure modes, residual risk, reporting
 - [`CHANGELOG.md`](CHANGELOG.md) — what shipped, in order
+
+### Taxonomy map
+
+Both this README and the in-console Docs tab organize around the same twelve
+sections. This README orders a few of them (notably Quickstart) earlier for
+onboarding; the table below gives the canonical taxonomy order and maps each
+name to where it actually lives, so the console surface can mirror it exactly:
+
+| # | Section | Where it lives |
+|---|---|---|
+| 1 | Overview | README — hero + [What it is, and who it's for](#what-it-is-and-who-its-for) |
+| 2 | Concepts & Glossary | README — [Concepts & Glossary](#concepts--glossary); [`docs/concepts.md`](docs/concepts.md) |
+| 3 | Architecture | README — [Architecture](#architecture); [`docs/architecture.md`](docs/architecture.md) |
+| 4 | Gateway | README — [Capability tour → Gateway](#gateway--governed-model-access) |
+| 5 | Runtime | README — [Capability tour → Runtime](#runtime--agents-that-survive-a-restart) |
+| 6 | Sandbox | README — [Capability tour → Sandbox](#sandbox--untrusted-code-contained); [`sandbox/README.md`](sandbox/README.md) |
+| 7 | Connectors | README — [Capability tour → Connectors](#connectors--legacy-systems-as-tools); `connectors/*/README.md` |
+| 8 | Console | README — [Console](#console); [`docs/console.md`](docs/console.md) |
+| 9 | Quickstart | README — [Quickstart](#quickstart) |
+| 10 | Configuration | [`docs/configuration.md`](docs/configuration.md) |
+| 11 | Deploy | README — [Deploy](#deploy); [`docs/deployment.md`](docs/deployment.md), [`docs/operations.md`](docs/operations.md) |
+| 12 | Security | README — [Security](#security); [`SECURITY.md`](SECURITY.md) |
 
 License: [Apache-2.0](LICENSE)
