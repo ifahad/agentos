@@ -20,7 +20,7 @@ the mock OIDC/Vault servers the smoke tests bring up, not a deployed service.
 |---|---|---|
 | `AGENTOS_ADMIN_KEY` | — | Root key for the gateway admin API (`/admin/*`). Required; the gateway refuses to start without it. |
 | `AGENTOS_RUNTIME_KEY` | `agos-local-dev-runtime` | The virtual key the runtime authenticates to the gateway with. Compose bootstraps it into the default org with a $25 budget via `AGENTOS_BOOTSTRAP_KEYS`. |
-| `AGENTOS_RUNTIME_AUTH_TOKEN` | — | Shared bearer token every runtime API caller must present, on every route except `GET /healthz`. Required; the runtime refuses to start without it. The console's nginx injects it as a Bearer token when proxying `/api/runtime/*` — it never reaches the browser. |
+| `AGENTOS_RUNTIME_AUTH_TOKEN` | — | Shared bearer token every runtime API caller must present, on every route except `GET /healthz` and `/operators/webhooks/{token}` (where the `whk-` token in the path is itself the credential). Required; the runtime refuses to start without it. The console's nginx injects it as a Bearer token when proxying `/api/runtime/*` — it never reaches the browser, but the proxy adds it unconditionally, so anything that can reach the console's port drives the runtime with full authority. |
 | `AGENTOS_DATABASE_URL` | *(unset)* | Postgres connection string for the gateway's store. Unset falls back to an in-memory store (state lost on restart). |
 | `AGENTOS_BOOTSTRAP_ORG` | `default` | Name of the org that owns every pre-existing/bootstrapped key, created with an unlimited (0) budget at startup. |
 | `AGENTOS_BOOTSTRAP_KEYS` | *(unset)* | One or more `name:secret:budget_usd` entries (comma-separated) minted into the bootstrap org at startup. Compose sets one entry for the runtime key. |
@@ -105,7 +105,7 @@ budget hold → guardrail → provider/council → audit).
 | `AGENTOS_MAX_CONTEXT_TOKENS` | `0` (off) | Caps the message history resent to the model each turn on the `react` profile; oldest messages are dropped first, newest plus the system prompt kept. `0` disables trimming. The `deep` profile ignores this — it summarizes context on its own. |
 | `AGENTOS_CONTEXT_ENGINE` | `""` (empty) | `on` \| `off` \| empty. Empty means "on if a checkpoint database is configured, off otherwise." |
 | `AGENTOS_CHECKPOINT_DATABASE_URL` | *(unset; in-memory checkpoints)* | Postgres URL used for LangGraph checkpoints (conversation state, operator runs, council runs). Unset means checkpoints don't survive a restart, and Operators/self-improvement stay disabled (see their sections below). |
-| `AGENTOS_CHECKPOINT_DB` | — | Not a real variable: this is the name one console page's empty-state copy uses for `AGENTOS_CHECKPOINT_DATABASE_URL`. Setting `AGENTOS_CHECKPOINT_DB` does nothing — set `AGENTOS_CHECKPOINT_DATABASE_URL` instead. |
+| `AGENTOS_CHECKPOINT_DB` | *(n/a)* | Not a real variable: this is the name one console page's empty-state copy uses for `AGENTOS_CHECKPOINT_DATABASE_URL`. Setting `AGENTOS_CHECKPOINT_DB` does nothing — set `AGENTOS_CHECKPOINT_DATABASE_URL` instead. |
 | `AGENTOS_SANDBOX_URL` | `""` (empty = `run_python` tool disabled) | Sandbox service base URL, e.g. `http://sandbox:8070`. See the Sandbox group below. |
 | `AGENTOS_OTEL_ENDPOINT` | *(unset; tracing disabled)* | OTLP/HTTP endpoint the runtime exports traces to. See Observability. |
 | `AGENTOS_SKILLS_DIR` | `""` (empty = the image-baked `runtime/skills/`) | Directory `SKILL.md` files are loaded from. See Operators & skills. |

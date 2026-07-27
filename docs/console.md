@@ -2,9 +2,13 @@
 
 The console (`console/`) is the AgentOS operator surface: a single-page
 TypeScript app for managing keys, orgs, users, secrets, and provisioning, and
-for running, observing, and approving agent work. It has no privileges of its
-own — every action it takes is a call to the gateway or the runtime, subject
-to the same auth and role checks either API enforces for any other caller.
+for running, observing, and approving agent work. Its gateway calls have no
+privileges of their own — they are subject to the same auth and role checks the
+gateway enforces for any other caller. Its runtime calls are different: the
+runtime has no role model, and nginx attaches the runtime bearer token to
+`/api/runtime/` requests unconditionally (see
+[How the console talks to the platform](#how-the-console-talks-to-the-platform)),
+so the console's proxy carries full runtime authority.
 
 See [`docs/api.md`](api.md) for the endpoints referenced below and
 [`docs/concepts.md`](concepts.md) for terminology (roles, virtual keys,
@@ -89,12 +93,21 @@ loads is either the SPA's own bundle or one of these two same-origin proxies.
 The gateway calls carry whatever token the console holds (root admin key or
 user token) exactly as entered — nginx passes them through unmodified. The
 runtime is different: every runtime route requires its own bearer token
-(`AGENTOS_RUNTIME_AUTH_TOKEN`), and the browser never holds it. nginx injects
+(`AGENTOS_RUNTIME_AUTH_TOKEN`) except `GET /healthz` and
+`/operators/webhooks/{token}` — where the `whk-` token in the path is itself
+the credential — and the browser never holds it. nginx injects
 `Authorization: Bearer ${AGENTOS_RUNTIME_AUTH_TOKEN}` on the `/api/runtime/`
 location server-side, substituting the value from the container's own
 environment at startup. The token exists only in the console container's
 environment and in the proxied request nginx constructs — it never appears
 in a response body, a script, or anything the browser's JavaScript can read.
+
+nginx adds that header to every `/api/runtime/` request, unconditionally: the
+browser presents no credential of its own, and the runtime has no role concept
+to check one against. Token confidentiality and access control are separate
+properties here — the token stays server-side, and the proxy is an
+unauthenticated path to the full runtime API for anything that can reach the
+console's port.
 
 Data on most pages is live, not static: each resource polls its endpoint on
 its own cadence (a few seconds by default) through a shared registry that

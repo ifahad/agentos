@@ -39,7 +39,7 @@ targets do not depend on one another's state.
 | `make test-rust` | `cargo fmt --check` + `cargo clippy` + `cargo test` for `sandbox/` |
 | `make fmt` | Formats Go (`gofmt`), Python (`ruff format`) |
 
-**Two traps:**
+**Three traps, worth knowing before you trust a green run:**
 
 1. `make test` **excludes `make test-rust`** — the Rust sandbox suite is not
    part of the `test` aggregate target and must be run separately:
@@ -48,7 +48,14 @@ targets do not depend on one another's state.
    SOAP, SSH, and browser connector suites are not wired into any `make`
    target; run them from their own directories (`connectors/rest/`,
    `connectors/soap/`, `connectors/ssh/`, `connectors/browser/`) with each
-   language's own test command.
+   language's own test command. CI does cover the three Go ones — its `go` job
+   runs `connectors/rest`, `connectors/ssh`, and `connectors/soap` alongside
+   the gateway and `connectors/sql`.
+3. **`connectors/browser/tests/` runs in no `make` target and no CI job.** The
+   browser connector is Python, so the `go` job never sees it, and the `python`
+   job runs only against `runtime/` (`.github/workflows/ci.yml`). A green CI
+   run says nothing about it — run it by hand from `connectors/browser/` when
+   you change that connector.
 
 ## Demo fixtures
 

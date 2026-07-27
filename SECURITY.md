@@ -73,6 +73,24 @@ one of those three.
   (`console/nginx.conf.template`, substituted at container start by
   `console/docker-entrypoint.sh`), so the credential stays out of anything
   the browser can read.
+- **The console's runtime proxy is itself an unauthenticated path to the
+  runtime.** That injection is unconditional: nginx attaches the bearer to
+  every `/api/runtime/` request and requires no credential from the browser
+  (`console/nginx.conf.template`, the `/api/runtime/` location), and the
+  runtime authenticates one shared bearer with no role concept at all
+  (`runtime/src/agentos_runtime/api.py`, `require_auth`). Confidentiality and
+  access control are separate properties here: the token never leaks to the
+  browser, and reaching the console's port is equivalent to holding it. Anyone
+  who can reach that port can drive the full runtime API — create or delete
+  operators, ingest documents, approve a council write-class proposal, or
+  hot-swap the live system prompt via `POST /proposals/{id}/approve`. The
+  gateway's role checks (`/admin/*`) do not apply to this path.
+- **Two runtime paths require no bearer at all.** `GET /healthz`, so
+  orchestrator probes need no credential, and any method under
+  `/operators/webhooks/` — an inbound trigger path into an autonomous operator,
+  where the opaque `whk-` token in the URL is the only credential and an
+  unknown token 404s (`runtime/src/agentos_runtime/api.py`, `OPEN_PATHS` and
+  `OPEN_PREFIXES`). Treat a webhook URL as a secret; it is one.
 
 ## Fail-open vs fail-closed
 
@@ -87,7 +105,7 @@ bypassable. The two are different failures and are handled differently.
 | OIDC `email_verified` | Fail closed | — |
 | SSH host-key verification | Fail closed | — |
 | Runtime auth token | Fail closed — runtime refuses to start without `AGENTOS_RUNTIME_AUTH_TOKEN` | — |
-| Council write gating | Fail closed — an unclassified tool is treated as write-class | — |
+| Council write gating | Fail closed — an unclassified tool is treated as write-class — **for `profile: react` members only** (see below) | — |
 
 Read the budget row precisely: exhaustion **is** enforced and returns a 402
 (`gateway/internal/server/rbac.go`, `admitSpend`). Only a store error admits, and that
@@ -107,6 +125,16 @@ the only way past it); runtime auth token required in
 write gating in `runtime/src/agentos_runtime/council/gating.py`
 (`READ_SAFE_TOOLS`, `write_class_calls`), where anything outside a small
 read-safe set is held as a proposal rather than executed.
+
+The council write-gating row carries the same deepagents caveat as HITL, and
+for the same reason: deepagents compiles its own graph with no
+`interrupt_before` pass-through, so in-graph write gating applies to
+`profile: react` members only (`runtime/src/agentos_runtime/council/gating.py`,
+module docstring). A `profile: deep` member is constrained solely by the
+hand-written read-only `tools:` allowlist on its entry in
+`runtime/council.yaml` — that list *is* its action surface, and a test asserts
+the shipped file holds to it. All five deep members ship `enabled: false`;
+read the row before enabling one.
 
 ## Hardening summary
 
@@ -201,10 +229,18 @@ Stated plainly, so nothing above reads as more than it is:
   (`gateway/internal/store/reservation_test.go`,
   `TestReserveSpendClosesTheRace`); the full path against a
   real metered provider is not.
+- **The console's port is the runtime's authorization boundary.** Its nginx
+  proxy attaches the runtime bearer unconditionally and the runtime has no
+  roles, so network reachability of `:3000` is the only thing standing between
+  a caller and the full runtime API — there is no second check behind it. See
+  the trust-boundaries bullet above; bound that port at the network layer,
+  because nothing in the application layer bounds it.
 - **The deep agent profile has no human-in-the-loop.** deepagents compiles its
   own graph and exposes no `interrupt_before` pass-through, so tool approvals
   apply to the react profile only
-  (`runtime/src/agentos_runtime/agent.py`, `build_agent`).
+  (`runtime/src/agentos_runtime/agent.py`, `build_agent`). The council's
+  in-graph write gating is limited the same way; a `profile: deep` council
+  member is bounded only by its `tools:` allowlist.
 - **HITL is off by default.** `AGENTOS_APPROVAL_TOOLS` is empty
   (`runtime/src/agentos_runtime/config.py`, `approval_tools`); tools run
   unattended unless you opt in.

@@ -98,10 +98,11 @@ Prereqs: Docker + Compose, and either a provider API key or a local Ollama.
 
 **Before anything else, two variables are mandatory:** the gateway refuses to
 start without `AGENTOS_ADMIN_KEY`, and the runtime refuses to start without
-`AGENTOS_RUNTIME_AUTH_TOKEN` — the shared bearer every runtime route except
-`GET /healthz` requires. `deploy/.env.example` ships placeholder values for
-both so a local bring-up works; change them for anything that is not your
-laptop.
+`AGENTOS_RUNTIME_AUTH_TOKEN` — the shared bearer every runtime route requires,
+except `GET /healthz` and `/operators/webhooks/{token}`, where the `whk-` token
+in the path is itself the credential. `deploy/.env.example` ships placeholder
+values for both so a local bring-up works; change them for anything that is not
+your laptop.
 
 ### Path 1 — Compose with a provider key
 
@@ -244,13 +245,16 @@ SSH has no Compose service at all — run it standalone and wire it up yourself.
 The console (`:3000`) is the operator surface: twelve pages covering usage and
 spend, key creation, the audit trail, a streaming playground with
 human-in-the-loop approvals, knowledge-base documents, eval-gated improvement
-proposals, council objectives, operators, and tenancy administration. It holds
-no privileges of its own — every action is a call to the gateway or runtime,
+proposals, council objectives, operators, and tenancy administration. Its
+gateway calls hold no privileges of their own — every `/admin/*` action is
 re-checked server-side against the caller's real role, so hiding a page is an
 affordance and never the security boundary. It never asks you to declare your
 role: it calls `GET /admin/whoami` and lets the gateway's answer drive the UI.
-The runtime's bearer token is injected by nginx server-side and never reaches
-the browser.
+The runtime side is different: the runtime has no role model, and nginx injects
+its bearer token on `/api/runtime/` unconditionally, requiring nothing from the
+browser. The token never reaches the browser, but the console's server-side
+proxy carries full runtime authority — reaching the console's port is
+equivalent to holding the runtime token.
 
 → [`docs/console.md`](docs/console.md)
 

@@ -1,6 +1,6 @@
 # agentos Helm chart
 
-Deploys the AgentOS stack (Phase 3 topology) to Kubernetes: model **gateway**,
+Deploys the AgentOS stack to Kubernetes: model **gateway**,
 agent **runtime**, **sql-connector** (MCP over the seeded legacy ERP),
 optional **rest-connector** (OpenAPI -> MCP) with an optional **demo-crm**
 backend, the Rust code **sandbox**, the admin **console**, and a bundled

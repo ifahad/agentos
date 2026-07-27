@@ -59,7 +59,7 @@ branch `main`.
                   │                             │ MCP (streamable-http)
                   ▼                             ▼
         Anthropic / OpenAI /            ┌──────────────────┐
-        Ollama / (registry)             │ connectors (Go)  │
+        Ollama / (registry)             │ connectors       │
                                         │ sql :8090        │
                                         │ rest :8091       │
                                         │ soap :8093       │
@@ -95,7 +95,7 @@ guardrail classifier, which route through the gateway like everything else.
 | `rest-connector` | Go | 8091 | OpenAPI/REST as MCP tools |
 | `ssh-connector` | Go | 8092 | Legacy shells as MCP tools (opt-in) |
 | `soap-connector` | Go | 8093 | WSDL/SOAP as MCP tools (opt-in) |
-| `browser-connector` | Go | 8094 | Playwright browsing/computer-use (opt-in) |
+| `browser-connector` | Python 3.12 | 8094 | Playwright read/navigate browsing — `navigate`, `get_text`, `find_links`, `click` (opt-in) |
 | `sandbox` | Rust | 8070 | Isolated `run_python`; **no host port**, internal network only |
 | `console` | TS/React 19 | 3000 / **13000** | Admin UI |
 | `postgres` | — | 5432 / **15432** | pgvector-enabled database |
@@ -171,7 +171,8 @@ restart. `GET /admin/secrets/status` reports presence and source, never values.
 `evals.py`, `improve.py`, `prompts.py`, `store.py`, `sandbox.py`, `messages.py`,
 `otel.py`, `config.py`.
 
-**Endpoints** (all behind an app-wide auth dependency except `GET /healthz`):
+**Endpoints** (all behind an app-wide auth dependency except `GET /healthz` and
+`/operators/webhooks/{token}`, whose `whk-` path segment is the credential):
 
 ```
 POST /runs                      run to completion (202 when HITL pauses)
@@ -307,7 +308,10 @@ never needs CORS. All calls go same-origin through `/api/gateway/...` and
 - **dev**: Vite proxy rewrites the prefixes (`vite.config.ts`)
 - **prod**: nginx `proxy_pass` to `gateway:8080` / `runtime:8000`, and — this is
   a security control — **nginx injects the runtime bearer token server-side** on
-  `/api/runtime/` only, so the browser never holds it.
+  `/api/runtime/` only, so the browser never holds it. The injection is
+  unconditional and the runtime has no roles, so the proxy carries full runtime
+  authority: reaching the console's port is equivalent to holding the token
+  (see [`SECURITY.md`](../SECURITY.md#trust-boundaries)).
 
 **Testing convention**: request construction lives in pure `buildRequest`-style
 functions in `lib/`, unit-tested with **no DOM and no network** (137 vitest

@@ -227,10 +227,16 @@ rendered manifests.
 ## CI and the eval gate
 
 `.github/workflows/ci.yml` runs five independent jobs on every push and pull
-request: `go` (gateway + connectors), `python` (runtime), `rust` (sandbox),
-`console`, and `helm` (chart render checks via `deploy/helm/test-render.sh`).
-Each job is isolated to its own language/service, so a failure in one does not
-block the others from reporting.
+request: `go` (gateway plus the four Go connectors — `connectors/sql`,
+`connectors/rest`, `connectors/ssh`, `connectors/soap`), `python` (the
+`runtime/` suite), `rust` (sandbox), `console`, and `helm` (chart render checks
+via `deploy/helm/test-render.sh`). Each job is isolated to its own
+language/service, so a failure in one does not block the others from reporting.
+
+The Python browser connector is in **no** CI job: the `go` job's module list
+does not include it, and the `python` job runs only against `runtime/`. It has
+no `make` target either, so `connectors/browser/tests/` runs nowhere but by
+hand — see [`docs/operations.md`](operations.md#test-targets).
 
 `.github/workflows/evals.yml` is a separate, opt-in eval gate. It boots the
 full Compose stack against a deterministic, offline mock model

@@ -12,7 +12,8 @@ uses MCP streamable-http tools, exposed as a FastAPI service.
 
 ## Authentication
 
-Every route **except `GET /healthz`** requires
+Every route **except `GET /healthz` and `/operators/webhooks/{token}`** (where
+the opaque `whk-` token in the path is itself the credential) requires
 `Authorization: Bearer <AGENTOS_RUNTIME_AUTH_TOKEN>` (constant-time compared).
 A missing/wrong token returns `401 {"detail": "invalid runtime token"}`. The
 service **refuses to start** when `AGENTOS_RUNTIME_AUTH_TOKEN` is unset/empty
@@ -30,7 +31,8 @@ the model wrapped in `<<UNTRUSTED_DOCUMENT …>>` delimiters as reference data.
 ## Configuration (env)
 
 - `AGENTOS_RUNTIME_AUTH_TOKEN` - bearer token required on every route except
-  `GET /healthz` (required; the app refuses to start without it)
+  `GET /healthz` and `/operators/webhooks/{token}` (required; the app refuses to
+  start without it)
 - `AGENTOS_GATEWAY_URL` - gateway base URL (required)
 - `AGENTOS_GATEWAY_KEY` - gateway API key (required)
 - `AGENTOS_MODEL` - default `anthropic/claude-sonnet-5`

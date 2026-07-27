@@ -88,5 +88,8 @@ part of the system they belong to.
   speak; the runtime discovers tools from the servers listed in
   `AGENTOS_MCP_SERVERS`.
 - **Provider registry** (`deploy/providers.json`) — config-driven vendor
-  routing with real per-1M-token pricing, so budgets and usage stay accurate
-  for non-builtin models. Base URLs are SSRF-screened.
+  routing whose per-1M-token prices drive budget enforcement for non-builtin
+  models, so budgets and usage are as accurate as the prices you enter. The
+  shipped file is a placeholder: every entry is `enabled: false` with prices of
+  `0`, which its own `_comment` flags as unverified, so budgets for those
+  vendors are inert until you fill in real prices. Base URLs are SSRF-screened.
