@@ -13,7 +13,7 @@
 Copied from `docs/superpowers/specs/2026-07-27-platform-docs-and-console-docs-tab.md` §4 and §6. Every task's requirements implicitly include this section.
 
 - **Private/local:** everything commits to the current branch and merges to `main` locally. **Never push to origin.** The repo is private.
-- **No behavior change:** this work-stream touches only `*.md` files plus one comment line in `deploy/.env.example`. It must not modify Go, Python, Rust, TypeScript, YAML manifests, or the `Makefile`.
+- **No behavior change:** this work-stream touches only `*.md` files plus **comment lines in `deploy/.env.example`** (Task 1 corrects one comment, adds three commented-out example vars, and retitles one block comment — no uncommented value in that file may change). It must not modify Go, Python, Rust, TypeScript, YAML manifests, or the `Makefile`.
 - **Canonical taxonomy (spec §5), verbatim and in this order.** Every doc's section names and ordering derive from it:
   `Overview → Concepts & Glossary → Architecture → Gateway (governed model access) → Runtime (agents) → Sandbox → Connectors → Console (operator surface) → Quickstart → Configuration → Deploy → Security`
 - **No claim from `docs/project-context.md` §8 ("Known open backlog") or §13 ("Honest gaps") may be copied into `SECURITY.md` or any new `docs/` file without independent re-verification against current source.** Both sections are known-stale; Task 2 corrects them.
