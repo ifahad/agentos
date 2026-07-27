@@ -26,3 +26,6 @@ sandbox/target/
 
 # SDD worktrees (local, never committed)
 .worktrees/
+
+# SDD workspace (ledger, briefs, review packages — local scratch)
+.superpowers/
