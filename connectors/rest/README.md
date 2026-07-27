@@ -18,7 +18,7 @@ Tool results are `{"status": N, "body": ...}` — `body` is parsed JSON when the
 upstream `Content-Type` is JSON, otherwise a string (truncated at the cap; a
 JSON body over the cap is returned as the raw truncated string).
 
-## Phase 3 limitation
+## Limitation
 
 **No request-body support.** Tools accept path and query parameters only;
 operations that need a JSON request body cannot be driven yet. Mutations are

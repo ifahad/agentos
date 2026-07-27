@@ -1,4 +1,4 @@
-# sandbox/ — Isolated Python execution (Phase 3)
+# sandbox/ — Isolated Python execution
 
 Rust service (axum + tokio) that executes untrusted, agent-generated Python
 code in an isolated child process, so agents can run code without endangering
@@ -19,7 +19,7 @@ Request:
 }
 ```
 
-- `language` — only `"python"` in Phase 3. Anything else →
+- `language` — only `"python"`. Anything else →
   `400 {"error": "unsupported language"}`.
 - `timeout_s` — optional, default `10`, clamped to
   `[1, AGENTOS_SANDBOX_MAX_TIMEOUT_S]`.
@@ -78,8 +78,8 @@ Per execution, in-process:
    - `RLIMIT_FSIZE` = 8 MiB
 5. **Wall-clock timeout** — SIGKILL to the process group at `timeout_s`.
 
-Expected container hardening (applied by the orchestrator compose/Helm, per
-the Phase 3 global constraints): `read_only` rootfs, `cap_drop: [ALL]`,
+Expected container hardening (applied by the orchestrator compose/Helm):
+`read_only` rootfs, `cap_drop: [ALL]`,
 `no-new-privileges`, tmpfs `/tmp`, memory/CPU limits, non-root user (the image
 already runs as `sandbox`, uid 10001).
 

@@ -14,7 +14,7 @@ with a fresh session per call.
 | `AGENTOS_SSH_USER` | — (required) | SSH user. Fatal if unset. |
 | `AGENTOS_SSH_PASSWORD` | — | Password auth. Exactly one of this or `AGENTOS_SSH_PRIVATE_KEY` must be set; fatal otherwise. |
 | `AGENTOS_SSH_PRIVATE_KEY` | — | PEM-encoded private key (the key material itself, not a path). |
-| `AGENTOS_SSH_KNOWN_HOSTS` | — | Path to a `known_hosts` file → strict host key checking. **Unset → host key checking is disabled** (`InsecureIgnoreHostKey`) and a startup WARNING is logged. |
+| `AGENTOS_SSH_KNOWN_HOSTS` | — | Path to a `known_hosts` file → strict host key checking. **Required**: with this unset the connector **refuses to start**, unless `AGENTOS_SSH_INSECURE_HOST_KEY=true` is set explicitly. |
 | `AGENTOS_SSH_ALLOW_COMMANDS` | — (deny all) | Comma-separated allowlist of command basenames, e.g. `ls,cat,grep,df,uptime,systemctl`. Empty = every command denied (startup warning). |
 | `AGENTOS_SSH_TIMEOUT_S` | `15` | Per-command timeout in seconds; on expiry the session is closed and the result carries `timed_out: true`, `exit_code: -1`. |
 | `AGENTOS_SSH_MAX_OUTPUT_BYTES` | `65536` | Per-stream stdout/stderr cap; overflow is discarded and flagged `truncated: true`. |
@@ -45,7 +45,10 @@ read-only diagnostics and pair it with a restricted SSH account.
 
 ## Host key checking
 
-Set `AGENTOS_SSH_KNOWN_HOSTS` to a `known_hosts` file for strict checking
-(`knownhosts.New`). If unset, the connector accepts any host key
-(`ssh.InsecureIgnoreHostKey`) and logs a startup WARNING — acceptable for lab
-demos, not for anything that matters.
+Set `AGENTOS_SSH_KNOWN_HOSTS` to a `known_hosts` file for strict verification
+(`knownhosts.New`). This is **required**: with it unset the connector refuses to
+start and exits with an error naming the MITM risk.
+
+The only way to run without host-key verification is the explicit dev opt-out
+`AGENTOS_SSH_INSECURE_HOST_KEY=true`, which accepts any host key. Never set it
+outside a lab.
