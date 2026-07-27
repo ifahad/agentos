@@ -1,3 +1,5 @@
+> **Canonical source:** [`docs/deployment.md`](../docs/deployment.md) — observability and Langfuse setup. This file is a snippet kept for reference.
+
 <!-- README-ready section. Intended to slot into README.md directly after the
      existing "## Observability" section content (before "## Roadmap"). -->
 

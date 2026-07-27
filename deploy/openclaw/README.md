@@ -1,3 +1,5 @@
+> **Canonical source:** [`docs/interop/openclaw.md`](../../docs/interop/openclaw.md). This file covers only the overlay command.
+
 # deploy/openclaw — governed OpenClaw worker (template)
 
 An **illustrative** overlay for running an OpenClaw worker as a budgeted, audited,
