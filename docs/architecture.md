@@ -53,9 +53,12 @@ of the platform that ever holds a provider credential. It authenticates
 [budgets and rate limits](concepts.md#governance), runs the
 [guardrail](concepts.md#governance), routes to a provider (or the council),
 and writes the [audit log](concepts.md#governance). It also carries the admin
-plane — key management, usage, audit, orgs, OIDC SSO, SCIM — which is the only
-surface where [RBAC](concepts.md#identity--tokens) applies. It does not run
-agents and does not execute code.
+plane — key management, usage, audit, orgs, OIDC SSO, SCIM — but the three
+route groups there are not gated the same way: [role checks
+(RBAC)](concepts.md#identity--tokens) apply only to `/admin/*`; `/scim/v2/*`
+is gated by a static shared-secret bearer token, not a role; `/auth/oidc/*` is
+the unauthenticated public login/callback flow. It does not run agents and
+does not execute code.
 
 **Runtime.** The Python service that runs the agent loop: durable,
 resumable [threads](concepts.md#agents), [skills](concepts.md#agents),
@@ -118,23 +121,32 @@ fixed order:
 2. **Rate limit** — the key's org must have budget in its request-per-minute
    bucket; otherwise `429` with `Retry-After`.
 3. **Budget hold** — a reservation is taken against both the key's and the
-   org's monthly cap; exhaustion returns `402`. This step is enforced, not
-   advisory — the only way it admits a request past an exhausted budget is a
-   store or database error, and that admission is itself audited.
+   org's monthly cap; exhaustion is enforced with `402`, not advisory. The
+   only way a request is admitted past an exhausted budget is a store or
+   database error — and unlike the guardrail's classifier-outage path below,
+   that admission is **not** audited: it is recorded as an ordinary success,
+   indistinguishable from any other admitted call.
 4. **Guardrail** — run only when `AGENTOS_GUARDRAILS_MODE != off`; a flagged
    prompt is blocked (`400`) in `block`/`model` mode, or logged and forwarded
-   in `log` mode.
+   in `log` mode. A classifier outage fails open, but — unlike the budget
+   store error above — it leaves its own audit entry.
 5. **Upstream provider or council** — the request is routed by model prefix to
    a provider, or, for a `council/…` model, to the runtime's council.
-6. **Audit** — the outcome is recorded regardless of what happened above,
-   including every denial from steps 1–4.
+6. **Audit** — the gateway's audit log records outcomes as one of seven
+   kinds: `chat`, `embeddings`, `guardrail_flag`, `guardrail_block`,
+   `guardrail_error`, `rate_limited`, `secret_reload`. Among the denials
+   above, only the rate-limit rejection and the three guardrail outcomes
+   write an audit entry; a `401` auth failure and a `402` budget exhaustion
+   do not.
 
 `POST /v1/embeddings` runs the identical chain **minus the guardrail step**.
 
 **RBAC plays no part in this path.** [Role checks](concepts.md#identity--tokens)
-apply only to the admin plane (`/admin/*`, `/auth/oidc/*`, `/scim/v2/*`).
-Org scoping on `/v1/*` comes entirely from the virtual key's own org, not from
-a role evaluation.
+gate only the admin plane's `/admin/*` routes. `/scim/v2/*` is gated
+separately, by a static shared-secret bearer token compared on every request,
+not a role. `/auth/oidc/*` carries no auth wrapper at all — it is the public
+login/callback flow. Org scoping on `/v1/*` comes entirely from the virtual
+key's own org, not from a role evaluation of any kind.
 
 ### An agent run
 
@@ -167,6 +179,8 @@ their own — they front a legacy system and nothing else.
 
 Stated once, plainly, because everything above is a consequence of it: **the
 runtime never holds a provider credential.** Every action the platform takes
-against a model or a legacy system is authorized, attributed to a caller, and
-recorded — and every external integration (a connector, an overlay, an
-observability backend) is opt-in and off by default.
+against a model or a legacy system is authorized and attributed to a caller —
+though, as the request-flow section above spells out precisely, not every
+outcome is recorded to the audit log. Beyond the SQL and REST connectors,
+which are wired in and start by default, every other external integration
+(SOAP, browser, SSH, an observability overlay) is opt-in and off by default.

@@ -60,15 +60,15 @@ Every fact below was checked against source at plan time. Tasks cite this sectio
 `Auth (agos- virtual key) → Rate limit → Budget hold → Guardrail (only when AGENTOS_GUARDRAILS_MODE != off) → Upstream provider or council → Audit`
 
 - `POST /v1/embeddings` runs the same chain **minus the guardrail**.
-- Audit records **every** outcome, including denials.
-- **RBAC is never evaluated on `/v1/*`.** It gates `/admin/*`, `/auth/oidc/*`, and `/scim/v2/*` via `agu-` user tokens and the root admin key. Org scoping on the proxy path comes from the virtual key's own org, not a role check.
+- Audit records outcomes as one of seven kinds (`store.go:54-70`): `chat`, `embeddings`, `guardrail_flag`, `guardrail_block`, `guardrail_error`, `rate_limited`, `secret_reload`. Among denials, **only rate-limit rejections and guardrail events are audited** — a `401` auth failure and a `402` budget exhaustion write no audit entry (verified: `server.go:493-556` `handleChatCompletions`, `server.go:618-650` `handleEmbeddings`).
+- **RBAC is never evaluated on `/v1/*`.** It gates `/admin/*` only, via `agu-` user tokens and the root admin key. `/scim/v2/*` uses a separate static shared-secret bearer check (`scimAuth`, `scim.go:19-28`), not a role. `/auth/oidc/*` carries no auth wrapper at all — it is the public login/callback flow (`server.go:274-276`). Org scoping on the proxy path comes from the virtual key's own org, not a role check.
 - The env var is **`AGENTOS_GUARDRAILS_MODE`** (plural `GUARDRAILS`), values `off|log|block|model`. Related: `AGENTOS_GUARDRAILS_MODEL`, `AGENTOS_GUARDRAILS_KEY`, `AGENTOS_GUARDRAILS_TIMEOUT_S`, `AGENTOS_GUARDRAILS_MAX_TOKENS`.
 
 ### R4. Fail-open / fail-closed matrix, stated per failure mode
 
 | Control | On a *verdict* | On a *backend/classifier error* |
 |---|---|---|
-| Budget (per-key and per-org) | **Fail closed** — HTTP 402 `budget_exceeded` / `org_budget_exceeded` | **Fail open**, and the blind spot is audited |
+| Budget (per-key and per-org) | **Fail closed** — HTTP 402 `budget_exceeded` / `org_budget_exceeded` | **Fail open**, and — unlike the guardrail row below — that admission is **not** audited (`rbac.go:86-90` returns `func(){}, true` with no `recordAudit`); it reads as an ordinary success |
 | Rate limit | **Fail closed** — HTTP 429 `rate_limited` + `Retry-After` | **Fail open** (Postgres backend only; the `memory` backend has no such path) |
 | Guardrail | **Fail closed** — request blocked, audited | **Fail open** with a `guardrail_error` audit entry |
 | OIDC `email_verified` | Fail closed | — |

@@ -42,17 +42,24 @@ part of the system they belong to.
 ## Governance
 
 - **Budget hold** — a reservation taken before an upstream call and settled
-  after, so concurrent calls cannot overspend a cap. Exhaustion returns HTTP
-  402; only a store error admits the request (and that is audited).
+  after, so concurrent calls cannot overspend a cap. Exhaustion is enforced
+  with HTTP 402; only a store error admits the request, and — unlike the
+  guardrail's classifier-outage path — that admission is **not** audited.
 - **Rate limit** — a per-org token bucket (`rate_limit_rpm`, 0 = unlimited).
-  Over-limit calls return 429 with `Retry-After`.
+  Over-limit calls return 429 with `Retry-After` and write a `rate_limited`
+  audit entry.
 - **Guardrail** — prompt-injection screening at the gateway
   (`AGENTOS_GUARDRAILS_MODE` = `off` | `log` | `block` | `model`). A classifier
   outage fails open with a `guardrail_error` audit entry.
-- **Audit log** — the record of every gateway outcome, including denials.
-- **RBAC** — role checks on the **admin plane** (`/admin/*`, `/auth/oidc/*`,
-  `/scim/v2/*`). **Not** evaluated on `/v1/*`, where scoping comes from the
-  virtual key's own org.
+- **Audit log** — the gateway's record of outcomes, as one of seven kinds:
+  `chat`, `embeddings`, `guardrail_flag`, `guardrail_block`,
+  `guardrail_error`, `rate_limited`, `secret_reload`. Among denials, only
+  rate-limit and guardrail events are recorded; auth failures and budget
+  exhaustion are not.
+- **RBAC** — role checks on the **admin plane**, `/admin/*` only. `/scim/v2/*`
+  is gated separately by a static shared-secret bearer token, not a role;
+  `/auth/oidc/*` is unauthenticated (the public login/callback flow). **Not**
+  evaluated on `/v1/*`, where scoping comes from the virtual key's own org.
 - **Secret backend** — where provider keys resolve from:
   `env` | `file` | `age` | `vault`.
 - **HITL (human-in-the-loop)** — configured tools pause a run for approval
