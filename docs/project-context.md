@@ -1,5 +1,11 @@
 # AgentOS — full project context
 
+> **Internal briefing.** This file is the working context for people building
+> AgentOS: dev-host quirks, delivery history, and hard-won gotchas. It is not
+> the public documentation. For architecture see
+> [`architecture.md`](architecture.md); for the security posture see
+> [`../SECURITY.md`](../SECURITY.md).
+
 A single-document briefing for an AI model or engineer with **zero prior context**.
 Everything here was verified against the repository on 2026-07-24 (62 commits).
 
@@ -341,11 +347,17 @@ live** before any autonomy work proceeded:
 Confirmed sound in the audit: `crypto/rand`, hashed tokens, verified JWTs, no
 SQL injection, SQL read-only holds, SOAP not XXE-vulnerable, sandbox isolation.
 
-**Known open backlog** (tracked, not yet done): budget TOCTOU, `http.MaxBytesReader`,
-SQL `statement_timeout`, browser IP backstop, runtime non-root image + K8s
-`securityContext`, HTTP server timeouts + graceful shutdown, audit retention,
-plus efficiency items (an N+1 in `handleListOrgs`, duplicate per-request org
-lookups, unbuffered proxy responses).
+**Backlog status.** Most of the items this section once tracked have shipped and
+were verified in source: atomic budget reservation (`ReserveSpend`, race-covered
+by test), `http.MaxBytesReader` request-body caps, SQL `statement_timeout`,
+HTTP server read-header timeout and graceful shutdown (`WriteTimeout` is
+deliberately unset — see the comment in `gateway/cmd/gateway/main.go`), a
+non-root runtime image (`USER 10002:10002`), opt-in audit retention with
+`PruneAudit`, and the `handleListOrgs` N+1 (now one grouped spend query).
+Still open: the browser connector's domain allowlist (`connectors/browser/src/agentos_browser/allowlist.py`)
+matches on hostname only — there is no resolved-IP private/loopback/link-local
+check like the REST/SOAP connectors' `safehttp` has, so a browser IP backstop
+remains unbuilt.
 
 **OpenClaw interop** (`docs/interop/openclaw.md`): running the third-party
 OpenClaw agent as a **governed, jailed, egress-less worker**. Two controls carry
@@ -391,14 +403,23 @@ Phase 8 was **redirected from autonomy to security hardening** at the owner's
 explicit demand for a full assessment before further implementation. That
 hardening shipped (see §8).
 
+9. Multiverse — config-driven provider registry, upstream retry/fallback, a
+   council of model-bound agents with judge synthesis and dissent reporting, a
+   governed autonomous loop, and `council/multiverse` as an OpenAI-compatible
+   model. Smoke-tested live: `make smoke9`.
+10. Operators — governed single-agent autonomy on interval / cron / webhook
+   triggers toward stored objectives, bounded and audited, with in-repo
+   `SKILL.md` skills pulled on demand. Smoke-tested live: `make smoke8`.
+
 Test totals: ~148 Go gateway test functions (+31 SOAP, +17 browser, +49 SSH),
 76+ pytest, 137 vitest, 11 Rust.
 
 ---
 
-## 10. In flight — the "Multiverse" feature (designed, not implemented)
+## 10. The Multiverse council
 
-Approved design and a 16-task implementation plan exist; **no code is written**.
+The feature shipped and is smoke-tested live: `make smoke9`. The original
+design and 16-task implementation plan remain as historical records:
 
 - Spec: `docs/superpowers/specs/2026-07-24-multiverse-council-design.md`
 - Plan: `docs/superpowers/plans/2026-07-24-multiverse-council.md`
@@ -411,22 +432,26 @@ heartbeat pulls objectives from a queue and runs cycles under cycle caps, a spen
 ceiling, and a kill switch, where **reads run freely and every write becomes a
 human-approved proposal**.
 
-It requires three prerequisites that do not exist today: a **config-driven
-provider registry** (routing is a hardcoded 3-prefix switch), **real pricing**
-(unknown models cost $0, so budgets are inert for new vendors), and a
-**multi-agent runtime** (one agent is built from one `AGENTOS_MODEL`). It also
-closes two harness gaps: no per-run cycle cap and no provider retry/fallback.
+The three prerequisites the design called out have all shipped: a
+**config-driven provider registry** (`gateway/internal/provider/registry.go`,
+replacing the old hardcoded 3-prefix switch), **real pricing** per configured
+model (so budgets are no longer inert for new vendors), and a **multi-agent
+runtime** (`runtime/src/agentos_runtime/council/fanout.py` builds one deep
+agent per member and runs them concurrently, each on its own checkpoint
+thread). The two harness gaps it set out to close are also shipped: a per-run
+cycle cap (`max_cycles` in `runtime/src/agentos_runtime/council/loop.py`) and
+provider retry/fallback (`gateway/internal/server/retry.go`).
 
 It is additionally exposed as `council/multiverse`, an OpenAI-compatible model,
 so any client gets the whole council behind one model name, with two independent
-recursion guards.
+recursion guards (`gateway/internal/server/server.go`).
 
-**New console surface it defines** (Task 14, the likely UI/UX target): a
-**Multiverse** page with a member grid (model · enabled · latency · error rate ·
-spend · agreement rate), an objective timeline with per-cycle agreement, a
-verdict view showing dissent beside the synthesized answer, a global pause/resume
-kill switch, and a proposals strip with approve controls. Its API contract lives
-in a new `console/src/lib/council.ts`, independent of visual direction.
+**Console surface:** the **Multiverse** page (`console/src/pages/Multiverse.tsx`)
+shipped, with a member grid (model · enabled · latency · error rate · spend ·
+agreement rate), an objective timeline with per-cycle agreement, a verdict view
+showing dissent beside the synthesized answer, a global pause/resume kill
+switch, and a proposals strip with approve controls. Its API contract lives in
+`console/src/lib/council.ts`.
 
 ---
 
@@ -492,16 +517,12 @@ provider (`qwen3.6` does tool calling). Available local models: `qwen3.6`,
 
 Stated plainly so nothing here reads as more finished than it is:
 
-- **No provider retry/fallback** in the gateway — one upstream 502 ends a run.
-- **No explicit per-run cycle cap** in the runtime — it relies on LangGraph's
-  default `recursion_limit` of 25.
-- **No conversation summarization/trimming** — context management is RAG +
-  checkpointer persistence only.
 - **HITL is off by default** (`AGENTOS_APPROVAL_TOOLS` empty); tools run
   unattended unless opted in.
-- **No always-on autonomy** — runs are request-driven. The heartbeat/objectives
-  loop is designed (Multiverse) but not built.
 - **Deep profile has no HITL** — deepagents exposes no `interrupt_before`.
 - **Budget enforcement is untested end-to-end against paid models**, because this
   host has no paid provider keys.
-- The security backlog in §8 is open.
+- **The browser connector has no IP-level backstop** — its domain allowlist
+  (`connectors/browser/src/agentos_browser/allowlist.py`) matches on hostname
+  only, unlike the REST/SOAP connectors' `safehttp`, which also refuses
+  resolved private/loopback/link-local addresses.
