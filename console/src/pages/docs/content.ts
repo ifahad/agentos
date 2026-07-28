@@ -40,7 +40,7 @@ export const DOC_SECTIONS: DocSection[] = [
       },
       {
         kind: "prose",
-        text: "That sentence is a claim about actions the platform executes: each one is authorized against a credential, attributed to a caller and an org, and written to the audit log. Coverage on the refusal side is deliberately partial, and the Security section names exactly which denials are recorded and which are not.",
+        text: "Nothing runs unauthorized, unattributed, or unrecorded is a claim about the actions the platform executes: each one is authorized against a credential, attributed to a caller and an org, and written to the audit log. Coverage on the refusal side is deliberately partial, and the Security section names exactly which denials are recorded and which are not.",
       },
     ],
   },
@@ -73,7 +73,7 @@ export const DOC_SECTIONS: DocSection[] = [
           { k: "agu-…", v: "User token. An identity credential for the admin plane, bound to a user, org, and role. Minted by OIDC sign-in or created directly." },
           { k: "AGENTOS_ADMIN_KEY", v: "Root admin key — global superuser for the admin API." },
           { k: "AGENTOS_SCIM_TOKEN", v: "Static shared secret that gates /scim/v2/*. Unset leaves those routes unregistered, so they answer 404." },
-          { k: "whk-…", v: "Webhook token. The credential is the URL path segment itself, on the one runtime route exempt from the bearer." },
+          { k: "whk-…", v: "Webhook token. The credential is the URL path segment itself, on the operator webhook route — one of the two runtime paths that take no bearer." },
           { k: "Org / Role", v: "The tenancy boundary, and one of owner, admin, member, or viewer. Roles are evaluated on the admin plane only." },
         ],
       },
@@ -267,7 +267,7 @@ export const DOC_SECTIONS: DocSection[] = [
           { k: "/evals/*, /improve, /proposals/*", v: "Eval runs and the self-improvement flow; approving a prompt proposal hot-swaps the live agent." },
           { k: "/council/*", v: "Objectives and their cycles, members, pause and resume, and approval of held write-class calls." },
           { k: "/operators/*", v: "Standing operators, their recent runs, and the loaded skill list with each skill's provenance digest." },
-          { k: "GET /healthz, POST /operators/webhooks/{token}", v: "The only two routes exempt from the bearer. On the webhook, the opaque whk- token in the path is itself the credential, and an unknown token answers 404 rather than 401." },
+          { k: "GET /healthz, POST /operators/webhooks/{token}", v: "The only two paths exempt from the bearer. On the webhook, the opaque whk- token in the path is itself the credential, and an unknown token answers 404 rather than 401." },
         ],
       },
       {
@@ -399,7 +399,7 @@ export const DOC_SECTIONS: DocSection[] = [
       },
       {
         kind: "prose",
-        text: "The four gated pages each require the named permission; everything else renders for every role, including viewer. This handbook is the one route that reads nothing at all — it issues no requests and holds no credential. Hiding a page is a UI affordance and never the security boundary: the gateway re-checks the same permission on every /admin/* call using the token's real role, so a scripted client calling a gated endpoint directly gets exactly the decision a role-appropriate session would have gotten.",
+        text: "The four gated pages each require the named permission; everything else renders for every role, including viewer. This handbook is the one page that fetches nothing of its own: it reads no credential, and the only traffic while it is open is the shell's governance-chain and liveness polling, which runs on every route. Hiding a page is a UI affordance and never the security boundary: the gateway re-checks the same permission on every /admin/* call using the token's real role, so a scripted client calling a gated endpoint directly gets exactly the decision a role-appropriate session would have gotten.",
       },
       {
         kind: "prose",
@@ -499,7 +499,7 @@ make smoke                  # end-to-end: the agent answers from the seeded lega
           { k: "AGENTOS_GUARDRAILS_MODE", v: "Plural GUARDRAILS. It reads like a typo and is not. Values are off, log, block, or model; the default is off, so no screening runs until you set it." },
           { k: "AGENTOS_MCP_SERVERS", v: "A hardcoded literal in the shipped compose.yaml with no substitution, so setting it in .env changes nothing. Edit compose.yaml, or use Helm." },
           { k: "AGENTOS_SSH_PORT", v: "The remote SSH target port, default 22 — not the connector's own listen port, which is a hardcoded 8092." },
-          { k: "AGENTOS_CHECKPOINT_DB", v: "Not a real variable. One console empty state names it; the setting is AGENTOS_CHECKPOINT_DATABASE_URL." },
+          { k: "AGENTOS_RATE_LIMIT_RPM", v: "0 means unlimited, not blocked — and 0 is the shipped default, so no rate limit applies to an org until one is set." },
         ],
       },
       {
