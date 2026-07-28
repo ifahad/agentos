@@ -1,0 +1,279 @@
+/* ---- Docs visuals ----
+   Every class here is docs- prefixed: CSS is global in this app, and so are
+   keyframe names. Colours come only from the tokens in styles.css; chroma stays
+   reserved for machine state. */
+
+.docs-fig {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--inset);
+  margin: 18px 0;
+  overflow: hidden;
+}
+
+.docs-fig-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.docs-fig-title {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+/* The marker is deliberately quiet but always present: it is the difference
+   between an illustration and a claim about the running system. */
+.docs-fig-marker {
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.docs-fig-body {
+  padding: 14px;
+}
+
+.docs-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+/* ---- shared SVG vocabulary ---- */
+
+.docs-node-box {
+  fill: var(--raised);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.docs-node-label {
+  fill: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.docs-node-sub {
+  fill: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.docs-edge {
+  fill: none;
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.docs-edge-note {
+  fill: var(--text-faint);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+/* ---- architecture ---- */
+
+.docs-arch-node {
+  opacity: 0;
+  animation: docs-node-in var(--dur-med) var(--ease) forwards;
+}
+
+@keyframes docs-node-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* A travelling dash on a pathLength=1 route: the house technique from the usage
+   chart, reused as a request tracing its way through the planes. */
+.docs-arch-pulse {
+  fill: none;
+  stroke: var(--live);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 0.06 0.94;
+  stroke-dashoffset: 1;
+  animation: docs-arch-pulse 4.5s linear infinite;
+}
+
+@keyframes docs-arch-pulse {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+/* The global cap sets animation-iteration-count: 1, which would leave the pulse
+   frozen mid-route and the nodes mid-fade. Author the still explicitly. */
+@media (prefers-reduced-motion: reduce) {
+  .docs-arch-node {
+    animation: none;
+    opacity: 1;
+  }
+
+  .docs-arch-pulse {
+    animation: none;
+    stroke-dasharray: none;
+    stroke-dashoffset: 0;
+    opacity: 0.5;
+  }
+}
+
+/* ---- governance conveyor ----
+   Visually distinct from the topbar instrument by contract: bigger nodes, a
+   caption, and the illustration marker above it. The hue vocabulary is shared,
+   because the hues mean the same thing in both places. */
+
+.docs-chain {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  list-style: none;
+  padding: 4px 0 0;
+}
+
+.docs-chain-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  position: relative;
+}
+
+.docs-chain-stage::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 50%;
+  right: -50%;
+  height: 1px;
+  background: var(--border-strong);
+}
+
+.docs-chain-stage:last-child::before {
+  display: none;
+}
+
+.docs-chain-node {
+  width: 13px;
+  height: 13px;
+  border-radius: 2px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  position: relative;
+  z-index: 1;
+  transition:
+    background var(--dur-med) var(--ease),
+    box-shadow var(--dur-med) var(--ease);
+}
+
+.docs-chain-label {
+  font-size: 10px;
+  color: var(--text-faint);
+  transition: color var(--dur-med) var(--ease);
+}
+
+/* A clean pass leaves the cleared nodes graphite, never green: the shipped
+   instrument's rule is that nothing needing attention stays quiet, and lighting
+   the whole chain on success here would teach the wrong reading of the real
+   one. */
+.docs-chain-stage[data-render="cleared"] .docs-chain-node {
+  background: var(--text-dim);
+  box-shadow: inset 0 0 0 1px var(--text-dim);
+}
+
+.docs-chain-stage[data-render="cleared"] .docs-chain-label {
+  color: var(--text-dim);
+}
+
+/* The halting stage takes the outcome colour; everything after it stays dark,
+   because the request never reached it. */
+.docs-chain[data-outcome="deny"] .docs-chain-stage[data-render="stopped"] .docs-chain-node {
+  background: var(--deny);
+  box-shadow:
+    inset 0 0 0 1px var(--deny),
+    0 0 0 3px rgba(226, 104, 95, 0.16);
+}
+
+.docs-chain[data-outcome="deny"] .docs-chain-stage[data-render="stopped"] .docs-chain-label {
+  color: var(--deny);
+}
+
+.docs-chain[data-outcome="fail"] .docs-chain-stage[data-render="stopped"] .docs-chain-node {
+  background: var(--hold);
+  box-shadow:
+    inset 0 0 0 1px var(--hold),
+    0 0 0 3px rgba(227, 168, 81, 0.16);
+}
+
+.docs-chain[data-outcome="fail"] .docs-chain-stage[data-render="stopped"] .docs-chain-label {
+  color: var(--hold);
+}
+
+.docs-chain-caption {
+  margin-top: 14px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* Labels drop before nodes do — the same order the live chain uses. */
+@media (max-width: 720px) {
+  .docs-chain-label {
+    display: none;
+  }
+}
+
+/* The conveyor's still is a frame, not a frozen transition: the component picks
+   the denial frame and never creates its interval, so all that is left to do
+   here is stop the node/label transitions from easing into it. */
+@media (prefers-reduced-motion: reduce) {
+  .docs-chain-node,
+  .docs-chain-label {
+    transition: none;
+  }
+}
+
+/* ---- shared reveal for static visuals ---- */
+
+.docs-hop {
+  opacity: 0;
+  animation: docs-node-in var(--dur-med) var(--ease) forwards;
+}
+
+.docs-hop-node {
+  fill: var(--raised-2);
+  stroke: var(--border-strong);
+  stroke-width: 1;
+}
+
+.docs-callouts {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.docs-callouts li {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  padding-left: 12px;
+  border-left: 1px solid var(--border-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .docs-hop {
+    animation: none;
+    opacity: 1;
+  }
+}
