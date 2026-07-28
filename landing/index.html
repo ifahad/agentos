@@ -216,6 +216,14 @@ a { color: inherit; text-decoration: none; }
 .theme-toggle { background: transparent; border: 1px solid var(--border); border-radius: 4px; width: 34px; height: 34px; cursor: pointer; color: var(--dim); display: grid; place-items: center; flex: none; }
 .theme-toggle:hover { color: var(--ink); border-color: var(--border-strong); }
 @media (max-width: 860px){ .nav { display: none; } }
+/* Below 371px the brand + theme toggle + this CTA no longer fit the bar on
+   one unwrapping row (measured: the button's own right edge clears the
+   viewport at 370px and above, overflows by ~7px at 360px and ~47px at
+   320px) -- and the hero repeats the identical "run it locally" CTA one
+   scroll away, so hiding the sticky bar's copy here loses no destination,
+   only a duplicate that doesn't fit. 371px+ (every mainstream phone,
+   incl. the 375/390 iPhone widths and 360 Android) keeps it. */
+@media (max-width: 370px){ .bar-in a.btn-solid { display: none; } }
 
 /* ---------- hero: the gate field ---------- */
 #hero {
@@ -381,6 +389,16 @@ h1 em { font-style: normal; color: var(--v3); }
 .chain-caption { margin-top: 26px; text-align: center; font-size: 13px; color: var(--faint); }
 .chain-caption b { color: var(--dim); font-weight: 600; }
 @media (max-width: 620px){ .gc-chain { grid-template-columns: repeat(6, 1fr); } .stage .gc-sub { display: none; } .stage .lbl { font-size: 9px; letter-spacing: 0.08em; } }
+/* Below 421px even the 9px label above collides: GUARDRAIL and UPSTREAM's
+   text runs touch or overlap (measured gap between adjacent labels' own
+   text rects, not their full-width grid cells: 0px at 320-390px, 0.4px at
+   390px, only reaching a comfortable ~4-7px by 420-440px). The console's
+   own chain drops its labels before its nodes at its equivalent breakpoint
+   (Chain.css: ".chain-label{display:none}" -- "the shape of the run still
+   reads without them") -- same order here: the six coloured nodes on the
+   rail carry the state, the caption underneath already names every stage
+   in prose, so nothing load-bearing is lost. */
+@media (max-width: 420px){ .stage .lbl { display: none; } }
 
 /* ---------- audit-tail feed + throughput sparkline ---------- */
 .chain-live { margin-top: 18px; display: flex; flex-direction: column; gap: 14px; }
@@ -410,9 +428,23 @@ h1 em { font-style: normal; color: var(--v3); }
 section { padding: 74px 0; }
 .sec-head { max-width: 62ch; }
 .sec-head .eyebrow { display: block; margin-bottom: 14px; }
-h2 { font-size: 56px; line-height: 1.02; letter-spacing: -.035em; font-weight: 700; text-wrap: balance; }
+/* overflow-wrap: anywhere is the safety net, not the fix -- at a 56px cap
+   and a ~264px mobile column (320-360px wide), "infrastructure."/
+   "architecture."/"governance." are themselves wider than the column with
+   no space to break on, so they overflowed it by 49-86px regardless of
+   text-wrap:balance (measured: h2.scrollWidth - clientWidth per heading).
+   The breakpoints below are the real fix -- they shrink the font so those
+   words fit whole most of the time; this only catches whatever still
+   doesn't, so a heading can never widen the page. */
+h2 { font-size: 56px; line-height: 1.02; letter-spacing: -.035em; font-weight: 700; text-wrap: balance; overflow-wrap: anywhere; }
 h3 { font-size: 21px; letter-spacing: -.015em; font-weight: 700; }
 .sec-head p { margin-top: 14px; color: var(--dim); font-size: 17px; max-width: 54ch; }
+/* .feature h2 (clamp(24px,3vw,32px)) and .final h2 (max-width only) are
+   both more specific than the bare element rule and already fluid/small,
+   so neither is touched by these -- this only steps down the sec-head,
+   band and (via specificity, not selector) final headings. */
+@media (max-width: 1100px){ h2 { font-size: 46px; } }
+@media (max-width: 620px){ h2 { font-size: 32px; } }
 
 /* ---------- capability grid ---------- */
 .grid { margin-top: 40px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
@@ -464,7 +496,17 @@ h3 { font-size: 21px; letter-spacing: -.015em; font-weight: 700; }
 .viz-head { padding: 11px 16px; border-bottom: 1px solid var(--border); font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--faint); }
 .viz-body { padding: 18px; display: flex; flex-direction: column; gap: 9px; }
 .member { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); }
-.member .mid { flex: 1; min-width: 0; }
+/* min-width:0 lets this flex item shrink below its content's natural
+   width, as intended -- but nothing told the text itself to wrap there, so
+   below ~460px the model-id/schedule strings (measured up to 214px
+   natural width against a ~80-150px box) kept rendering on one line and
+   silently overflowing past their own box into the pill beside them. The
+   pill has a transparent fill, so the text stayed visible through it --
+   its solid border-bottom does not, and crossed the overflowing tail like
+   a stray strikethrough (reproduced at 320-420px on both the council and
+   operators panels; confirmed by diffing each row's natural vs rendered
+   text width). overflow-wrap lets it break instead. */
+.member .mid { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .member .mid .a { font-size: 13px; } .member .mid .b { font-family: var(--mono); font-size: 11px; color: var(--faint); }
 .pill { font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 7px; border-radius: 3px; border: 1px solid var(--border-strong); color: var(--dim); }
 .pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
@@ -509,7 +551,10 @@ h3 { font-size: 21px; letter-spacing: -.015em; font-weight: 700; }
 /* ---------- oss stack ---------- */
 .stack { margin-top: 36px; display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
 @media (max-width: 720px){ .stack { grid-template-columns: 1fr; } }
-.oss { border: 1px solid var(--border); border-radius: 9px; padding: 20px; background: var(--raised); }
+/* Same depth + hover lift as .card/.viz/.chain-panel, so the credits read
+   as part of the same component family rather than a leftover plain box. */
+.oss { border: 1px solid var(--border); border-radius: 9px; padding: 20px; background: var(--raised); box-shadow: var(--shadow); transition: border-color .18s, transform .18s; }
+.oss:hover { border-color: var(--border-strong); transform: translateY(-2px); }
 .oss .name { font-family: var(--mono); font-size: 14px; font-weight: 500; }
 .oss .desc { margin-top: 8px; font-size: 13.5px; color: var(--dim); }
 .oss .built { margin-top: 14px; font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
@@ -531,12 +576,33 @@ h3 { font-size: 21px; letter-spacing: -.015em; font-weight: 700; }
 .final p { margin: 16px auto 30px; color: var(--dim); max-width: 48ch; }
 .final .cta-row { justify-content: center; }
 
+/* ---------- quickstart terminal ---------- */
+/* A real terminal block, not a styled quote -- .term-ln text is exactly
+   what the Makefile and README's own Path 1 run, so a reader can select
+   and paste the whole block into a shell and it just works (see the task
+   report for the source of each line). */
+.term { margin: 30px auto 0; max-width: 560px; text-align: left; border: 1px solid var(--border); border-radius: 10px; background: var(--raised); box-shadow: var(--shadow); overflow: hidden; }
+.term-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.term-dots { display: flex; gap: 6px; }
+.term-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); }
+.term-title { font-family: var(--mono); font-size: 11px; color: var(--faint); letter-spacing: 0.04em; }
+.term-copy { margin-left: auto; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); background: none; border: 1px solid var(--border-strong); border-radius: 4px; padding: 4px 9px; cursor: pointer; }
+.term-copy:hover { color: var(--ink); border-color: var(--v2); }
+.term-body { padding: 16px 18px; font-family: var(--mono); font-size: 13px; line-height: 1.85; }
+.term-ln { display: block; white-space: pre-wrap; word-break: break-word; }
+.term-p { color: var(--v2); }
+.term-c { color: var(--faint); }
+
 /* ---------- footer ---------- */
-footer { border-top: 1px solid var(--border); padding: 34px 0; }
-.foot { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
-.foot .mono { font-size: 11px; color: var(--faint); letter-spacing: 0.06em; }
-.foot .links { display: flex; gap: 20px; font-size: 13px; color: var(--dim); }
-.foot .links a:hover { color: var(--ink); }
+footer { border-top: 1px solid var(--border); padding: 56px 0 30px; }
+.foot { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 32px; }
+.foot-brand p { margin-top: 12px; font-size: 13px; color: var(--faint); max-width: 32ch; line-height: 1.6; }
+.foot-col b { display: block; font-family: var(--mono); font-weight: 500; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--faint); margin-bottom: 14px; }
+.foot-col a { display: block; font-size: 13.5px; color: var(--dim); margin-bottom: 9px; }
+.foot-col a:hover { color: var(--ink); }
+.foot-bottom { margin-top: 44px; padding-top: 20px; border-top: 1px dashed var(--border); font-size: 11px; color: var(--faint); letter-spacing: 0.06em; }
+@media (max-width: 760px){ .foot { grid-template-columns: 1fr 1fr; row-gap: 28px; } .foot-brand { grid-column: 1 / -1; } }
+@media (max-width: 420px){ .foot { grid-template-columns: 1fr; } }
 
 /* reveal on scroll */
 .reveal { opacity: 0; transform: translateY(14px); transition: opacity .6s ease, transform .6s ease; }
@@ -817,19 +883,55 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
       <button class="btn btn-solid" onclick="copyCmd(this)">docker compose up -d</button>
       <button class="btn" onclick="document.getElementById('platform').scrollIntoView()">Explore the platform</button>
     </div>
+
+    <!-- Every line here is the Makefile's own target or README.md's Path 1
+         verbatim ("make up"/"make smoke" -- Makefile:17,26; the clone+env
+         steps -- README.md:111-117); see the task report for the grep
+         against both. -->
+    <div class="term">
+      <div class="term-head">
+        <span class="term-dots"><span></span><span></span><span></span></span>
+        <span class="term-title mono">quickstart</span>
+        <button class="term-copy" onclick="copyBlock(this)">copy</button>
+      </div>
+      <pre class="term-body mono"><span class="term-ln"><span class="term-p">$</span> git clone &lt;repo-url&gt; agentos &amp;&amp; cd agentos</span><span class="term-ln"><span class="term-p">$</span> cd deploy &amp;&amp; cp .env.example .env</span><span class="term-ln"><span class="term-c"># set AGENTOS_ANTHROPIC_API_KEY, or point AGENTOS_OLLAMA_BASE_URL at a local Ollama for $0</span></span><span class="term-ln"><span class="term-p">$</span> cd .. &amp;&amp; make up</span><span class="term-ln"><span class="term-p">$</span> make smoke</span></pre>
+    </div>
+    <p class="cta-note" style="margin-top:16px">Then open the console at <span class="mono">localhost:3000</span> and sign in with your admin key.</p>
   </section>
 </div>
 
+<!-- Every href below resolves to one of the four contracted anchors above
+     (#platform/#governance/#multiverse/#oss) or #start/#hero -- no new id
+     is introduced and none is renamed. Several labels here share an
+     anchor on purpose: each names a concept the page actually covers under
+     that id (e.g. Sandbox and Fleet are both #platform cards), rather than
+     pointing at a page that doesn't exist. -->
 <footer>
   <div class="wrap foot">
-    <span class="mono">AgentOS · the governed operating layer for AI agents</span>
-    <div class="links">
-      <a href="#platform">Platform</a>
-      <a href="#governance">Governance</a>
-      <a href="#multiverse">Multiverse</a>
+    <div class="foot-col foot-brand">
+      <a class="brand" href="#hero"><span class="dot"></span> AgentOS</a>
+      <p>The governed operating layer for AI agents — self-hosted, open, and yours.</p>
+    </div>
+    <div class="foot-col">
+      <b>Platform</b>
+      <a href="#platform">Self-improving agents</a>
+      <a href="#platform">Observability &amp; evals</a>
+      <a href="#platform">Deployment &amp; sandbox</a>
+    </div>
+    <div class="foot-col">
+      <b>Governance</b>
+      <a href="#governance">The governance chain</a>
+      <a href="#multiverse">Multiverse council</a>
+      <a href="#multiverse">Operators &amp; autonomy</a>
+    </div>
+    <div class="foot-col">
+      <b>Get started</b>
       <a href="#oss">Open source</a>
+      <a href="#start">Quickstart</a>
+      <a href="#hero">Back to top</a>
     </div>
   </div>
+  <div class="wrap foot-bottom mono">AgentOS is self-hosted software — nothing here runs unless you start it.</div>
 </footer>
 
 <script>
@@ -853,6 +955,21 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
   window.copyCmd = function(btn){
     var t = btn.textContent;
     navigator.clipboard && navigator.clipboard.writeText('git clone <repo-url> agentos && cd agentos/deploy && cp .env.example .env && docker compose up -d');
+    var o = btn.textContent; btn.textContent = 'copied ✓';
+    setTimeout(function(){ btn.textContent = o; }, 1400);
+  };
+
+  // Copies the quickstart terminal block's own five commands verbatim (not
+  // copyCmd's single docker-compose line above) -- one per line, so a
+  // paste into a real shell runs the "$" lines and skips the "#" comment
+  // exactly like typing them would.
+  window.copyBlock = function(btn){
+    var lines = ['git clone <repo-url> agentos && cd agentos',
+      'cd deploy && cp .env.example .env',
+      '# set AGENTOS_ANTHROPIC_API_KEY, or point AGENTOS_OLLAMA_BASE_URL at a local Ollama for $0',
+      'cd .. && make up',
+      'make smoke'];
+    navigator.clipboard && navigator.clipboard.writeText(lines.join('\n'));
     var o = btn.textContent; btn.textContent = 'copied ✓';
     setTimeout(function(){ btn.textContent = o; }, 1400);
   };
@@ -1086,6 +1203,25 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     // never gets dimmed.
     vL -= 90; vT -= 44; vB += 44;
     vR = Math.min(vR + 118, GX - 96);
+
+    // .gf-copy is align-self:center in #hero's middle grid row, so on a
+    // tall/wide viewport (the row is taller than the copy block itself)
+    // there is real blank space between the corner metadata and the
+    // eyebrow that the padding above never reaches -- it is sized off the
+    // copy's own box, not the row's. That gap is still inside the field's
+    // unmasked area, so a hot strand's packet passing through it at full
+    // opacity read as a stray dot with nothing around it (reproduced at
+    // 1440x1300: a lit fragment above "GOVERNED AGENT INFRASTRUCTURE").
+    // Pulling the hole's top up to .gf-meta's own bottom edge -- never
+    // further, .gf-meta keeps its own halo rather than a hole -- closes
+    // that gap at any row height instead of only at whatever gap the
+    // current viewport happens to leave.
+    if (metaEl) {
+      var metaBox = metaEl.getBoundingClientRect();
+      var vMetaB = (metaBox.bottom - box.top - offY) / scale;
+      vT = Math.min(vT, vMetaB);
+    }
+
     hole.setAttribute('x', f(vL));
     hole.setAttribute('y', f(vT));
     hole.setAttribute('width', f(Math.max(0, vR - vL)));
