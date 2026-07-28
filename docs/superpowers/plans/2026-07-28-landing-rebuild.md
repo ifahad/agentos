@@ -406,9 +406,11 @@ git commit -m "feat(landing): rebuild the governance chain section"
 
 - [ ] **Step 1: Build the capability grid**
 
-Six cards, 3×2, hairline-separated, each with a numbered index, a two-sentence body and mono tags: governed model access · deep agents · legacy systems as tools · sandboxed execution · eval-gated self-improvement · autonomy you can halt.
+**CORRECTED 2026-07-28 during execution — this step originally contradicted itself.** It named six card titles taken from the mock *and* instructed that the Observability, Evaluation and Deployment cards be preserved and re-verified — but those three are not among the six named. Ruling: **keep the page's existing six cards** (Engine / Observability / Evaluation / Deployment / Sandbox / Fleet) with Task 1's corrected copy, and add the numbered index. The mock's six topics already appear distributed across the page, its card bodies were never fact-checked against source the way the kept cards were, and "autonomy you can halt" would duplicate the Operators section three steps later.
 
-**Use the corrected copy from Task 1.** The observability, evaluation and deployment cards were all overstated; re-check each against R3 items 8, 9 and 10 before writing.
+Six cards, 3×2, hairline-separated, each with a numbered index and mono tags.
+
+**Use the corrected copy from Task 1 verbatim.** The observability, evaluation and deployment cards were all overstated; their corrections are in R3 items 8, 9 and 10. Do not rewrite verified copy to hit a sentence count.
 
 - [ ] **Step 2: Build the council fan-out**
 
