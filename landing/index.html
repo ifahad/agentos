@@ -366,7 +366,7 @@ h1 em { font-style: normal; color: var(--v3); }
    colours below are the only channel that carries machine state now. */
 .gc-rail { position: absolute; left: 5%; right: 5%; top: 7px; height: 2px; background: var(--border-strong); border-radius: 2px; }
 .stage { text-align: center; position: relative; }
-.node { width: 16px; height: 16px; border-radius: 50%; margin: 0 auto; background: var(--bg); border: 2px solid var(--border-strong); position: relative; z-index: 2; }
+.node { display: inline-block; width: 16px; height: 16px; border-radius: 50%; margin: 0 auto; background: var(--bg); border: 2px solid var(--border-strong); position: relative; z-index: 2; }
 .stage .node .core { position: absolute; inset: 3px; border-radius: 50%; background: var(--v2); opacity: 0; transform: scale(.4); transition: opacity .18s ease, transform .18s ease; }
 /* A stage the request reached is structural progress, not itself a distinct
    machine verdict -- it takes violet. Only the stage that actually halted
@@ -598,7 +598,7 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 30px; }
 .foot { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr; gap: 32px; }
 .foot-brand p { margin-top: 12px; font-size: 13px; color: var(--faint); max-width: 32ch; line-height: 1.6; }
 .foot-col b { display: block; font-family: var(--mono); font-weight: 500; font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--faint); margin-bottom: 14px; }
-.foot-col a { display: block; font-size: 13.5px; color: var(--dim); margin-bottom: 9px; }
+.foot-col a:not(.brand) { display: block; font-size: 13.5px; color: var(--dim); margin-bottom: 9px; }
 .foot-col a:hover { color: var(--ink); }
 .foot-bottom { margin-top: 44px; padding-top: 20px; border-top: 1px dashed var(--border); font-size: 11px; color: var(--faint); letter-spacing: 0.06em; }
 @media (max-width: 760px){ .foot { grid-template-columns: 1fr 1fr; row-gap: 28px; } .foot-brand { grid-column: 1 / -1; } }
@@ -664,7 +664,7 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 30px; }
 
   <div class="gf-rail">
     <div class="wrap-x gf-rail-in">
-      <div class="gf-cell gf-cell-v"><b>6</b><span>gate stages, every call</span></div>
+      <div class="gf-cell gf-cell-v"><b>6</b><span>gate stages, every chat call</span></div>
       <div class="gf-cell"><b>5</b><span>legacy systems as MCP tools</span></div>
       <div class="gf-cell"><b>0</b><span>provider keys in the runtime</span></div>
       <div class="gf-cell"><b>$0</b><span>five-model council on local Ollama</span></div>
@@ -810,7 +810,7 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 30px; }
                #council-fan-svg (real coordinates, no randomness); the visible
                "simulated" marker on .viz-head above already covers this
                diagram, so it carries no second marker of its own. -->
-          <div class="council-fan"><svg id="council-fan-svg" viewBox="0 0 460 300" preserveAspectRatio="xMidYMid meet" fill="none" aria-hidden="true" focusable="false"></svg></div>
+          <div class="council-fan"><svg id="council-fan-svg" viewBox="0 0 460 264" preserveAspectRatio="xMidYMid meet" fill="none" aria-hidden="true" focusable="false"></svg></div>
           <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">A</span><div class="mid"><div class="a">local-qwen36</div><div class="b">ollama/qwen3.6:latest</div></div><span class="pill ok">answered</span></div>
           <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">B</span><div class="mid"><div class="a">local-qwen35</div><div class="b">ollama/qwen3.5:latest</div></div><span class="pill ok">answered</span></div>
           <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">C</span><div class="mid"><div class="a">local-gemma4-31b</div><div class="b">ollama/gemma4:31b</div></div><span class="pill ok">answered</span></div>
@@ -958,11 +958,17 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 30px; }
   }, { threshold: 0.12 });
   document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
 
+  // The success label only ever appears after navigator.clipboard.writeText
+  // actually resolves -- when the Clipboard API is unavailable (a
+  // non-secure context, for one) or the write itself rejects, the button
+  // is left untouched rather than claiming a copy that never happened.
   window.copyCmd = function(btn){
-    var t = btn.textContent;
-    navigator.clipboard && navigator.clipboard.writeText('git clone <repo-url> agentos && cd agentos/deploy && cp .env.example .env && docker compose up -d');
-    var o = btn.textContent; btn.textContent = 'copied ✓';
-    setTimeout(function(){ btn.textContent = o; }, 1400);
+    if (!navigator.clipboard) return;
+    var o = btn.textContent;
+    navigator.clipboard.writeText('git clone <repo-url> agentos && cd agentos/deploy && cp .env.example .env && docker compose up -d').then(function(){
+      btn.textContent = 'copied ✓';
+      setTimeout(function(){ btn.textContent = o; }, 1400);
+    });
   };
 
   // Copies the quickstart terminal block's own five commands verbatim (not
@@ -970,14 +976,17 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 30px; }
   // paste into a real shell runs the "$" lines and skips the "#" comment
   // exactly like typing them would.
   window.copyBlock = function(btn){
+    if (!navigator.clipboard) return;
     var lines = ['git clone <repo-url> agentos && cd agentos',
       'cd deploy && cp .env.example .env',
       '# set AGENTOS_ANTHROPIC_API_KEY, or set AGENTOS_MODEL, AGENTOS_EMBED_MODEL, AGENTOS_JUDGE_MODEL and AGENTOS_OLLAMA_BASE_URL for local models at $0',
       'cd .. && make up',
       'make smoke'];
-    navigator.clipboard && navigator.clipboard.writeText(lines.join('\n'));
-    var o = btn.textContent; btn.textContent = 'copied ✓';
-    setTimeout(function(){ btn.textContent = o; }, 1400);
+    var o = btn.textContent;
+    navigator.clipboard.writeText(lines.join('\n')).then(function(){
+      btn.textContent = 'copied ✓';
+      setTimeout(function(){ btn.textContent = o; }, 1400);
+    });
   };
 
   // The R and G badges on the hero CTAs are real shortcuts, not decoration --
@@ -1516,7 +1525,7 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 30px; }
 // --- Council panel: quorum rotation. A slow, deterministic interval (its
 // own seeded mulberry32, independent of the chain sim above) cycles which
 // member pill reads "dissent" vs "answered". At most one member ever
-// dissents per tick, so the panel's "quorum met" framing always stays true
+// dissents per tick, so the panel's "converged" framing always stays true
 // (council.yaml's quorum is 3, and 4 or 5 of 5 always clears it); most ticks
 // land on full concurrence. The verdict pill's agreement figure is derived
 // from that same dissenter, never static: judge.py defines agreement as the
