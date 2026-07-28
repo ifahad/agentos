@@ -1259,7 +1259,7 @@ The `<g>` element is permitted here — the no-`<g>` rule in **R8** applies to 1
 
 The two notes are rendered at fixed coordinates rather than mapped, because each needs its own placement and there are exactly two. Do **not** replace this with a `.filter(e => e.note).map(...)` — that stacks both strings at one point.
 
-- [ ] **Step 3: Write the component**
+- [ ] **Step 3: Write `GovernanceChainVisual.tsx`**
 
 ```tsx
 import { useEffect, useState } from "react";
