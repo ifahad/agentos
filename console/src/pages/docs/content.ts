@@ -241,7 +241,7 @@ export const DOC_SECTIONS: DocSection[] = [
         kind: "keyvals",
         caption: "What the runtime runs",
         rows: [
-          { k: "Skills", v: "SKILL.md instruction sheets pulled on demand via use_skill. Loaded only from the image-baked skills directory and never fetched at runtime; each load records a sha256 for provenance, which is logged rather than compared against an expected value. The integrity guarantee comes from the skills being in the image." },
+          { k: "Skills", v: "SKILL.md instruction sheets pulled on demand via use_skill. Loaded from a local directory and never fetched at runtime — the image-baked one by default, or wherever AGENTOS_SKILLS_DIR points, which can be a mounted volume. Each load records a sha256 for provenance, which is logged rather than compared against an expected value, so integrity rests on controlling that directory rather than on a pinned digest." },
           { k: "Operators", v: "Standing objectives fired by an interval, a cron schedule, or a webhook. The scheduler is off unless AGENTOS_AUTONOMY_ENABLED is true; webhook operators still fire on their endpoint." },
           { k: "Self-improvement", v: "Eval-gated prompt proposals. No proposal activates without a human, and an immutable safety preamble is always prepended to whatever prompt wins." },
           { k: "Council", v: "N model-bound members answer one objective in parallel; a judge synthesizes one verdict plus an explicit dissent report." },
@@ -381,7 +381,7 @@ export const DOC_SECTIONS: DocSection[] = [
       },
       {
         kind: "keyvals",
-        caption: "The twelve operator pages",
+        caption: "The thirteen operator pages",
         rows: [
           { k: "/", v: "Overview — usage, spend, and recent audit events for the org's keys." },
           { k: "/keys", v: "Keys — virtual keys and their budgets; create one, with the secret shown exactly once." },
@@ -391,6 +391,7 @@ export const DOC_SECTIONS: DocSection[] = [
           { k: "/improve", v: "Improve — run the eval suite, review a proposed system prompt, approve or deny it." },
           { k: "/multiverse", v: "Multiverse — council objectives, member proposals, and the write-class calls they held back." },
           { k: "/operators", v: "Operators — create, enable, fire on demand, and inspect recent runs." },
+          { k: "/docs", v: "Docs — this handbook: capabilities, architecture, governance, and quickstart, rendered from static content." },
           { k: "/orgs", v: "Orgs — create orgs and adjust per-org rate limits. Requires org.view." },
           { k: "/users", v: "Users — invite and remove users within an org. Requires user.view." },
           { k: "/secrets", v: "Secrets — which secrets are configured, status only and never values; trigger a reload. Requires secret.view." },

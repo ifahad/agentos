@@ -2301,13 +2301,13 @@ cd console
 echo "--- no test may be .test.tsx (silently uncollected) ---"
 find src -name '*.test.tsx' | grep . && echo "FAIL" || echo "OK: none"
 echo "--- no Math.random in the docs feature ---"
-grep -rn 'Math.random' src/pages/docs src/pages/Docs.tsx && echo "FAIL" || echo "OK: none"
+grep -rnE 'Math\.random\(' src/pages/docs src/pages/Docs.tsx && echo "FAIL" || echo "OK: none"
 echo "--- no SMIL ---"
 grep -rnE '<animate|animateTransform|animateMotion' src && echo "FAIL" || echo "OK: none"
 echo "--- no light-theme rules ---"
 grep -rn 'prefers-color-scheme' src && echo "FAIL" || echo "OK: none"
-echo "--- the sidebar layoutId is not reused ---"
-grep -rn 'layoutId="nav-pill"' src | grep -v 'components/Sidebar.tsx' && echo "FAIL" || echo "OK"
+echo "--- the sidebar layoutId is not reused (code only; prose may name it) ---"
+grep -rn --include='*.tsx' 'layoutId="nav-pill"' src | grep -v 'components/Sidebar.tsx' && echo "FAIL" || echo "OK"
 echo "--- every docs class and keyframe is prefixed ---"
 grep -oE '^\.[a-z-]+|^@keyframes [a-z-]+' src/pages/Docs.css | grep -vE '^(\.docs-|@keyframes docs-)' || echo "OK: all prefixed"
 echo "--- the docs page issues no API calls and reads no adminKey ---"
@@ -2319,13 +2319,21 @@ Expected: every line reports OK. Fix anything that does not.
 
 Run:
 ```bash
-cd /home/iofahd/code/agentos
+cd "$(git rev-parse --show-toplevel)"
+echo "--- the files under test actually exist (a grep over zero files is not an all-clear) ---"
+test -f console/src/pages/docs/content.ts && test -f docs/architecture.md && echo "OK: found" || echo "FAIL: run this from the checkout that has the branch"
 echo "--- forbidden claims anywhere in the console content ---"
-grep -rniE 'sha256-pinned|every outcome|including denials|AGENTOS_GUARDRAIL_MODE' console/src/pages/docs && echo "FAIL" || echo "OK: none"
+grep -rniE 'sha256-pinned|every outcome|including denials|AGENTOS_GUARDRAIL_MODE' --exclude='*.test.ts' console/src/pages/docs && echo "FAIL" || echo "OK: none"
 echo "--- the pipeline order matches the docs ---"
 grep -rn 'guardrail' console/src/lib/chain.ts docs/architecture.md | head
 ```
-Expected: no forbidden claims; the stage vocabulary matches `docs/architecture.md`.
+Expected: the existence check reports `OK: found` **before** any `OK: none` is
+believed — `grep -r` over a missing directory exits nonzero, so the `|| echo
+"OK: none"` branch would otherwise report a clean result having searched
+nothing. `content.test.ts` is excluded because it quotes every forbidden
+phrase in order to assert its absence; those same phrases are enforced as real
+tests there, so this grep only has to cover the content sources. Then: no
+forbidden claims; the stage vocabulary matches `docs/architecture.md`.
 
 - [ ] **Step 4: Manual check in the running console**
 

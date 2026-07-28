@@ -261,8 +261,8 @@ for every machine-produced value (ids, counts, money, models, timestamps).
 Icons are hand-drawn schematic marks in `src/ui/icons.tsx` on a 16px grid — no
 icon library. The signature element is the **governance chain** in the topbar,
 which renders how far the most recent request actually got through
-auth → rbac → budget → rate → audit, derived from recorded audit statuses in
-`src/lib/chain.ts` rather than from a timer.
+auth → rate → budget → guardrail → upstream → audit, derived from recorded
+audit evidence in `src/lib/chain.ts` rather than from a timer.
 
 ```
 console/src/

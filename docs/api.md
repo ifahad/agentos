@@ -67,8 +67,10 @@ registered on the mux at all, so a gateway without SCIM configured reports
 
 ## Runtime API
 
-Every runtime route requires the `AGENTOS_RUNTIME_AUTH_TOKEN` bearer, with
-one deliberate exception:
+Every runtime route requires the `AGENTOS_RUNTIME_AUTH_TOKEN` bearer, with two
+deliberate exceptions — `GET /healthz`, so orchestrator probes need no
+credential, and the operator webhook below
+(`runtime/src/agentos_runtime/api.py`, `OPEN_PATHS` and `OPEN_PREFIXES`):
 
 **`POST /operators/webhooks/{token}` is exempt from the bearer.** The opaque
 `whk-` token in the path *is* the credential — an external system firing a
