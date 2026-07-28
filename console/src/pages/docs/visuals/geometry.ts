@@ -57,14 +57,26 @@ export interface LifecycleHop {
 }
 
 /**
- * viewBox is 0 0 640 190. Hops sit on a single rule at LIFECYCLE_RULE_Y; the
- * hop label sits above it at LIFECYCLE_LABEL_Y and the detail text sits below
- * it at LIFECYCLE_DETAIL_Y. Exported so the component reads these instead of
- * re-hardcoding 70/46/102 as JSX literals.
+ * Hops sit on a single rule at LIFECYCLE_RULE_Y; the hop label sits above it at
+ * LIFECYCLE_LABEL_Y and the detail text sits below it at LIFECYCLE_DETAIL_Y.
+ * Exported so the component reads these instead of re-hardcoding 70/46/102 as
+ * JSX literals.
+ *
+ * LIFECYCLE_VIEW_H is here for the same reason, and is not a free number: the
+ * drawing ends at the descender of the second detail line (baseline
+ * LIFECYCLE_DETAIL_Y + LIFECYCLE_DETAIL_LEAD = 114), and the tallest glyph
+ * above it starts a little under LIFECYCLE_LABEL_Y. At the 190 this was first
+ * authored at, 73 of the 190 units — 38% of the frame, ~80px on a 1280px
+ * viewport — were empty below the detail text, so the illustration sat in the
+ * top two-thirds of its own panel and read as if something had failed to draw.
+ * 150 leaves matched bands above and below, and still clears a third detail
+ * line (descender ~129) if a string ever grows.
  */
 export const LIFECYCLE_RULE_Y = 70;
 export const LIFECYCLE_LABEL_Y = 46;
 export const LIFECYCLE_DETAIL_Y = 102;
+export const LIFECYCLE_DETAIL_LEAD = 12;
+export const LIFECYCLE_VIEW_H = 150;
 
 export const LIFECYCLE_HOPS: LifecycleHop[] = [
   { id: "client", label: "client", detail: "presents an agos- virtual key", x: 56 },

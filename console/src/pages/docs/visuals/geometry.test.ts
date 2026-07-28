@@ -8,10 +8,12 @@ import {
   COUNCIL_MEMBERS,
   GOVERNANCE_FRAME_MS,
   GOVERNANCE_SCRIPT,
+  LIFECYCLE_DETAIL_LEAD,
   LIFECYCLE_DETAIL_Y,
   LIFECYCLE_HOPS,
   LIFECYCLE_LABEL_Y,
   LIFECYCLE_RULE_Y,
+  LIFECYCLE_VIEW_H,
   clearedCount,
 } from "./geometry";
 
@@ -165,9 +167,24 @@ describe("lifecycle geometry", () => {
     expect(LIFECYCLE_DETAIL_Y).toBeGreaterThan(LIFECYCLE_RULE_Y);
   });
 
-  it("keeps the rule's label and detail text inside the 640x190 viewBox", () => {
+  it("keeps the rule's label and detail text inside the viewBox", () => {
     expect(LIFECYCLE_LABEL_Y).toBeGreaterThanOrEqual(0);
-    expect(LIFECYCLE_DETAIL_Y).toBeLessThanOrEqual(190);
+    expect(LIFECYCLE_DETAIL_Y + LIFECYCLE_DETAIL_LEAD).toBeLessThanOrEqual(LIFECYCLE_VIEW_H);
+  });
+
+  /**
+   * Fitting is not framing. The first authored height was 190, which fit
+   * everything and still left 38% of the frame empty below the detail text —
+   * the drawing sat in the top two-thirds of its panel and read as a failed
+   * render. Nothing caught it, because every check asked only whether the
+   * content was inside the box.
+   *
+   * The band below the deepest text row must not exceed the band above the
+   * topmost one.
+   */
+  it("does not leave a dead band under the detail text", () => {
+    const below = LIFECYCLE_VIEW_H - (LIFECYCLE_DETAIL_Y + LIFECYCLE_DETAIL_LEAD);
+    expect(below).toBeLessThanOrEqual(LIFECYCLE_LABEL_Y);
   });
 });
 

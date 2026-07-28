@@ -1,15 +1,16 @@
 import {
+  LIFECYCLE_DETAIL_LEAD,
   LIFECYCLE_DETAIL_Y,
   LIFECYCLE_HOPS,
   LIFECYCLE_LABEL_Y,
   LIFECYCLE_RULE_Y,
+  LIFECYCLE_VIEW_H,
 } from "./geometry";
 import { Illustration } from "./Illustration";
 import { monoCharsInWidth, wrapMono } from "./text";
 
 const VIEW_W = 640;
 const DETAIL_SIZE = 10;
-const DETAIL_LEAD = 12;
 
 const FIRST_HOP = LIFECYCLE_HOPS[0];
 const LAST_HOP = LIFECYCLE_HOPS[LIFECYCLE_HOPS.length - 1];
@@ -46,7 +47,7 @@ export function RequestLifecycleVisual() {
     <Illustration diagram="requestLifecycle">
       <svg
         className="docs-svg"
-        viewBox="0 0 640 190"
+        viewBox={`0 0 ${VIEW_W} ${LIFECYCLE_VIEW_H}`}
         role="img"
         aria-label="A governed request: the client presents a virtual key, the gateway authorises, meters, screens and records it, the runtime runs the agent without holding a provider key, and a tool call is constrained inside the connector or sandbox."
       >
@@ -71,7 +72,7 @@ export function RequestLifecycleVisual() {
                 key={`${hop.id}-${li}`}
                 className="docs-node-sub"
                 x={hop.x}
-                y={LIFECYCLE_DETAIL_Y + li * DETAIL_LEAD}
+                y={LIFECYCLE_DETAIL_Y + li * LIFECYCLE_DETAIL_LEAD}
                 textAnchor="middle"
               >
                 {line}
