@@ -75,3 +75,83 @@ describe("blockToText", () => {
     expect(blockToText({ kind: "diagram", diagram: "architecture" })).toBe("");
   });
 });
+
+describe("taxonomy", () => {
+  it("matches the canonical section order shared with the GitHub docs", () => {
+    expect(DOC_SECTIONS.map((s) => s.id)).toEqual([
+      "overview",
+      "concepts",
+      "architecture",
+      "gateway",
+      "runtime",
+      "sandbox",
+      "connectors",
+      "console",
+      "quickstart",
+      "configuration",
+      "deploy",
+      "security",
+    ]);
+  });
+
+  it("titles match the canonical taxonomy verbatim", () => {
+    expect(DOC_SECTIONS.map((s) => s.title)).toEqual([
+      "Overview",
+      "Concepts & Glossary",
+      "Architecture",
+      "Gateway",
+      "Runtime",
+      "Sandbox",
+      "Connectors",
+      "Console",
+      "Quickstart",
+      "Configuration",
+      "Deploy",
+      "Security",
+    ]);
+  });
+});
+
+describe("visual placement", () => {
+  const diagramsIn = (id: string) =>
+    (DOC_SECTIONS.find((s) => s.id === id)?.blocks ?? [])
+      .filter((b) => b.kind === "diagram")
+      .map((b) => (b.kind === "diagram" ? b.diagram : ""));
+
+  it("binds each visual to its section", () => {
+    expect(diagramsIn("overview")).toContain("requestLifecycle");
+    expect(diagramsIn("architecture")).toContain("architecture");
+    expect(diagramsIn("gateway")).toContain("governanceChain");
+    expect(diagramsIn("runtime")).toContain("councilFanout");
+  });
+
+  it("uses every declared diagram at least once", () => {
+    const used = new Set(
+      DOC_SECTIONS.flatMap((s) => s.blocks)
+        .filter((b) => b.kind === "diagram")
+        .map((b) => (b.kind === "diagram" ? b.diagram : "")),
+    );
+    for (const key of DIAGRAM_KEYS) expect(used).toContain(key);
+  });
+});
+
+describe("content accuracy guards", () => {
+  const all = DOC_SECTIONS.flatMap((s) => s.blocks).map(blockToText).join(" ");
+
+  it("never claims skills are sha256-pinned", () => {
+    expect(all).not.toMatch(/sha256-pinned/i);
+  });
+
+  it("never claims every outcome or every denial is audited", () => {
+    expect(all).not.toMatch(/every outcome/i);
+    expect(all).not.toMatch(/including denials/i);
+  });
+
+  it("spells the guardrail variable with the plural GUARDRAILS", () => {
+    expect(all).not.toMatch(/AGENTOS_GUARDRAIL_MODE/);
+  });
+
+  it("never groups scim or oidc routes as role-checked", () => {
+    expect(all).not.toMatch(/RBAC[^.]*\/scim/i);
+  });
+});
