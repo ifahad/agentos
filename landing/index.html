@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="AgentOS — the governed operating layer for AI agents. Self-hosted, sovereign agents under budgets, rate limits, guardrails, and a complete audit trail.">
+  <meta name="description" content="AgentOS — the governed operating layer for AI agents. Self-hosted, sovereign agents under budgets, rate limits, guardrails, and an audit trail of everything served.">
   <title>AgentOS — the governed operating layer for AI agents</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%223%22 fill=%22%235ad1c4%22/%3E%3C/svg%3E">
 </head>
@@ -318,17 +318,17 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
   <header class="hero">
     <span class="kicker eyebrow"><span class="d"></span> Sovereign agentic platform</span>
     <h1>The governed operating layer for <em>AI agents</em>.</h1>
-    <p class="lead">Model-agnostic agents that run under budgets, rate limits, guardrails, and a complete audit trail — self-hosted, open, and yours. Nothing runs unauthorized, unattributed, or unrecorded.</p>
+    <p class="lead">Model-agnostic agents that run under budgets, optional rate limits and guardrails, and an audit record of every served call — self-hosted, open, and yours. Nothing runs unauthorized, unattributed, or unrecorded.</p>
     <div class="cta-row">
       <button class="btn btn-solid" onclick="document.getElementById('start').scrollIntoView()">Get started</button>
       <button class="btn" onclick="document.getElementById('governance').scrollIntoView()">See how governance works</button>
-      <span class="cta-note">docker compose up · runs air-gapped</span>
+      <span class="cta-note">docker compose up · air-gapped with local models</span>
     </div>
 
     <div class="chain-panel reveal">
       <div class="chain-head">
         <span class="eyebrow">Governance chain</span>
-        <span class="status"><span class="d"></span> Live</span>
+        <span class="status"><span class="d"></span> Simulated</span>
       </div>
       <div class="chain-body">
         <div class="chain">
@@ -356,10 +356,10 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     </div>
 
     <div class="readings reveal">
-      <div class="reading"><div class="n" id="rd-count">0</div><div class="k">requests governed</div></div>
-      <div class="reading"><div class="n" id="rd-spend">$0.00</div><div class="k">spend reserved</div></div>
-      <div class="reading"><div class="n" id="rd-p95">0 ms</div><div class="k">p95 latency</div></div>
-      <div class="reading"><div class="n" id="rd-audit">0</div><div class="k">audit rows</div></div>
+      <div class="reading"><div class="n" id="rd-count">0</div><div class="k">simulated requests</div></div>
+      <div class="reading"><div class="n" id="rd-spend">$0.00</div><div class="k">simulated spend</div></div>
+      <div class="reading"><div class="n" id="rd-p95">0 ms</div><div class="k">simulated p95</div></div>
+      <div class="reading"><div class="n" id="rd-audit">0</div><div class="k">simulated audit rows</div></div>
     </div>
   </header>
 
@@ -381,21 +381,21 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
         <div class="legend"><span class="id">Observability</span>
           <svg class="ic" width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square"><path d="M2.5 12.5a5.5 5.5 0 0 1 11 0"/><path d="M8 12.5 11.5 7"/></svg></div>
         <h3>See exactly what agents do</h3>
-        <p>OpenTelemetry traces, a bundled Langfuse profile, and a complete per-key audit log — every model call, tool call, and verdict, attributable.</p>
+        <p>OpenTelemetry traces, a bundled Langfuse profile, and a per-key audit log of every served model call — plus tool steps and council verdicts recorded in the runtime, all attributable.</p>
         <span class="tag"><span class="d live"></span> otel · langfuse · audit</span>
       </div>
       <div class="card reveal">
         <div class="legend"><span class="id">Evaluation</span>
           <svg class="ic" width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square"><path d="M3.5 2.5v11"/><path d="M3.5 5h9"/><path d="M3.5 8.5h6.5"/><path d="M3.5 12h8"/></svg></div>
         <h3>Score and gate performance</h3>
-        <p>Eval suites with an LLM judge measure agents against real cases, and a CI gate blocks a regression before it ships.</p>
+        <p>Eval suites with an LLM judge measure agents against real cases, and an opt-in CI gate fails a build that scores below your threshold.</p>
         <span class="tag"><span class="d ok"></span> llm-judge · ci gate</span>
       </div>
       <div class="card reveal">
         <div class="legend"><span class="id">Deployment</span>
           <svg class="ic" width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square"><circle cx="3.5" cy="8" r="1.5"/><circle cx="12.5" cy="4" r="1.5"/><circle cx="12.5" cy="12" r="1.5"/><path d="M5 7.3 11 4.6"/><path d="M5 8.7 11 11.4"/></svg></div>
         <h3>Ship and scale in production</h3>
-        <p>Docker Compose for a laptop, a Helm chart for a cluster — non-root images, dropped capabilities, and a hardened security context throughout.</p>
+        <p>Docker Compose for a laptop, a Helm chart for a cluster — non-root images and, in Helm, a hardened security context on the gateway, runtime, sandbox, console and connectors; the sandbox drops all capabilities on a read-only rootfs in both.</p>
         <span class="tag"><span class="d ok"></span> compose · helm · non-root</span>
       </div>
       <div class="card reveal">
@@ -425,17 +425,17 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
       <div class="card reveal">
         <div class="legend"><span class="id">Attributable</span><span class="mono" style="font-size:11px;color:var(--faint)">01</span></div>
         <h3>Every action has a name</h3>
-        <p>Virtual keys, orgs, and users mean each request is traced to who made it and what it cost — never an anonymous provider call.</p>
+        <p>Virtual keys and orgs mean each request is traced to the key and tenant that made it and what it cost — never an anonymous provider call.</p>
       </div>
       <div class="card reveal">
         <div class="legend"><span class="id">Bounded</span><span class="mono" style="font-size:11px;color:var(--faint)">02</span></div>
         <h3>Nothing runs unbounded</h3>
-        <p>Atomic budget reservation stops a fan-out from overrunning; cycle caps and a kill switch bound every autonomous run.</p>
+        <p>Atomic budget reservation stops a fan-out from overrunning; every autonomous run is bounded by a cycle cap, and the council carries a kill switch.</p>
       </div>
       <div class="card reveal">
         <div class="legend"><span class="id">Safe by default</span><span class="mono" style="font-size:11px;color:var(--faint)">03</span></div>
         <h3>Read freely, propose writes</h3>
-        <p>An unattended agent reads on its own but turns every write into a human-approved proposal — fail-closed, so an unknown tool is a write.</p>
+        <p>An unattended council member reads on its own but turns every write into a human-approved proposal — fail-closed, so an unknown tool is a write.</p>
       </div>
     </div>
   </section>
@@ -445,7 +445,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
       <div class="reveal">
         <span class="eyebrow" style="display:block;margin-bottom:14px">Multiverse council</span>
         <h2>Many models. One verdict. Honest dissent.</h2>
-        <p>Route one objective to a council of model-bound agents, each on a different frontier model. A judge synthesizes their answers into a single verdict — and reports where they disagreed, instead of averaging it away.</p>
+        <p>Route one objective to a council of model-bound agents, each on a different model — five local models out of the box, frontier models when you enable them. A judge synthesizes their answers into a single verdict — and reports where they disagreed, instead of averaging it away.</p>
         <ul>
           <li><span class="m">/</span> Call the whole council behind one OpenAI-compatible model name.</li>
           <li><span class="m">/</span> Quorum and failure isolation — one bad vendor never denies the verdict.</li>
@@ -456,10 +456,10 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
         <div class="viz-head">council/multiverse · quorum met</div>
         <div class="viz-body">
           <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">A</span><div class="mid"><div class="a">alpha</div><div class="b">moonshot/kimi-k3</div></div><span class="pill ok">answered</span></div>
-          <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">B</span><div class="mid"><div class="a">beta</div><div class="b">deepseek/deepseek-v4</div></div><span class="pill ok">answered</span></div>
+          <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">B</span><div class="mid"><div class="a">beta</div><div class="b">deepseek/deepseek-v4-pro</div></div><span class="pill ok">answered</span></div>
           <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">C</span><div class="mid"><div class="a">gamma</div><div class="b">alibaba/qwen3.8-max</div></div><span class="pill hold">dissent</span></div>
           <div class="verdict">
-            <div class="vh"><span class="pill ok">unanimous · 0.67</span><span class="eyebrow">verdict</span></div>
+            <div class="vh"><span class="pill ok">converged · agreement 0.67</span><span class="eyebrow">verdict</span></div>
             <div class="va">Riyadh owes 4,200 SAR across two open invoices.</div>
           </div>
         </div>
@@ -470,7 +470,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
       <div class="reveal">
         <span class="eyebrow" style="display:block;margin-bottom:14px">Operators</span>
         <h2>Governed autonomy — on a schedule, or a webhook.</h2>
-        <p>Standing objectives the runtime pursues on its own: fire on an interval, a cron schedule, or an inbound webhook. Every run is governed, bounded by a cycle cap, and a write pauses for a human. The scheduler is opt-in and off by default.</p>
+        <p>Standing objectives the runtime pursues on its own: fire on an interval, a cron schedule, or an inbound webhook. Every run is governed and bounded by a cycle cap, and any tool you put on the approval list pauses for a human. The scheduler is opt-in and off by default.</p>
         <ul>
           <li><span class="m">/</span> interval · cron · webhook triggers toward stored objectives.</li>
           <li><span class="m">/</span> A run that needs approval is recorded, never auto-resumed.</li>
@@ -481,7 +481,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
         <div class="viz-head">operators · run history</div>
         <div class="viz-body">
           <div class="member"><span class="pill ok">completed</span><div class="mid"><div class="a">nightly invoice report</div><div class="b">cron 0 9 * * * · 4 cycles</div></div></div>
-          <div class="member"><span class="pill hold">needs approval</span><div class="mid"><div class="a">reconcile ledger</div><div class="b">webhook · sql.write held</div></div></div>
+          <div class="member"><span class="pill hold">needs approval</span><div class="mid"><div class="a">reconcile ledger</div><div class="b">webhook · run_command held</div></div></div>
           <div class="member"><span class="pill ok">completed</span><div class="mid"><div class="a">pending orders</div><div class="b">every 300s · answered: 4</div></div></div>
         </div>
       </div>
@@ -509,7 +509,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
       <h2>Your agents. Your keys. Your infrastructure.</h2>
     </div>
     <div class="grid2">
-      <div class="claim reveal"><h4><span class="m">✳</span> Zero external services</h4><p>The whole platform runs on your own hardware — gateway, runtime, sandbox, database. No third party sees your prompts or usage.</p></div>
+      <div class="claim reveal"><h4><span class="m">✳</span> Zero external services</h4><p>The whole platform runs on your own hardware — gateway, runtime, sandbox, database. Point it at local models and no third party sees a prompt.</p></div>
       <div class="claim reveal"><h4><span class="m">✳</span> Runs air-gapped</h4><p>Local models mean a full five-model council answers at $0 with no internet at all. Bring frontier keys when you want them.</p></div>
       <div class="claim reveal"><h4><span class="m">✳</span> Credentials never leave</h4><p>Provider keys live in the gateway behind a pluggable secrets backend — env, encrypted file, or Vault — and the runtime never holds one.</p></div>
     </div>
@@ -520,7 +520,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
   <section class="final" id="start">
     <span class="eyebrow" style="display:block;margin-bottom:18px">Get started</span>
     <h2>Stand up a governed agent platform in one command.</h2>
-    <p>Clone the repo, <span class="mono" style="color:var(--ink)">docker compose up</span>, and open the console. Everything on this page runs locally, at zero cost, on your own machine.</p>
+    <p>Clone the repo, <span class="mono" style="color:var(--ink)">docker compose up</span>, and open the console. Point it at a local Ollama and the whole stack — including the five-model council — runs on your machine at $0.</p>
     <div class="cta-row">
       <button class="btn btn-solid" onclick="copyCmd(this)">docker compose up -d</button>
       <button class="btn" onclick="document.getElementById('platform').scrollIntoView()">Explore the platform</button>
@@ -560,7 +560,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
 
   window.copyCmd = function(btn){
     var t = btn.textContent;
-    navigator.clipboard && navigator.clipboard.writeText('git clone && cd agentos/deploy && docker compose up -d');
+    navigator.clipboard && navigator.clipboard.writeText('git clone <repo-url> agentos && cd agentos/deploy && cp .env.example .env && docker compose up -d');
     var o = btn.textContent; btn.textContent = 'copied ✓';
     setTimeout(function(){ btn.textContent = o; }, 1400);
   };
@@ -602,7 +602,10 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
 
   function updateReadings(r) {
     requestCount += 1;
-    auditRows += 1;
+    // A budget denial (402) is the one settled outcome the gateway writes no
+    // audit row for -- rbac.go returns before recordAudit. Rate (429) and
+    // guardrail (400) denials and upstream holds (502) are all audited.
+    if (!(r.outcome === 'deny' && r.stop === 2)) auditRows += 1;
     if (r.outcome === 'ok') spend += r.cost;
     latencies.push(r.latency);
     if (latencies.length > LAT_WINDOW) latencies.shift();
@@ -620,7 +623,11 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
 
     var text = document.createElement('span');
     text.className = 'mono';
-    text.textContent = r.model + ' · ' + r.org + ' · ' + r.tokens + ' tok · ' + fmtMoney(r.cost);
+    // Only a served request has tokens and a cost: the gateway records zero on
+    // every deny kind and on an upstream failure, so the feed must too.
+    text.textContent = r.outcome === 'ok'
+      ? r.model + ' · ' + r.org + ' · ' + r.tokens + ' tok · ' + fmtMoney(r.cost)
+      : r.model + ' · ' + r.org + ' · 0 tok · $0.00';
 
     var chip = document.createElement('span');
     chip.className = 'pill ' + r.outcome;
@@ -831,10 +838,10 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
   var RUNS = [
     { a: 'weekly usage digest', b: 'cron 0 8 * * mon · 3 cycles' },
     { a: 'stale ticket sweep', b: 'every 900s · answered: 6' },
-    { a: 'vendor sync', b: 'webhook · sql.write held' },
+    { a: 'vendor sync', b: 'webhook · run_command held' },
     { a: 'renewal reminders', b: 'cron 0 7 * * * · 2 cycles' },
     { a: 'kb reindex', b: 'every 1800s · answered: 1' },
-    { a: 'expense audit', b: 'webhook · fs.write held' },
+    { a: 'expense audit', b: 'webhook · query held' },
   ];
 
   function tick() {
