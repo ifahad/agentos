@@ -222,9 +222,9 @@ The topbar `Chain` (`/admin/audit?limit=100`, 5000 ms) and the Sidebar live-dot 
 | `console/src/components/Chain.tsx` | `STAGE_LABELS`, `STAGE_TITLES` for six stages (Task 1) |
 | `console/src/pages/Improve.tsx` | One env-var name (Task 2) |
 | `console/nginx.conf.template` | One comment (Task 2) |
-| `console/src/ui/icons.tsx` | Add `"docs"` to `IconName` + a `GLYPHS` entry (Task 11) |
-| `console/src/App.tsx` | Import `Docs`, add the `ROUTES` entry (Task 11) |
-| `README.md`, `docs/console.md` | Link and describe the Docs tab (Task 12) |
+| `console/src/ui/icons.tsx` | Add `"docs"` to `IconName` + a `GLYPHS` entry (Task 3) |
+| `console/src/App.tsx` | Import `Docs`, add the `ROUTES` entry (Task 9) |
+| `README.md`, `docs/console.md` | Link and describe the Docs tab (Task 10) |
 
 ---
 
@@ -476,11 +476,12 @@ git commit -m "fix(console): correct the checkpoint env var and the runtime-auth
 
 ---
 
-## Task 3: Content model, diagram keys, and the pure text helper
+## Task 3: The docs icon, content model, diagram keys, and the pure text helper
 
 Everything testable about the Docs tab lives here, in modules with no React import, so the node-environment suite can exercise it.
 
 **Files:**
+- Modify: `console/src/ui/icons.tsx` (add `"docs"` to `IconName` + a `GLYPHS` entry)
 - Create: `console/src/pages/docs/types.ts`
 - Create: `console/src/pages/docs/visuals/keys.ts`
 - Test: `console/src/pages/docs/content.test.ts` (created here with a seed, extended in Task 4)
@@ -497,7 +498,28 @@ Everything testable about the Docs tab lives here, in modules with no React impo
   - `const DIAGRAM_META: Record<DiagramKey, { title: string; marker: string; usesStateHues: boolean }>`
   - `const DOC_SECTIONS: DocSection[]`
 
-- [ ] **Step 1: Write `console/src/pages/docs/visuals/keys.ts`**
+- [ ] **Step 1: Add the `docs` icon**
+
+The content model types `DocSection.icon` as `IconName`, and Task 4 authors a section that uses `"docs"`. Adding the glyph here rather than later keeps every task's `npx tsc` gate absolute — no task in this plan is allowed to finish on a known type error.
+
+In `console/src/ui/icons.tsx`, add `| "docs"` to the `IconName` union, keeping the union's existing formatting. Then add to `GLYPHS`, following the file's idiom — a prose comment explaining the shape and why it is not the neighbouring glyph, then the entry:
+
+```tsx
+  // An open manual: one spine, two leaves. Deliberately not `documents`, which
+  // is two offset sheets — a corpus you search. This is a book you read, so the
+  // silhouette differs at the outline, not in a corner fold.
+  docs: (
+    <>
+      <path d="M8 4.5 2.5 3.5v8L8 13" />
+      <path d="M8 4.5 13.5 3.5v8L8 13" />
+      <path d="M8 4.5v8.5" />
+    </>
+  ),
+```
+
+Every coordinate is a whole or half unit inside the 2…14 band. The glyph sets no `stroke`, `fill`, `width`, or `viewBox` — the wrapper supplies all four. `GLYPHS` is `Record<IconName, JSX.Element>`, so adding the union member without the entry is a `tsc` error and vice versa; do both together.
+
+- [ ] **Step 2: Write `console/src/pages/docs/visuals/keys.ts`**
 
 Pure module — no React, no JSX, so a test may import it freely.
 
@@ -549,7 +571,7 @@ export const DIAGRAM_META: Record<
 };
 ```
 
-- [ ] **Step 2: Write `console/src/pages/docs/types.ts`**
+- [ ] **Step 3: Write `console/src/pages/docs/types.ts`**
 
 ```ts
 import type { IconName } from "../../ui/icons";
@@ -602,7 +624,7 @@ export function blockToText(block: DocBlock): string {
 
 `lang` is **metadata only** — a mono label on the block. There is no syntax highlighting and no dependency may be added for it.
 
-- [ ] **Step 3: Seed `console/src/pages/docs/content.ts`**
+- [ ] **Step 4: Seed `console/src/pages/docs/content.ts`**
 
 Two sections only; Task 4 fills the rest. This exists so the tests in Step 4 have something real to run against.
 
@@ -633,7 +655,7 @@ export const DOC_SECTIONS: DocSection[] = [
 ];
 ```
 
-- [ ] **Step 4: Write the failing invariant tests**
+- [ ] **Step 5: Write the failing invariant tests**
 
 `console/src/pages/docs/content.test.ts`:
 
@@ -717,22 +739,22 @@ describe("blockToText", () => {
 });
 ```
 
-- [ ] **Step 5: Run to verify they pass**
+- [ ] **Step 6: Run to verify they pass**
 
 Run: `cd console && npx vitest run src/pages/docs/content.test.ts`
 Expected: PASS. (These are invariants over data that already satisfies them — the value is that they fail the moment Task 4's authoring breaks one.)
 
-- [ ] **Step 6: Type-check**
+- [ ] **Step 7: Type-check**
 
 Run: `cd console && npx tsc`
-Expected: no output. A common failure here is an unused import in the test — `noUnusedLocals` is on and test files are type-checked.
+Expected: **no output at all** — the `docs` glyph added in Step 1 means there is no known-pending error anywhere in this plan. A common failure here is an unused import in the test — `noUnusedLocals` is on and test files are type-checked.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add console/src/pages/docs/types.ts console/src/pages/docs/content.ts \
+git add console/src/ui/icons.tsx console/src/pages/docs/types.ts console/src/pages/docs/content.ts \
         console/src/pages/docs/content.test.ts console/src/pages/docs/visuals/keys.ts
-git commit -m "feat(console): add the docs content model, diagram keys, and invariants"
+git commit -m "feat(console): add the docs glyph, content model, diagram keys, and invariants"
 ```
 
 ---
@@ -747,7 +769,7 @@ The content itself. It must agree with the GitHub docs W1 shipped — those are 
 
 **Interfaces:**
 - Consumes: `DocSection`, `DocBlock` from `./types`; `DiagramKey` from `./visuals/keys`.
-- Produces: the finished `DOC_SECTIONS`. Task 9's renderer and Task 10's page consume it.
+- Produces: the finished `DOC_SECTIONS`. Task 7's renderer and Task 8's page consume it.
 
 **Source of truth for the prose:** read these before authoring, and do not contradict them — `README.md`, `docs/concepts.md`, `docs/architecture.md`, `docs/api.md`, `docs/console.md`, `docs/configuration.md`, `docs/deployment.md`, `docs/operations.md`, `SECURITY.md`.
 
@@ -770,7 +792,7 @@ The order and titles are the canonical taxonomy and are asserted by a test in St
 | 11 | `deploy` | `Deploy` | `export` | Compose → Helm → CI; the connector deployment tiers |
 | 12 | `security` | `Security` | `audit` | trust boundaries; fail-open vs fail-closed; residual risk |
 
-`icon` values must be existing `IconName` members except `docs`, which Task 11 adds. Authoring this before Task 11 means `tsc` will error on `"docs"` until Task 11 lands — that is expected; run `npx vitest run` in this task and defer the clean `npx tsc` to Task 11. Note it in your report.
+`icon` values must be existing `IconName` members. `docs` was added to the union in Task 3, so every value in the table above already compiles — **`npx tsc` must be silent in this task like every other.**
 
 **Facts that must appear and must be exactly right** (each was corrected during W1 after being found wrong; getting one wrong here re-introduces the defect into the product UI):
 
@@ -899,7 +921,7 @@ All coordinates and every animation timeline live in one pure module so they can
 
 **Interfaces:**
 - Consumes: `CHAIN_STAGES`, `ChainStage` from `../../../lib/chain` (Task 1).
-- Produces: `ARCH_NODES`, `ARCH_EDGES`, `ARCH_PULSE_PATH`, `LIFECYCLE_HOPS`, `COUNCIL_MEMBERS`, `GOVERNANCE_SCRIPT`, `GOVERNANCE_FRAME_MS`, and `type GovernanceFrame`. Tasks 6–8 import these.
+- Produces: `ARCH_NODES`, `ARCH_EDGES`, `ARCH_PULSE_PATH`, `LIFECYCLE_HOPS`, `COUNCIL_MEMBERS`, `GOVERNANCE_SCRIPT`, `GOVERNANCE_FRAME_MS`, and `type GovernanceFrame`. Task 6 imports these.
 
 - [ ] **Step 1: Write the module**
 
@@ -1128,20 +1150,24 @@ git commit -m "feat(console): add docs visual geometry and the governance script
 
 ---
 
-## Task 6: The illustration frame, the registry, and the architecture visual
+## Task 6: The illustration frame and all four visuals
+
+Built as one task so the registry is complete the moment it exists — no placeholder entry ever reaches a commit.
 
 **Files:**
 - Create: `console/src/pages/docs/visuals/Illustration.tsx`
 - Create: `console/src/pages/docs/visuals/ArchitectureVisual.tsx`
+- Create: `console/src/pages/docs/visuals/GovernanceChainVisual.tsx`
+- Create: `console/src/pages/docs/visuals/RequestLifecycleVisual.tsx`
+- Create: `console/src/pages/docs/visuals/CouncilFanoutVisual.tsx`
 - Create: `console/src/pages/docs/visuals/registry.tsx`
-- Create: `console/src/pages/Docs.css` (the visual rules; layout rules are added in Task 10)
+- Create: `console/src/pages/Docs.css` (visual rules; layout rules are added with the page)
 
 **Interfaces:**
-- Consumes: `DIAGRAM_META`, `DiagramKey` from `./keys`; `ARCH_NODES`, `ARCH_EDGES`, `ARCH_PULSE_PATH` from `./geometry`.
-- Produces:
-  - `Illustration({ diagram, children }: { diagram: DiagramKey; children: ReactNode })`
-  - `ArchitectureVisual(): JSX.Element`
-  - `DIAGRAM_REGISTRY: Record<DiagramKey, () => JSX.Element>` — Tasks 7–9 add entries and consume it.
+- Consumes: `DIAGRAM_META`, `DiagramKey` from `./keys`; `ARCH_NODES`, `ARCH_EDGES`, `ARCH_PULSE_PATH`, `LIFECYCLE_HOPS`, `COUNCIL_MEMBERS`, `GOVERNANCE_SCRIPT`, `GOVERNANCE_FRAME_MS`, `clearedCount` from `./geometry`; `CHAIN_STAGES` from `../../../lib/chain` (Task 1 — the corrected list).
+- Produces: `Illustration({ diagram, children })`, `ArchitectureVisual()`, `GovernanceChainVisual()`, `RequestLifecycleVisual()`, `CouncilFanoutVisual()`, and `DIAGRAM_REGISTRY: Record<DiagramKey, () => JSX.Element>` — complete, with every key bound to its own component. The block renderer consumes the registry.
+
+**Write the components first and `registry.tsx` last** — it imports all four, so writing it early would force a placeholder.
 
 - [ ] **Step 1: Write `Illustration.tsx`**
 
@@ -1233,29 +1259,228 @@ The `<g>` element is permitted here — the no-`<g>` rule in **R8** applies to 1
 
 The two notes are rendered at fixed coordinates rather than mapped, because each needs its own placement and there are exactly two. Do **not** replace this with a `.filter(e => e.note).map(...)` — that stacks both strings at one point.
 
-- [ ] **Step 3: Write `registry.tsx`**
+- [ ] **Step 3: Write the component**
+
+```tsx
+import { useEffect, useState } from "react";
+import { useReducedMotion } from "framer-motion";
+import { CHAIN_STAGES } from "../../../lib/chain";
+import { GOVERNANCE_FRAME_MS, GOVERNANCE_SCRIPT, clearedCount } from "./geometry";
+import { Illustration } from "./Illustration";
+
+/**
+ * The gateway's real /v1/* pipeline, stepped through a fixed script.
+ *
+ * Deliberately NOT the topbar chain: that one is lit by recorded audit statuses
+ * and is evidence. This one is a scripted illustration, so it is drawn larger,
+ * captioned, and marked as such. It shares CHAIN_STAGES with the instrument so
+ * the two can never drift apart on what the stages are.
+ */
+export function GovernanceChainVisual() {
+  const reduced = useReducedMotion();
+  const [frameIndex, setFrameIndex] = useState(0);
+
+  useEffect(() => {
+    // Never start the timer under reduced motion: the global CSS cap does not
+    // touch JS intervals, and a still is the whole point there.
+    if (reduced) return;
+
+    let id: number | undefined;
+    const start = () => {
+      if (id === undefined) {
+        id = window.setInterval(() => {
+          setFrameIndex((i) => (i + 1) % GOVERNANCE_SCRIPT.length);
+        }, GOVERNANCE_FRAME_MS);
+      }
+    };
+    const stop = () => {
+      if (id !== undefined) {
+        window.clearInterval(id);
+        id = undefined;
+      }
+    };
+    // installVisibilityPause only pauses live-resource polls, not our timers.
+    const onVisibility = () => (document.hidden ? stop() : start());
+
+    start();
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      stop();
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [reduced]);
+
+  // Under reduced motion, show the frame that teaches the most: a denial, so the
+  // "stages after the halt stay unlit" rule is visible in the still.
+  const frame = reduced
+    ? (GOVERNANCE_SCRIPT.find((f) => f.stoppedAt !== null) ?? GOVERNANCE_SCRIPT[0])
+    : GOVERNANCE_SCRIPT[frameIndex];
+  const cleared = clearedCount(frame);
+
+  return (
+    <Illustration diagram="governanceChain">
+      <ol className="docs-chain" data-outcome={frame.outcome}>
+        {CHAIN_STAGES.map((stage, i) => {
+          const render =
+            frame.stoppedAt === stage ? "stopped" : i < cleared ? "cleared" : "unlit";
+          return (
+            <li key={stage} className="docs-chain-stage" data-render={render}>
+              <span className="docs-chain-node" aria-hidden />
+              <span className="docs-chain-label mono">{stage}</span>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="docs-chain-caption mono" aria-live="off">
+        {frame.caption}
+      </p>
+    </Illustration>
+  );
+}
+```
+
+Note `aria-live="off"`: this is a decorative loop, and announcing every frame to a screen reader would be noise. The `Illustration` marker plus the `role="img"` label on the sibling visuals carry the accessible meaning.
+
+- [ ] **Step 4: Write `RequestLifecycleVisual.tsx`**
+
+Four hops on a rule, each with a callout naming what it clears. The callouts carry the corrected governance facts.
+
+```tsx
+import { LIFECYCLE_HOPS } from "./geometry";
+import { Illustration } from "./Illustration";
+
+export function RequestLifecycleVisual() {
+  return (
+    <Illustration diagram="requestLifecycle">
+      <svg
+        className="docs-svg"
+        viewBox="0 0 640 190"
+        role="img"
+        aria-label="A governed request: the client presents a virtual key, the gateway authorises, meters, screens and records it, the runtime runs the agent without holding a provider key, and a tool call is constrained inside the connector or sandbox."
+      >
+        <path className="docs-edge" d="M56 70H568" />
+
+        {LIFECYCLE_HOPS.map((hop, i) => (
+          <g key={hop.id} className="docs-hop" style={{ animationDelay: `${i * 80}ms` }}>
+            <circle className="docs-hop-node" cx={hop.x} cy="70" r="6" />
+            <text className="docs-node-label" x={hop.x} y="46" textAnchor="middle">
+              {hop.label}
+            </text>
+            <text className="docs-node-sub" x={hop.x} y="102" textAnchor="middle">
+              {hop.detail}
+            </text>
+          </g>
+        ))}
+      </svg>
+
+      <ul className="docs-callouts">
+        <li>
+          Denials are not all recorded. Among refusals only rate-limit rejections and guardrail
+          events reach the audit log — a 401, a 400, and a 402 budget exhaustion do not.
+        </li>
+        <li>
+          The budget hold fails open only on a store error, and unlike the guardrail&apos;s
+          <span className="mono"> guardrail_error</span> that admission leaves no audit entry.
+        </li>
+        <li>
+          The guardrail stage exists only when <span className="mono">AGENTOS_GUARDRAILS_MODE</span>{" "}
+          is not <span className="mono">off</span>; <span className="mono">/v1/embeddings</span> runs
+          the same chain without it.
+        </li>
+      </ul>
+    </Illustration>
+  );
+}
+```
+
+- [ ] **Step 5: Write `CouncilFanoutVisual.tsx`**
+
+```tsx
+import { COUNCIL_MEMBERS } from "./geometry";
+import { Illustration } from "./Illustration";
+
+export function CouncilFanoutVisual() {
+  return (
+    <Illustration diagram="councilFanout">
+      <svg
+        className="docs-svg"
+        viewBox="0 0 640 260"
+        role="img"
+        aria-label="One objective fans out to five model-bound members; a judge synthesises a single verdict and an explicit dissent report."
+      >
+        <rect className="docs-node-box" x="16" y="112" width="104" height="44" rx="4" />
+        <text className="docs-node-label" x="28" y="139">
+          objective
+        </text>
+
+        {COUNCIL_MEMBERS.map((m, i) => (
+          <g key={m.id} className="docs-hop" style={{ animationDelay: `${i * 60}ms` }}>
+            <path className="docs-edge" d={`M120 134C180 134 180 ${m.y + 16} 240 ${m.y + 16}`} />
+            <rect className="docs-node-box" x="240" y={m.y} width="120" height="32" rx="4" />
+            <text className="docs-node-label" x="252" y={m.y + 21}>
+              {m.label}
+            </text>
+            <path className="docs-edge" d={`M360 ${m.y + 16}C400 ${m.y + 16} 400 134 430 134`} />
+          </g>
+        ))}
+
+        <rect className="docs-node-box" x="430" y="112" width="88" height="44" rx="4" />
+        <text className="docs-node-label" x="442" y="139">
+          judge
+        </text>
+
+        <path className="docs-edge" d="M518 134H556" />
+        <rect className="docs-node-box" x="556" y="98" width="72" height="34" rx="4" />
+        <text className="docs-node-sub" x="566" y="119">
+          verdict
+        </text>
+        <rect className="docs-node-box" x="556" y="140" width="72" height="34" rx="4" />
+        <text className="docs-node-sub" x="566" y="161">
+          dissent
+        </text>
+      </svg>
+
+      <ul className="docs-callouts">
+        <li>
+          Disagreement is recorded, not averaged away — the dissent report ships beside the verdict.
+        </li>
+        <li>
+          Write-class tool calls become human-approved proposals. That gating is enforced in-graph
+          for <span className="mono">react</span>-profile members; <span className="mono">deep</span>
+          -profile members are held to an explicit read-only tool allowlist instead, because
+          deepagents exposes no interrupt point.
+        </li>
+      </ul>
+    </Illustration>
+  );
+}
+```
+
+- [ ] **Step 6: Write `registry.tsx` — complete, no placeholders**
+
+Now that all four components exist, write the registry in one go:
+
+```tsx
+export const DIAGRAM_REGISTRY: Record<DiagramKey, () => JSX.Element> = {
+  architecture: ArchitectureVisual,
+  governanceChain: GovernanceChainVisual,
+  requestLifecycle: RequestLifecycleVisual,
+  councilFanout: CouncilFanoutVisual,
+};
+```
 
 ```tsx
 import type { JSX } from "react";
 import { ArchitectureVisual } from "./ArchitectureVisual";
+import { CouncilFanoutVisual } from "./CouncilFanoutVisual";
+import { GovernanceChainVisual } from "./GovernanceChainVisual";
+import { RequestLifecycleVisual } from "./RequestLifecycleVisual";
 import type { DiagramKey } from "./keys";
-
-/**
- * Compile-enforced completeness: this is `Record<DiagramKey, …>`, so adding a key
- * to DIAGRAM_KEYS without a component here is a tsc error, and a `diagram` block
- * can never name a visual that does not exist.
- */
-export const DIAGRAM_REGISTRY: Record<DiagramKey, () => JSX.Element> = {
-  architecture: ArchitectureVisual,
-  governanceChain: ArchitectureVisual,
-  requestLifecycle: ArchitectureVisual,
-  councilFanout: ArchitectureVisual,
-};
 ```
 
-The three placeholder entries are replaced in Tasks 7 and 8. **Say so in a `// TODO(W2 Task 7/8)` comment on each placeholder line** so a reviewer can see they are deliberate, and remove the comments as they are replaced.
+Compile-enforced completeness: the type is `Record<DiagramKey, …>`, so adding a key to `DIAGRAM_KEYS` without a component here is a `tsc` error, and a `diagram` block can never name a visual that does not exist. **No placeholder entry and no `TODO` comment may appear in this file at any point.**
 
-- [ ] **Step 4: Write the visual rules in `Docs.css`**
+- [ ] **Step 7: Write the visual rules in `Docs.css`**
 
 Create the file with this content. Layout rules are appended in Task 10.
 
@@ -1390,122 +1615,7 @@ Create the file with this content. Layout rules are appended in Task 10.
 }
 ```
 
-- [ ] **Step 5: Type-check**
-
-Run: `cd console && npx tsc`
-Expected: an error only on `content.ts`'s `"docs"` icon name, which Task 11 resolves. **No error may originate in any file this task created.** If one does, fix it.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add console/src/pages/docs/visuals/Illustration.tsx \
-        console/src/pages/docs/visuals/ArchitectureVisual.tsx \
-        console/src/pages/docs/visuals/registry.tsx console/src/pages/Docs.css
-git commit -m "feat(console): add the docs illustration frame and architecture visual"
-```
-
----
-
-## Task 7: The governance chain visual
-
-The only visual with a running timer, and the one that sits closest to a live instrument — so it carries the strictest rules.
-
-**Files:**
-- Create: `console/src/pages/docs/visuals/GovernanceChainVisual.tsx`
-- Modify: `console/src/pages/docs/visuals/registry.tsx` (replace the placeholder)
-- Modify: `console/src/pages/Docs.css` (append the conveyor rules)
-
-**Interfaces:**
-- Consumes: `CHAIN_STAGES` from `../../../lib/chain` (Task 1 — the corrected list); `GOVERNANCE_SCRIPT`, `GOVERNANCE_FRAME_MS`, `clearedCount` from `./geometry`.
-- Produces: `GovernanceChainVisual(): JSX.Element`.
-
-- [ ] **Step 1: Write the component**
-
-```tsx
-import { useEffect, useState } from "react";
-import { useReducedMotion } from "framer-motion";
-import { CHAIN_STAGES } from "../../../lib/chain";
-import { GOVERNANCE_FRAME_MS, GOVERNANCE_SCRIPT, clearedCount } from "./geometry";
-import { Illustration } from "./Illustration";
-
-/**
- * The gateway's real /v1/* pipeline, stepped through a fixed script.
- *
- * Deliberately NOT the topbar chain: that one is lit by recorded audit statuses
- * and is evidence. This one is a scripted illustration, so it is drawn larger,
- * captioned, and marked as such. It shares CHAIN_STAGES with the instrument so
- * the two can never drift apart on what the stages are.
- */
-export function GovernanceChainVisual() {
-  const reduced = useReducedMotion();
-  const [frameIndex, setFrameIndex] = useState(0);
-
-  useEffect(() => {
-    // Never start the timer under reduced motion: the global CSS cap does not
-    // touch JS intervals, and a still is the whole point there.
-    if (reduced) return;
-
-    let id: number | undefined;
-    const start = () => {
-      if (id === undefined) {
-        id = window.setInterval(() => {
-          setFrameIndex((i) => (i + 1) % GOVERNANCE_SCRIPT.length);
-        }, GOVERNANCE_FRAME_MS);
-      }
-    };
-    const stop = () => {
-      if (id !== undefined) {
-        window.clearInterval(id);
-        id = undefined;
-      }
-    };
-    // installVisibilityPause only pauses live-resource polls, not our timers.
-    const onVisibility = () => (document.hidden ? stop() : start());
-
-    start();
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      stop();
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [reduced]);
-
-  // Under reduced motion, show the frame that teaches the most: a denial, so the
-  // "stages after the halt stay unlit" rule is visible in the still.
-  const frame = reduced
-    ? (GOVERNANCE_SCRIPT.find((f) => f.stoppedAt !== null) ?? GOVERNANCE_SCRIPT[0])
-    : GOVERNANCE_SCRIPT[frameIndex];
-  const cleared = clearedCount(frame);
-
-  return (
-    <Illustration diagram="governanceChain">
-      <ol className="docs-chain" data-outcome={frame.outcome}>
-        {CHAIN_STAGES.map((stage, i) => {
-          const render =
-            frame.stoppedAt === stage ? "stopped" : i < cleared ? "cleared" : "unlit";
-          return (
-            <li key={stage} className="docs-chain-stage" data-render={render}>
-              <span className="docs-chain-node" aria-hidden />
-              <span className="docs-chain-label mono">{stage}</span>
-            </li>
-          );
-        })}
-      </ol>
-      <p className="docs-chain-caption mono" aria-live="off">
-        {frame.caption}
-      </p>
-    </Illustration>
-  );
-}
-```
-
-Note `aria-live="off"`: this is a decorative loop, and announcing every frame to a screen reader would be noise. The `Illustration` marker plus the `role="img"` label on the sibling visuals carry the accessible meaning.
-
-- [ ] **Step 2: Replace the registry placeholder**
-
-In `registry.tsx`, import `GovernanceChainVisual` and set `governanceChain: GovernanceChainVisual`. Remove that line's `TODO` comment.
-
-- [ ] **Step 3: Append the conveyor rules to `Docs.css`**
+- [ ] **Step 8: Append the conveyor rules to `Docs.css`**
 
 ```css
 /* ---- governance conveyor ----
@@ -1613,166 +1723,7 @@ In `registry.tsx`, import `GovernanceChainVisual` and set `governanceChain: Gove
 
 A clean pass leaves the cleared nodes graphite — **do not** light the whole chain green on success. The shipped instrument's rule is that nothing needing attention stays quiet, and contradicting it here would teach the wrong reading of the real one.
 
-- [ ] **Step 4: Type-check and test**
-
-Run: `cd console && npx tsc && npx vitest run`
-Expected: `tsc` clean except the known `"docs"` icon error; all tests pass.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add console/src/pages/docs/visuals/GovernanceChainVisual.tsx \
-        console/src/pages/docs/visuals/registry.tsx console/src/pages/Docs.css
-git commit -m "feat(console): add the governance chain docs visual"
-```
-
----
-
-## Task 8: The request-lifecycle and council-fanout visuals
-
-Both are static structure with a gentle reveal — no timers, no intervals.
-
-**Files:**
-- Create: `console/src/pages/docs/visuals/RequestLifecycleVisual.tsx`
-- Create: `console/src/pages/docs/visuals/CouncilFanoutVisual.tsx`
-- Modify: `console/src/pages/docs/visuals/registry.tsx` (replace the last two placeholders)
-- Modify: `console/src/pages/Docs.css` (append)
-
-**Interfaces:**
-- Consumes: `LIFECYCLE_HOPS`, `COUNCIL_MEMBERS` from `./geometry`; `Illustration` from `./Illustration`.
-- Produces: `RequestLifecycleVisual()`, `CouncilFanoutVisual()`. Completes `DIAGRAM_REGISTRY`.
-
-- [ ] **Step 1: Write `RequestLifecycleVisual.tsx`**
-
-Four hops on a rule, each with a callout naming what it clears. The callouts carry the corrected governance facts.
-
-```tsx
-import { LIFECYCLE_HOPS } from "./geometry";
-import { Illustration } from "./Illustration";
-
-export function RequestLifecycleVisual() {
-  return (
-    <Illustration diagram="requestLifecycle">
-      <svg
-        className="docs-svg"
-        viewBox="0 0 640 190"
-        role="img"
-        aria-label="A governed request: the client presents a virtual key, the gateway authorises, meters, screens and records it, the runtime runs the agent without holding a provider key, and a tool call is constrained inside the connector or sandbox."
-      >
-        <path className="docs-edge" d="M56 70H568" />
-
-        {LIFECYCLE_HOPS.map((hop, i) => (
-          <g key={hop.id} className="docs-hop" style={{ animationDelay: `${i * 80}ms` }}>
-            <circle className="docs-hop-node" cx={hop.x} cy="70" r="6" />
-            <text className="docs-node-label" x={hop.x} y="46" textAnchor="middle">
-              {hop.label}
-            </text>
-            <text className="docs-node-sub" x={hop.x} y="102" textAnchor="middle">
-              {hop.detail}
-            </text>
-          </g>
-        ))}
-      </svg>
-
-      <ul className="docs-callouts">
-        <li>
-          Denials are not all recorded. Among refusals only rate-limit rejections and guardrail
-          events reach the audit log — a 401, a 400, and a 402 budget exhaustion do not.
-        </li>
-        <li>
-          The budget hold fails open only on a store error, and unlike the guardrail&apos;s
-          <span className="mono"> guardrail_error</span> that admission leaves no audit entry.
-        </li>
-        <li>
-          The guardrail stage exists only when <span className="mono">AGENTOS_GUARDRAILS_MODE</span>{" "}
-          is not <span className="mono">off</span>; <span className="mono">/v1/embeddings</span> runs
-          the same chain without it.
-        </li>
-      </ul>
-    </Illustration>
-  );
-}
-```
-
-- [ ] **Step 2: Write `CouncilFanoutVisual.tsx`**
-
-```tsx
-import { COUNCIL_MEMBERS } from "./geometry";
-import { Illustration } from "./Illustration";
-
-export function CouncilFanoutVisual() {
-  return (
-    <Illustration diagram="councilFanout">
-      <svg
-        className="docs-svg"
-        viewBox="0 0 640 260"
-        role="img"
-        aria-label="One objective fans out to five model-bound members; a judge synthesises a single verdict and an explicit dissent report."
-      >
-        <rect className="docs-node-box" x="16" y="112" width="104" height="44" rx="4" />
-        <text className="docs-node-label" x="28" y="139">
-          objective
-        </text>
-
-        {COUNCIL_MEMBERS.map((m, i) => (
-          <g key={m.id} className="docs-hop" style={{ animationDelay: `${i * 60}ms` }}>
-            <path className="docs-edge" d={`M120 134C180 134 180 ${m.y + 16} 240 ${m.y + 16}`} />
-            <rect className="docs-node-box" x="240" y={m.y} width="120" height="32" rx="4" />
-            <text className="docs-node-label" x="252" y={m.y + 21}>
-              {m.label}
-            </text>
-            <path className="docs-edge" d={`M360 ${m.y + 16}C400 ${m.y + 16} 400 134 430 134`} />
-          </g>
-        ))}
-
-        <rect className="docs-node-box" x="430" y="112" width="88" height="44" rx="4" />
-        <text className="docs-node-label" x="442" y="139">
-          judge
-        </text>
-
-        <path className="docs-edge" d="M518 134H556" />
-        <rect className="docs-node-box" x="556" y="98" width="72" height="34" rx="4" />
-        <text className="docs-node-sub" x="566" y="119">
-          verdict
-        </text>
-        <rect className="docs-node-box" x="556" y="140" width="72" height="34" rx="4" />
-        <text className="docs-node-sub" x="566" y="161">
-          dissent
-        </text>
-      </svg>
-
-      <ul className="docs-callouts">
-        <li>
-          Disagreement is recorded, not averaged away — the dissent report ships beside the verdict.
-        </li>
-        <li>
-          Write-class tool calls become human-approved proposals. That gating is enforced in-graph
-          for <span className="mono">react</span>-profile members; <span className="mono">deep</span>
-          -profile members are held to an explicit read-only tool allowlist instead, because
-          deepagents exposes no interrupt point.
-        </li>
-      </ul>
-    </Illustration>
-  );
-}
-```
-
-- [ ] **Step 3: Complete the registry**
-
-Replace the last two placeholders so `DIAGRAM_REGISTRY` reads:
-
-```tsx
-export const DIAGRAM_REGISTRY: Record<DiagramKey, () => JSX.Element> = {
-  architecture: ArchitectureVisual,
-  governanceChain: GovernanceChainVisual,
-  requestLifecycle: RequestLifecycleVisual,
-  councilFanout: CouncilFanoutVisual,
-};
-```
-
-No `TODO` comments should remain in the file.
-
-- [ ] **Step 4: Append the shared reveal and callout rules to `Docs.css`**
+- [ ] **Step 9: Append the shared reveal and callout rules to `Docs.css`**
 
 ```css
 /* ---- shared reveal for static visuals ---- */
@@ -1812,23 +1763,21 @@ No `TODO` comments should remain in the file.
 }
 ```
 
-- [ ] **Step 5: Type-check and test**
+- [ ] **Step 10: Type-check and test**
 
 Run: `cd console && npx tsc && npx vitest run`
-Expected: `tsc` clean except the known `"docs"` icon error; all tests pass.
+Expected: **`tsc` silent** (the `docs` glyph landed in Task 3); all tests pass.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 11: Commit**
 
 ```bash
-git add console/src/pages/docs/visuals/RequestLifecycleVisual.tsx \
-        console/src/pages/docs/visuals/CouncilFanoutVisual.tsx \
-        console/src/pages/docs/visuals/registry.tsx console/src/pages/Docs.css
-git commit -m "feat(console): add the request-lifecycle and council-fanout visuals"
+git add console/src/pages/docs/visuals/ console/src/pages/Docs.css
+git commit -m "feat(console): add the docs illustration frame and all four visuals"
 ```
 
 ---
 
-## Task 9: The block renderer
+## Task 7: The block renderer
 
 **Files:**
 - Create: `console/src/pages/docs/DocBlocks.tsx`
@@ -1836,7 +1785,7 @@ git commit -m "feat(console): add the request-lifecycle and council-fanout visua
 
 **Interfaces:**
 - Consumes: `DocBlock` from `./types`; `DIAGRAM_REGISTRY` from `./visuals/registry`.
-- Produces: `DocBlocks({ blocks }: { blocks: DocBlock[] }): JSX.Element`. Task 10 renders it.
+- Produces: `DocBlocks({ blocks }: { blocks: DocBlock[] }): JSX.Element`. Task 8 renders it.
 
 - [ ] **Step 1: Write the component**
 
@@ -2017,7 +1966,7 @@ The `default: never` arm is what makes adding a seventh block kind a compile err
 - [ ] **Step 3: Type-check**
 
 Run: `cd console && npx tsc`
-Expected: clean except the known `"docs"` icon error.
+Expected: **no output at all.**
 
 - [ ] **Step 4: Commit**
 
@@ -2028,7 +1977,7 @@ git commit -m "feat(console): add the docs block renderer"
 
 ---
 
-## Task 10: The Docs page
+## Task 8: The Docs page
 
 **Files:**
 - Create: `console/src/pages/Docs.tsx`
@@ -2036,7 +1985,7 @@ git commit -m "feat(console): add the docs block renderer"
 
 **Interfaces:**
 - Consumes: `PageProps` (type-only) from `../App`; `DOC_SECTIONS` from `./docs/content`; `DocBlocks` from `./docs/DocBlocks`; `PageHead` from `../components/common`; `Panel`, `PanelHead`, `transition`, `fadeRise`, `fadeRiseReduced` from `../ui`; `Icon` from `../ui/icons`.
-- Produces: `export function Docs(_props: PageProps): JSX.Element`. Task 11 registers it.
+- Produces: `export function Docs(_props: PageProps): JSX.Element`. Task 9 registers it.
 
 - [ ] **Step 1: Write the page**
 
@@ -2233,7 +2182,7 @@ export function Docs(_props: PageProps) {
 - [ ] **Step 3: Type-check**
 
 Run: `cd console && npx tsc`
-Expected: clean except the known `"docs"` icon error in `content.ts`.
+Expected: **no output at all.**
 
 - [ ] **Step 4: Commit**
 
@@ -2244,42 +2193,16 @@ git commit -m "feat(console): add the Docs page with a sticky section rail"
 
 ---
 
-## Task 11: The icon and the route
-
-The last compile error clears here.
+## Task 9: Register the route
 
 **Files:**
-- Modify: `console/src/ui/icons.tsx` (add `"docs"` to `IconName` and a `GLYPHS` entry)
 - Modify: `console/src/App.tsx` (import + `ROUTES` entry)
 
 **Interfaces:**
-- Consumes: `Docs` from `./pages/Docs`.
+- Consumes: `Docs` from `./pages/Docs`; the `"docs"` icon added in Task 3.
 - Produces: a reachable `/docs` route. The Sidebar and ⌘K palette pick it up with no further edit.
 
-- [ ] **Step 1: Add the icon name**
-
-In `console/src/ui/icons.tsx`, add `| "docs"` to the `IconName` union. Keep the union's existing formatting.
-
-- [ ] **Step 2: Add the glyph**
-
-Add to `GLYPHS`, following the file's idiom — a prose comment explaining the shape and why it is not the neighbouring glyph, then the entry:
-
-```tsx
-  // An open manual: one spine, two leaves. Deliberately not `documents`, which
-  // is two offset sheets — a corpus you search. This is a book you read, so the
-  // silhouette differs at the outline, not in a corner fold.
-  docs: (
-    <>
-      <path d="M8 4.5 2.5 3.5v8L8 13" />
-      <path d="M8 4.5 13.5 3.5v8L8 13" />
-      <path d="M8 4.5v8.5" />
-    </>
-  ),
-```
-
-Every coordinate is a whole or half unit inside the 2…14 band. The glyph sets no `stroke`, `fill`, `width`, or `viewBox` — the wrapper supplies all four.
-
-- [ ] **Step 3: Register the route**
+- [ ] **Step 1: Register the route**
 
 In `console/src/App.tsx`, add the import alongside the other page imports:
 
@@ -2293,28 +2216,23 @@ and add this entry to `ROUTES` **last among the always-visible routes — immedi
   { path: "/docs", label: "Docs", icon: "docs", Component: Docs },
 ```
 
-**No `visible` predicate** — the handbook is available to every role. Do **not** edit `CommandPalette.tsx`; it derives its entries from `ROUTES` automatically and editing it produces a duplicate.
+**No `visible` predicate** — the handbook is available to every role. Do **not** edit `CommandPalette.tsx`; it derives its entries from `ROUTES` automatically and editing it produces a duplicate entry.
 
-- [ ] **Step 4: Type-check — this must now be fully clean**
+- [ ] **Step 2: Type-check, test, and build**
 
-Run: `cd console && npx tsc`
-Expected: **no output at all.** The `"docs"` icon error from Tasks 4–10 is now resolved. If anything remains, fix it before proceeding.
+Run: `cd console && npx tsc && npx vitest run && npm run build`
+Expected: `tsc` silent; all test files pass; the production build completes with no TypeScript errors.
 
-- [ ] **Step 5: Run the full suite and the production build**
-
-Run: `cd console && npx vitest run && npm run build`
-Expected: all test files pass; the build completes with no TypeScript errors.
-
-- [ ] **Step 6: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add console/src/ui/icons.tsx console/src/App.tsx
-git commit -m "feat(console): add the docs glyph and register the /docs route"
+git add console/src/App.tsx
+git commit -m "feat(console): register the /docs route"
 ```
 
 ---
 
-## Task 12: Point the documentation at the new tab
+## Task 10: Point the documentation at the new tab
 
 W1 deliberately did not link an in-console Docs tab because none existed. It does now.
 
@@ -2356,7 +2274,7 @@ git commit -m "docs: point the README and console reference at the in-console Do
 
 ---
 
-## Task 13: Whole-feature verification
+## Task 11: Whole-feature verification
 
 This task exists to catch what per-file review cannot: cross-file drift, animation that misbehaves only when running, and claims in the UI that contradict the shipped docs.
 
@@ -2364,7 +2282,7 @@ This task exists to catch what per-file review cannot: cross-file drift, animati
 - Modify: whichever files the checks flag.
 
 **Interfaces:**
-- Consumes: everything Tasks 1–12 produced.
+- Consumes: everything Tasks 1–10 produced.
 - Produces: a verified feature.
 
 - [ ] **Step 1: Clean type-check, full suite, production build**
@@ -2438,4 +2356,4 @@ If Steps 1–4 found nothing, skip the commit and say so.
 
 ## Completion
 
-When Task 13 passes: merge to `main` locally (fast-forward), delete the working branch and the SDD workspace, and **do not push**.
+When Task 11 passes: merge to `main` locally (fast-forward), delete the working branch and the SDD workspace, and **do not push**.
