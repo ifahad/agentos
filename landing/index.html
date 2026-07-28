@@ -395,7 +395,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
         <div class="legend"><span class="id">Deployment</span>
           <svg class="ic" width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square"><circle cx="3.5" cy="8" r="1.5"/><circle cx="12.5" cy="4" r="1.5"/><circle cx="12.5" cy="12" r="1.5"/><path d="M5 7.3 11 4.6"/><path d="M5 8.7 11 11.4"/></svg></div>
         <h3>Ship and scale in production</h3>
-        <p>Docker Compose for a laptop, a Helm chart for a cluster — non-root images and, in Helm, a hardened security context on the gateway, runtime, sandbox, console and connectors; the sandbox drops all capabilities on a read-only rootfs in both.</p>
+        <p>Docker Compose for a laptop, a Helm chart for a cluster — non-root images everywhere but the optional browser connector, and in Helm a hardened security context on the gateway, runtime, sandbox, console and connectors; the sandbox drops all capabilities on a read-only rootfs in both.</p>
         <span class="tag"><span class="d ok"></span> compose · helm · non-root</span>
       </div>
       <div class="card reveal">
@@ -453,7 +453,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
         </ul>
       </div>
       <div class="viz reveal" id="council-viz">
-        <div class="viz-head">council/multiverse · quorum met</div>
+        <div class="viz-head">council · quorum met · simulated</div>
         <div class="viz-body">
           <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">A</span><div class="mid"><div class="a">alpha</div><div class="b">moonshot/kimi-k3</div></div><span class="pill ok">answered</span></div>
           <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">B</span><div class="mid"><div class="a">beta</div><div class="b">deepseek/deepseek-v4-pro</div></div><span class="pill ok">answered</span></div>
@@ -470,7 +470,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
       <div class="reveal">
         <span class="eyebrow" style="display:block;margin-bottom:14px">Operators</span>
         <h2>Governed autonomy — on a schedule, or a webhook.</h2>
-        <p>Standing objectives the runtime pursues on its own: fire on an interval, a cron schedule, or an inbound webhook. Every run is governed and bounded by a cycle cap, and any tool you put on the approval list pauses for a human. The scheduler is opt-in and off by default.</p>
+        <p>Standing objectives the runtime pursues on its own: fire on an interval, a cron schedule, or an inbound webhook. Every run is governed and bounded by a cycle cap, and on the default react profile any tool you put on the approval list pauses for a human. The scheduler is opt-in and off by default.</p>
         <ul>
           <li><span class="m">/</span> interval · cron · webhook triggers toward stored objectives.</li>
           <li><span class="m">/</span> A run that needs approval is recorded, never auto-resumed.</li>
@@ -478,7 +478,7 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
         </ul>
       </div>
       <div class="viz reveal" id="operators-viz">
-        <div class="viz-head">operators · run history</div>
+        <div class="viz-head">operators · run history · simulated</div>
         <div class="viz-body">
           <div class="member"><span class="pill ok">completed</span><div class="mid"><div class="a">nightly invoice report</div><div class="b">cron 0 9 * * * · 4 cycles</div></div></div>
           <div class="member"><span class="pill hold">needs approval</span><div class="mid"><div class="a">reconcile ledger</div><div class="b">webhook · run_command held</div></div></div>
@@ -715,7 +715,9 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     };
   }
   var rand = mulberry32(0x5EED);
-  var MODELS = ['qwen3.8-max', 'deepseek-v4', 'kimi-k3', 'llama-4-70b'];
+  // Every id here exists: runtime/council.yaml members 24/30/35/40, priced in
+  // deploy/providers.json. No invented or near-miss model names.
+  var MODELS = ['qwen3.8-max', 'deepseek-v4-pro', 'kimi-k3', 'glm-5.2'];
   var ORGS = ['acme', 'globex', 'initech', 'umbrella'];
 
   // Decide a request's fate: index of the stage it stops at (0..5) and outcome.
@@ -774,14 +776,19 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
 // own seeded mulberry32, independent of the chain sim above) cycles which
 // member pill reads "dissent" vs "answered". At most one member ever
 // dissents per tick, so the panel's "quorum met" framing always stays true;
-// most ticks land on full, unanimous quorum. No Math.random, no network,
-// no restructuring of the shipped member rows/pills. Reduced-motion leaves
-// the shipped static state (one honest dissent) exactly as authored.
+// most ticks land on full concurrence. The verdict pill's agreement figure
+// is derived from that same dissenter, never static: judge.py defines
+// agreement as the fraction of answering members that concurred, so three
+// of three must read 1.00 and two of three 0.67. No Math.random, no
+// network, no restructuring of the shipped member rows/pills.
+// Reduced-motion leaves the shipped static state (one honest dissent,
+// agreement 0.67) exactly as authored.
 (function () {
   var viz = document.getElementById('council-viz');
   if (!viz) return;
   var pills = Array.prototype.slice.call(viz.querySelectorAll('.member .pill'));
   if (!pills.length) return;
+  var verdictPill = viz.querySelector('.verdict .pill');
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (reduce) return;
 
@@ -805,6 +812,10 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     var roll = rand();
     var dissenter = roll < 0.6 ? -1 : Math.floor(rand() * pills.length);
     pills.forEach(function (pill, i) { setPill(pill, i === dissenter); });
+    if (verdictPill) {
+      var concurring = pills.length - (dissenter < 0 ? 0 : 1);
+      verdictPill.textContent = 'converged · agreement ' + (concurring / pills.length).toFixed(2);
+    }
   }
 
   setInterval(tick, 3200);
