@@ -17,7 +17,7 @@ From `docs/superpowers/specs/2026-07-28-design-language-and-landing-design.md` a
 - **No build step, no dependency, no framework, no external request.** No CDN, no analytics, no remote font, no `<script src>`, no `<link>` to any host, no `fetch`.
 - **Fonts stay base64-inlined** in the existing `@font-face` blocks. **The embedded mono family is named `"Plex Mono"`, NOT `"IBM Plex Mono"`.** The mock uses the wrong name; using it fails silently to a fallback face with no error.
 - **No `Math.random` anywhere.** Every sequence is a fixed script or a pure function of an index.
-- **No light theme.** No `@media (prefers-color-scheme: light)`, no `[data-theme]`.
+- **BOTH THEMES SHIP.** *(Corrected 2026-07-28 after Task 2 — the spec's original "no light theme" non-goal was written on a false premise. The page already has a working light theme and a toggle; the owner chose to keep them.)* The `:root[data-theme="light"]` block, the `@media (prefers-color-scheme: light)` block and the `localStorage` toggle all stay functional. Every render check runs **twice — once per theme.** See R1b for the light palette.
 - **Two colour registers, never blurred:** violet (`--v` / `--v2` / `--v3`) is interface — headings, CTAs, links, structure. `--live` / `--ok` / `--hold` / `--deny` are machine state and appear **only** where a real outcome is depicted.
 - **Every governance visual carries a visible `ILLUSTRATION · SCRIPTED SEQUENCE` marker on the visual itself**, not only in surrounding prose.
 - **No fabricated governance metric may appear unmarked.** The page holds no live connection to a gateway.
@@ -48,6 +48,14 @@ Checked against source by four parallel surveys plus three adversarial re-checks
 | `--ok` | `#6cc48f` | allowed |
 | `--hold` | `#e3a851` | awaiting a human |
 | `--deny` | `#e2685f` | denied / failed |
+
+### R1b. Light palette — already tuned, keep these values
+
+`--bg #eceae4` · `--raised #f6f5f1` · `--raised-2 #ffffff` · `--border rgba(0,0,0,.10)` · `--border-strong rgba(0,0,0,.18)` · `--ink #1a1d1f` · `--dim #565d63` · `--faint #8a9198`, with light-adapted state hues `--live #12897c` · `--ok #2f8f57` · `--hold #a8721c` · `--deny #bb4038`, plus `--shadow` and `color-scheme: light`.
+
+**The violet needs light-ground variants, computed not guessed.** `--v #7A5AF8` is tuned against near-black; on `#eceae4` it must be darkened enough to pass 4.5:1 as text and keep white-on-violet legible as a button fill. Record the arithmetic in the task report.
+
+**The light palette is duplicated verbatim in two blocks** (`:root[data-theme="light"]` and the `prefers-color-scheme` media query). Editing one and not the other is the trap — they must stay in sync, or better, be collapsed so there is one source of truth.
 
 **`--live` and `--ok` are ΔE 0.052–0.074 apart under all three common colour-vision deficiencies** while meaning "in flight" versus "allowed". Anywhere both can appear, the difference must also be carried by a **non-colour channel** — a distinct shape, a label, or a fill-versus-outline treatment. Do not rely on hue alone.
 
