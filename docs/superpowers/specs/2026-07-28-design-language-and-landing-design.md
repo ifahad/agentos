@@ -29,7 +29,7 @@ Diagnosis, from reviewing every console page and the landing page:
 - No console changes in this cycle (cycles 2 and 3).
 - No new runtime dependency, no build step for the landing page, no framework.
 - No external requests: fonts stay self-hosted, no CDN, no analytics, no embedded video.
-- No light theme. The console is dark-only by design and the landing page follows it.
+- ~~No light theme.~~ **CORRECTED 2026-07-28 after the spec was approved.** This non-goal was written on a false premise: the landing page *already ships a working light theme* — `:root[data-theme="light"]`, a duplicated `@media (prefers-color-scheme: light)` block, and a toggle persisting to `localStorage`. Visitors whose OS prefers light see a light page today. The owner's decision: **keep it and design both themes.** See §5.6.
 - No fabricated live metrics (see §5.4).
 
 ## 4. Scope and decomposition
@@ -112,6 +112,17 @@ The console's governance chain is evidence-driven by contract: it lights only wh
 3. The landing chain **may** light cleared stages in violet, where the console deliberately leaves them graphite. This is an intentional divergence: the console's chain is an instrument that should stay quiet when nothing needs attention; the landing page's job is to explain the mechanism. Recorded here so it is a decision rather than a drift.
 4. Stage names and order must match `CHAIN_STAGES` in `console/src/lib/chain.ts` — `auth → rate → budget → guardrail → upstream → audit`. The landing page previously drew `Auth, RBAC, Budget, Rate, Audit` under the caption "Every call recorded", which was false in three ways; that was corrected in commit `0697a2b` and must not regress.
 5. A denial may only be depicted at a stage where the gateway can actually deny: **rate (429), budget (402), guardrail (400)**. An upstream failure is amber, not red. Nothing may depict a denial at `auth` or `audit`.
+
+### 5.6 Both themes
+
+The page keeps its light theme and its toggle. The new language must be designed for both grounds, not retrofitted to one.
+
+- **Dark ground** is the palette in §5.1 and remains the design's centre of gravity — it is what the hero, the gate field and the console all assume.
+- **Light ground** keeps the existing values, which are already tuned: `--bg #eceae4`, `--raised #f6f5f1`, `--raised-2 #ffffff`, `--border rgba(0,0,0,.10)`, `--border-strong rgba(0,0,0,.18)`, `--ink #1a1d1f`, `--dim #565d63`, `--faint #8a9198`, and light-adapted state hues `--live #12897c`, `--ok #2f8f57`, `--hold #a8721c`, `--deny #bb4038`.
+- **The violet accent needs light-ground variants.** `--v #7A5AF8` is tuned against near-black; on `#eceae4` it must be darkened enough to pass 4.5:1 as text and to keep white-on-violet legible as a button. Compute the values rather than guessing them, and record the arithmetic.
+- **The gate field must work on both.** Its strands are additive light against a dark ground; on a light ground the same construction inverts to dark strands. Whichever way it is solved, the convergence must stay the brightest, most legible thing in the composition, and the denial stubs must stay clearly `--deny`.
+- **Both themes are verified.** Every render check in the plan runs twice — once per theme — and the contrast audit is redone against the light ground.
+- The toggle stays functional and `prefers-color-scheme` continues to be honoured, so nothing a visitor has today is taken away.
 
 ### 5.5 The signature visual — the gate field
 
