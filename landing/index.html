@@ -25,60 +25,29 @@
 }
 
 :root {
-  --bg: #121517;
-  --raised: #191d20;
-  --raised-2: #20252a;
-  --border: rgba(255,255,255,0.08);
-  --border-strong: rgba(255,255,255,0.14);
-  --ink: #e6e9eb;
-  --dim: #98a1a8;
-  --faint: #626b71;
+  --bg: #07080B;
+  --raised: #0E1015;
+  --raised-2: color-mix(in srgb, var(--raised) 88%, white 12%);
+  --line: rgba(255,255,255,.06);
+  --line2: rgba(255,255,255,.12);
+  --border: var(--line);
+  --border-strong: var(--line2);
+  --ink: #F2F4F7;
+  --dim: #98A2AE;
+  --faint: #78828E;
+  --v: #7A5AF8;
+  --v2: #A78BFA;
+  --v3: #C7B6FF;
   --live: #5ad1c4;
   --ok: #6cc48f;
   --hold: #e3a851;
   --deny: #e2685f;
   --mono: "Plex Mono", ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace;
   --sans: "Archivo", ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
-  --eyebrow: 11px;
-  --track: 0.18em;
+  --eyebrow: 10px;
+  --track: 0.22em;
   --shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 20px 50px -30px rgba(0,0,0,0.8);
   color-scheme: dark;
-}
-
-:root[data-theme="light"] {
-  --bg: #eceae4;
-  --raised: #f6f5f1;
-  --raised-2: #ffffff;
-  --border: rgba(0,0,0,0.10);
-  --border-strong: rgba(0,0,0,0.18);
-  --ink: #1a1d1f;
-  --dim: #565d63;
-  --faint: #8a9198;
-  --live: #12897c;
-  --ok: #2f8f57;
-  --hold: #a8721c;
-  --deny: #bb4038;
-  --shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 20px 50px -34px rgba(0,0,0,0.25);
-  color-scheme: light;
-}
-
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    --bg: #eceae4;
-    --raised: #f6f5f1;
-    --raised-2: #ffffff;
-    --border: rgba(0,0,0,0.10);
-    --border-strong: rgba(0,0,0,0.18);
-    --ink: #1a1d1f;
-    --dim: #565d63;
-    --faint: #8a9198;
-    --live: #12897c;
-    --ok: #2f8f57;
-    --hold: #a8721c;
-    --deny: #bb4038;
-    --shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 20px 50px -34px rgba(0,0,0,0.25);
-    color-scheme: light;
-  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -89,8 +58,8 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: var(--sans);
-  font-size: 16px;
-  line-height: 1.6;
+  font-size: 16.5px;
+  line-height: 1.62;
   -webkit-font-smoothing: antialiased;
   overflow-x: hidden;
 }
@@ -99,11 +68,11 @@ body {
 
 .eyebrow {
   font-family: var(--mono);
-  font-size: var(--eyebrow);
+  font-size: 10px;
   font-weight: 500;
-  letter-spacing: var(--track);
+  letter-spacing: .22em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--v2);
 }
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
@@ -132,7 +101,6 @@ a { color: inherit; text-decoration: none; }
 .btn:hover { border-color: var(--live); }
 .btn:active { transform: translateY(1px); }
 .btn-solid { background: var(--live); color: #08201e; border-color: var(--live); }
-:root[data-theme="light"] .btn-solid, @media (prefers-color-scheme: light){ :root:not([data-theme="dark"]) .btn-solid{ color: #fff; } }
 .theme-toggle { background: transparent; border: 1px solid var(--border); border-radius: 4px; width: 34px; height: 34px; cursor: pointer; color: var(--dim); display: grid; place-items: center; }
 .theme-toggle:hover { color: var(--ink); border-color: var(--border-strong); }
 @media (max-width: 720px){ .nav { display: none; } }
@@ -142,8 +110,8 @@ a { color: inherit; text-decoration: none; }
 .hero .kicker { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; margin-bottom: 26px; }
 .hero .kicker .d { width: 5px; height: 5px; border-radius: 50%; background: var(--live); }
 h1 {
-  font-size: clamp(38px, 6.2vw, 68px); line-height: 1.02; font-weight: 680;
-  letter-spacing: -0.02em; text-wrap: balance; max-width: 15ch;
+  font-size: 118px; line-height: .9; font-weight: 700;
+  letter-spacing: -.045em; text-wrap: balance; max-width: 15ch;
 }
 h1 em { font-style: normal; color: var(--live); }
 .lead { margin-top: 22px; font-size: clamp(16px, 2vw, 19px); color: var(--dim); max-width: 56ch; line-height: 1.55; }
@@ -215,7 +183,8 @@ h1 em { font-style: normal; color: var(--live); }
 section { padding: 74px 0; }
 .sec-head { max-width: 62ch; }
 .sec-head .eyebrow { display: block; margin-bottom: 14px; }
-h2 { font-size: clamp(26px, 3.6vw, 38px); font-weight: 660; letter-spacing: -0.015em; line-height: 1.08; text-wrap: balance; }
+h2 { font-size: 56px; line-height: 1.02; letter-spacing: -.035em; font-weight: 700; text-wrap: balance; }
+h3 { font-size: 21px; letter-spacing: -.015em; font-weight: 700; }
 .sec-head p { margin-top: 14px; color: var(--dim); font-size: 17px; max-width: 54ch; }
 
 /* ---------- capability grid ---------- */
