@@ -6,22 +6,22 @@
  * This module turns that status back into a stage, so the console can show the
  * chain without inventing a new endpoint or a new field.
  *
- * The mapping is derived from gateway/internal/server/server.go:
+ * This is the gateway's actual `/v1/*` proxy pipeline — not the `/admin/*`
+ * pipeline, which is the only place rbac runs:
  *   401 unauthenticated      -> stopped at auth
- *   403 forbidden            -> stopped at rbac
+ *   429 too many requests    -> stopped at rate (rate limiting runs before budget)
  *   402 payment required     -> stopped at budget (key or org exhausted)
- *   429 too many requests    -> stopped at rate
- *   400 malformed            -> stopped after rbac, before any spend
+ *   400 malformed            -> stopped at guardrail (a guardrail_block audit row)
  *   5xx upstream failure     -> cleared governance, provider failed
  *   2xx                      -> cleared the chain and was recorded
  *
- * Keep this in sync with the gateway. If a stage is added there, add it here —
- * a chain that under-reports is worse than no chain, because it implies checks
- * ran that did not.
+ * Keep this in sync with the gateway's /v1/* pipeline. If a stage is added
+ * there, add it here — a chain that under-reports is worse than no chain,
+ * because it implies checks ran that did not.
  */
 
 /** Ordered stages of the gauntlet. Index is position in the chain. */
-export const CHAIN_STAGES = ["auth", "rbac", "budget", "rate", "audit"] as const;
+export const CHAIN_STAGES = ["auth", "rate", "budget", "guardrail", "upstream", "audit"] as const;
 
 export type ChainStage = (typeof CHAIN_STAGES)[number];
 
@@ -40,32 +40,37 @@ export interface ChainState {
 export const IDLE_CHAIN: ChainState = { cleared: 0, stoppedAt: null, outcome: "pass" };
 
 /**
- * Resolve one recorded status into a chain position.
+ * Map a recorded HTTP status onto the stage the request reached.
  *
- * Unknown statuses are treated as denials at the first stage rather than as
- * passes: the console must never draw checks it cannot prove ran (the same
- * fail-closed posture the gateway itself takes).
+ * The evidence source is the audit log, and the gateway only writes audit rows
+ * for seven kinds: chat, embeddings, guardrail_flag, guardrail_block,
+ * guardrail_error, rate_limited, secret_reload. So in practice the statuses
+ * that reach us are 2xx, 400 (a guardrail block), 429 (a rate-limit rejection),
+ * and 5xx (an upstream failure after governance cleared).
+ *
+ * 401 and 402 are mapped for completeness — they are the honest stage for those
+ * statuses — but the gateway does not currently audit them, so they should not
+ * appear in this feed. Unknown statuses are treated as denials at the first
+ * stage rather than as passes: the console must never draw checks it cannot
+ * prove ran.
  */
 export function chainStateFromStatus(status: number): ChainState {
   if (status >= 200 && status < 300) {
     return { cleared: CHAIN_STAGES.length, stoppedAt: null, outcome: "pass" };
   }
   if (status >= 500) {
-    // Governance allowed it; the upstream provider is what broke. The chain is
-    // fully cleared, but the outcome is not a success.
-    return { cleared: CHAIN_STAGES.length, stoppedAt: null, outcome: "fail" };
+    // Governance cleared; the upstream provider is what broke.
+    return { cleared: 4, stoppedAt: "upstream", outcome: "fail" };
   }
   switch (status) {
     case 401:
       return { cleared: 0, stoppedAt: "auth", outcome: "deny" };
-    case 403:
-      return { cleared: 1, stoppedAt: "rbac", outcome: "deny" };
+    case 429:
+      return { cleared: 1, stoppedAt: "rate", outcome: "deny" };
     case 402:
       return { cleared: 2, stoppedAt: "budget", outcome: "deny" };
-    case 429:
-      return { cleared: 3, stoppedAt: "rate", outcome: "deny" };
     case 400:
-      return { cleared: 2, stoppedAt: "budget", outcome: "deny" };
+      return { cleared: 3, stoppedAt: "guardrail", outcome: "deny" };
     default:
       return { cleared: 0, stoppedAt: "auth", outcome: "deny" };
   }

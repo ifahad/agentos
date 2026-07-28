@@ -7,10 +7,23 @@ import {
   stageRenders,
 } from "./chain";
 
+describe("CHAIN_STAGES", () => {
+  it("matches the gateway's /v1/* pipeline order", () => {
+    expect(CHAIN_STAGES).toEqual(["auth", "rate", "budget", "guardrail", "upstream", "audit"]);
+  });
+
+  it("does not include rbac, which never runs on the proxy path", () => {
+    expect(CHAIN_STAGES).not.toContain("rbac");
+  });
+});
+
 describe("chainStateFromStatus", () => {
-  it("clears the whole chain on success", () => {
-    const state = chainStateFromStatus(200);
-    expect(state).toEqual({ cleared: 5, stoppedAt: null, outcome: "pass" });
+  it("clears every stage on success", () => {
+    expect(chainStateFromStatus(200)).toEqual({
+      cleared: CHAIN_STAGES.length,
+      stoppedAt: null,
+      outcome: "pass",
+    });
   });
 
   it("treats every 2xx as a pass", () => {
@@ -19,54 +32,36 @@ describe("chainStateFromStatus", () => {
     }
   });
 
-  it("stops at auth when unauthenticated", () => {
-    expect(chainStateFromStatus(401)).toEqual({
-      cleared: 0,
-      stoppedAt: "auth",
-      outcome: "deny",
-    });
+  it("stops at rate on 429, having cleared auth only", () => {
+    expect(chainStateFromStatus(429)).toEqual({ cleared: 1, stoppedAt: "rate", outcome: "deny" });
   });
 
-  it("stops at rbac when forbidden", () => {
-    expect(chainStateFromStatus(403)).toEqual({
-      cleared: 1,
-      stoppedAt: "rbac",
-      outcome: "deny",
-    });
-  });
-
-  it("stops at budget when the key or org is exhausted", () => {
-    expect(chainStateFromStatus(402)).toEqual({
-      cleared: 2,
-      stoppedAt: "budget",
-      outcome: "deny",
-    });
-  });
-
-  it("stops at rate when throttled", () => {
-    expect(chainStateFromStatus(429)).toEqual({
+  it("stops at guardrail on 400, because a 400 in the audit feed is a guardrail block", () => {
+    expect(chainStateFromStatus(400)).toEqual({
       cleared: 3,
-      stoppedAt: "rate",
+      stoppedAt: "guardrail",
       outcome: "deny",
     });
   });
 
-  it("clears governance but reports failure on an upstream error", () => {
-    // A 502 means the checks all passed and the provider broke. Drawing this as
-    // a governance denial would blame the wrong component.
-    const state = chainStateFromStatus(502);
-    expect(state.cleared).toBe(CHAIN_STAGES.length);
-    expect(state.stoppedAt).toBeNull();
-    expect(state.outcome).toBe("fail");
+  it("stops at upstream on 5xx: governance cleared, the provider failed", () => {
+    expect(chainStateFromStatus(502)).toEqual({
+      cleared: 4,
+      stoppedAt: "upstream",
+      outcome: "fail",
+    });
   });
 
-  it("fails closed on an unrecognised status", () => {
-    // Never imply a check ran that we cannot prove ran.
-    expect(chainStateFromStatus(418)).toEqual({
-      cleared: 0,
-      stoppedAt: "auth",
-      outcome: "deny",
-    });
+  it("stops at budget on 402, having cleared auth and rate", () => {
+    expect(chainStateFromStatus(402)).toEqual({ cleared: 2, stoppedAt: "budget", outcome: "deny" });
+  });
+
+  it("stops at auth on 401", () => {
+    expect(chainStateFromStatus(401)).toEqual({ cleared: 0, stoppedAt: "auth", outcome: "deny" });
+  });
+
+  it("treats an unknown status as a denial at the first stage, never as a pass", () => {
+    expect(chainStateFromStatus(418)).toEqual({ cleared: 0, stoppedAt: "auth", outcome: "deny" });
   });
 });
 
@@ -94,6 +89,7 @@ describe("stageRenders", () => {
       "cleared",
       "cleared",
       "cleared",
+      "cleared",
     ]);
   });
 
@@ -104,13 +100,8 @@ describe("stageRenders", () => {
       "stopped",
       "unlit",
       "unlit",
+      "unlit",
     ]);
-  });
-
-  it("marks only the halting stage as stopped", () => {
-    const renders = stageRenders(chainStateFromStatus(403));
-    expect(renders.filter((r) => r === "stopped")).toHaveLength(1);
-    expect(renders[1]).toBe("stopped");
   });
 
   it("returns one render per stage", () => {

@@ -2,7 +2,7 @@ import { motion, useReducedMotion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { useLiveResource } from "../hooks/useLiveResource";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
-import type { ChainState } from "../lib/chain";
+import type { ChainStage, ChainState } from "../lib/chain";
 import { CHAIN_STAGES, IDLE_CHAIN, latestChainState, stageRenders } from "../lib/chain";
 import type { AuditEntry } from "../lib/types";
 import { StateIcon } from "../ui/icons";
@@ -12,21 +12,23 @@ import "./Chain.css";
 const LINGER_MS = 6000;
 
 /** Human-readable stage names. Short enough to sit on one line at 1024px. */
-const STAGE_LABELS: Record<(typeof CHAIN_STAGES)[number], string> = {
+const STAGE_LABELS: Record<ChainStage, string> = {
   auth: "auth",
-  rbac: "rbac",
-  budget: "budget",
   rate: "rate",
+  budget: "budget",
+  guardrail: "guardrail",
+  upstream: "upstream",
   audit: "audit",
 };
 
 /** What each stage actually checks — the tooltip for someone new to the gauntlet. */
-const STAGE_TITLES: Record<(typeof CHAIN_STAGES)[number], string> = {
-  auth: "auth — the caller presented a valid credential",
-  rbac: "rbac — the caller's role may make this call",
-  budget: "budget — the key is within its spend budget",
+const STAGE_TITLES: Record<ChainStage, string> = {
+  auth: "auth — the caller presented a valid virtual key",
   rate: "rate — the key is within its rate limit",
-  audit: "audit — the request was recorded",
+  budget: "budget — the key and its org are within budget",
+  guardrail: "guardrail — the prompt cleared injection screening (when enabled)",
+  upstream: "upstream — the provider or council answered",
+  audit: "audit — the outcome was recorded",
 };
 
 /** What the trailing status glyph should say about the last observed request. */
