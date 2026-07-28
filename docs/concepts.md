@@ -33,8 +33,10 @@ part of the system they belong to.
 - **SCIM token** (`AGENTOS_SCIM_TOKEN`) — gates `/scim/v2/*`; when unset those
   routes 404.
 - **Webhook token (`whk-…`)** — the credential *is* the URL path segment for
-  `POST /operators/webhooks/{token}`; the one runtime route exempt from the
-  bearer. Returned once at creation, redacted on every read.
+  `POST /operators/webhooks/{token}`; one of the two runtime paths exempt from
+  the bearer (the other is `GET /healthz`) — a prefix match on
+  `/operators/webhooks/`, not a single named route. Returned once at creation,
+  redacted on every read.
 - **Org** — the tenancy boundary. Keys, usage, spend, and audit are scoped to it.
 - **Role** — `owner` / `admin` / `member` / `viewer`. Evaluated on the admin
   plane only (see **Governance**).

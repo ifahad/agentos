@@ -48,6 +48,7 @@ would grant that token.
 | Improve | `/improve` | Eval-gated self-improvement: run the eval suite, review a proposed system prompt, approve or deny it | `GET /prompts/active`, `GET /evals/runs`, `POST /evals/run`, `POST /improve`, `GET /proposals`, `POST /proposals/{proposal_id}/approve` | every role |
 | Multiverse | `/multiverse` | Council objectives fanned out across member profiles; review member proposals and approve/deny writes they held back | `GET /council/members`, `GET /council/objectives`, `GET /council/objectives/{objective_id}`, `POST /council/objectives`, `POST /council/objectives/{objective_id}/cancel`, `POST /council/pause`, `POST /council/resume`, `GET /council/proposals`, `POST /council/proposals/{proposal_id}/approve` | every role |
 | Operators | `/operators` | Standing autonomous operators: create, enable/disable, run on demand, inspect recent runs | `GET /operators`, `POST /operators`, `GET /operators/{operator_id}`, `PATCH /operators/{operator_id}`, `DELETE /operators/{operator_id}`, `POST /operators/{operator_id}/run` | every role |
+| Docs | `/docs` | In-console handbook — capabilities, architecture, governance, quickstart | nothing — static content, no API calls | every role |
 | Orgs | `/orgs` | Create orgs, adjust per-org rate limits | `GET /admin/orgs`, `POST /admin/orgs`, `PATCH /admin/orgs/{org_id}` | `org.view` |
 | Users | `/users` | Invite and remove users within an org | `GET /admin/orgs`, `GET /admin/orgs/{org_id}/users`, `POST /admin/orgs/{org_id}/users`, `DELETE /admin/orgs/{org_id}/users/{user_id}` | `user.view` |
 | Secrets | `/secrets` | Show which provider/connector secrets are configured (status only, never values); trigger a reload | `GET /admin/secrets/status`, `POST /admin/secrets/reload` | `secret.view` |
@@ -63,6 +64,10 @@ The Improve page requires the runtime to have a checkpoint database
 configured (`AGENTOS_CHECKPOINT_DATABASE_URL`) — without it, self-improvement,
 council, and operator state don't persist, and the page shows a disabled
 empty state instead of data.
+
+Docs is the only page that makes no API call of its own — it renders content
+bundled with the app, so it works with no admin key set and before any
+backend is reachable.
 
 ## Roles and visibility
 

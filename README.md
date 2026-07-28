@@ -51,7 +51,10 @@ documented as such — see [`SECURITY.md`](SECURITY.md).
 The project's public landing page is [`landing/index.html`](landing/index.html)
 (self-contained; open it in a browser or serve the `landing/` directory). The
 operator console runs at `http://localhost:3000` once the stack is up and is
-documented in [`docs/console.md`](docs/console.md).
+documented in [`docs/console.md`](docs/console.md). The same handbook also
+rides along in the running console itself, at `/docs` — reachable from the
+sidebar or ⌘K — so an operator never has to leave the product to learn what
+it does.
 
 ## What it is, and who it's for
 
@@ -242,7 +245,7 @@ SSH has no Compose service at all — run it standalone and wire it up yourself.
 
 ## Console
 
-The console (`:3000`) is the operator surface: twelve pages covering usage and
+The console (`:3000`) is the operator surface: thirteen pages covering usage and
 spend, key creation, the audit trail, a streaming playground with
 human-in-the-loop approvals, knowledge-base documents, eval-gated improvement
 proposals, council objectives, operators, and tenancy administration. Its
