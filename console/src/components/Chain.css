@@ -1,5 +1,5 @@
 /* The governance chain. Reads as a wiring run across the top of the shell:
-   five nodes on one rule, inked only as far as the last request actually got. */
+   six nodes on one rule, inked only as far as the last request actually got. */
 
 .chain {
   position: relative;

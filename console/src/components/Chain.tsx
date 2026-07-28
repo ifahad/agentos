@@ -24,9 +24,9 @@ const STAGE_LABELS: Record<ChainStage, string> = {
 /** What each stage actually checks — the tooltip for someone new to the gauntlet. */
 const STAGE_TITLES: Record<ChainStage, string> = {
   auth: "auth — the caller presented a valid virtual key",
-  rate: "rate — the key is within its rate limit",
+  rate: "rate — the key's org is within its per-org rate limit",
   budget: "budget — the key and its org are within budget",
-  guardrail: "guardrail — the prompt cleared injection screening (when enabled)",
+  guardrail: "guardrail — not halted by injection screening (a lit stage is not proof it ran)",
   upstream: "upstream — the provider or council answered",
   audit: "audit — the outcome was recorded",
 };
@@ -52,10 +52,10 @@ interface ChainProps {
  *
  * Every AgentOS request runs an ordered gauntlet before a provider is ever
  * called, and that ordering is the whole product. So the shell renders it
- * permanently: five stages, joined by a rule that fills as far as the most
+ * permanently: six stages, joined by a rule that fills as far as the most
  * recent request actually got.
  *
- * It is driven entirely by recorded audit statuses (see lib/chain.ts) rather
+ * It is driven entirely by recorded audit evidence (see lib/chain.ts) rather
  * than by an animation timer, so a lit chain is evidence rather than decoration.
  * With no key, or no traffic, it sits unlit — deliberately, because "quiet" and
  * "healthy" must not look the same as "unknown".
