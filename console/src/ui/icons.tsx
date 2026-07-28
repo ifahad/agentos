@@ -25,6 +25,7 @@ export type IconName =
   | "audit"
   | "playground"
   | "documents"
+  | "docs"
   | "improve"
   | "orgs"
   | "users"
@@ -98,6 +99,17 @@ const GLYPHS: Record<IconName, JSX.Element> = {
       <path d="M5.5 2.5h5l3 3v6h-8z" />
       <path d="M10.5 2.5v3h3" />
       <path d="M2.5 5.5v8h8" />
+    </>
+  ),
+
+  // An open manual: one spine, two leaves. Deliberately not `documents`, which
+  // is two offset sheets — a corpus you search. This is a book you read, so the
+  // silhouette differs at the outline, not in a corner fold.
+  docs: (
+    <>
+      <path d="M8 4.5 2.5 3.5v8L8 13" />
+      <path d="M8 4.5 13.5 3.5v8L8 13" />
+      <path d="M8 4.5v8.5" />
     </>
   ),
 
