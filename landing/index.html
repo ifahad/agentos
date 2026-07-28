@@ -190,7 +190,7 @@ a { color: inherit; text-decoration: none; }
    not --live. --live means "a request is in flight" and nothing here is. */
 .brand .dot { width: 8px; height: 8px; border-radius: 2px; background: var(--v); box-shadow: 0 0 16px var(--v); animation: brandpulse 3s var(--ease) infinite; }
 @keyframes brandpulse { 0%,100%{opacity:1} 50%{opacity:.45} }
-@keyframes pulse { 0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--live) 45%,transparent);} 70%{box-shadow:0 0 0 7px transparent;} 100%{box-shadow:0 0 0 0 transparent;} }
+@keyframes pulse { 0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--v) 45%,transparent);} 70%{box-shadow:0 0 0 7px transparent;} 100%{box-shadow:0 0 0 0 transparent;} }
 .nav { display: flex; gap: 26px; margin-left: 14px; }
 .nav a { font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.04em; color: var(--dim); transition: color .16s; }
 .nav a:hover { color: var(--ink); }
@@ -328,42 +328,59 @@ h1 em { font-style: normal; color: var(--v3); }
 .cta-row { margin-top: 30px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .cta-note { font-family: var(--mono); font-size: 11px; color: var(--faint); letter-spacing: 0.04em; }
 
-/* ---------- governance chain (the signature) ---------- */
+/* ---------- governance chain (the signature) ----------
+   Namespaced against the approved mock (docs/superpowers/research/2026-07-28-
+   landing-mock.html), which defines bare .chain / .dot / .rail / .sub / .band
+   with different meanings than this page. Ported classes here are prefixed
+   gc-; .dot is never introduced (the mock's stage marker is this page's
+   existing .node/.core); .band is left untouched (it already means "the
+   sovereign-by-design banded section" elsewhere on this page and the ported
+   conveyor never needs it). See the task report for the collision grep. */
 .chain-panel {
   margin-top: 52px; border: 1px solid var(--border); border-radius: 10px; background: var(--raised);
   box-shadow: var(--shadow); overflow: hidden;
 }
 .chain-head { display: flex; align-items: center; justify-content: space-between; padding: 13px 20px; border-bottom: 1px solid var(--border); }
-.chain-head .status { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; color: var(--live); letter-spacing: 0.1em; text-transform: uppercase; }
-.chain-head .status .d { width: 6px; height: 6px; border-radius: 50%; background: var(--live); animation: pulse 1.8s ease-out infinite; }
+/* "Simulated" is chrome describing the panel, not a machine outcome, so it
+   takes the interface register (violet) -- the same fix already applied to
+   the brand mark above. It must never wear a state hue again. */
+.chain-head .status { display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 11px; color: var(--v2); letter-spacing: 0.1em; text-transform: uppercase; }
+.chain-head .status .d { width: 6px; height: 6px; border-radius: 50%; background: var(--v); animation: pulse 1.8s ease-out infinite; }
+.chain-head-r { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+.gc-ill { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); }
 .chain-body { padding: 30px 24px 26px; }
-.chain {
+.gc-chain {
   position: relative; display: grid; grid-template-columns: repeat(6, 1fr);
 }
-.rail { position: absolute; left: 5%; right: 5%; top: 7px; height: 2px; background: var(--border-strong); border-radius: 2px; overflow: hidden; }
-.rail .fill { position: absolute; inset: 0 100% 0 0; background: linear-gradient(90deg, transparent, var(--live)); animation: sweep 4.2s cubic-bezier(.5,0,.2,1) infinite; }
-@keyframes sweep { 0%{right:100%;} 55%,100%{right:0;} }
+/* Static hairline connecting the stages -- no sweep, no motion. A bar that
+   glides continuously regardless of the frame's real outcome is the same
+   "chrome wearing a state hue" problem as the old .status dot; the six node
+   colours below are the only channel that carries machine state now. */
+.gc-rail { position: absolute; left: 5%; right: 5%; top: 7px; height: 2px; background: var(--border-strong); border-radius: 2px; }
 .stage { text-align: center; position: relative; }
 .node { width: 16px; height: 16px; border-radius: 50%; margin: 0 auto; background: var(--bg); border: 2px solid var(--border-strong); position: relative; z-index: 2; }
-.stage .node .core { position: absolute; inset: 3px; border-radius: 50%; background: var(--live); opacity: 0; transform: scale(.4); transition: opacity .18s ease, transform .18s ease; }
-.stage.active .node { border-color: var(--live); }
-.stage.active .node .core { opacity: 1; transform: scale(1); background: var(--live); }
+.stage .node .core { position: absolute; inset: 3px; border-radius: 50%; background: var(--v2); opacity: 0; transform: scale(.4); transition: opacity .18s ease, transform .18s ease; }
+/* A stage the request reached is structural progress, not itself a distinct
+   machine verdict -- it takes violet. Only the stage that actually halted
+   the request (deny/hold below) carries a state hue. Stages after the halt
+   are left unclassed and stay dark, because the request never reached them. */
+.stage.gc-cleared .node { border-color: var(--v2); }
+.stage.gc-cleared .node .core { opacity: 1; transform: scale(1); background: var(--v2); }
 .stage.hold  .node { border-color: var(--hold); }
 .stage.hold  .node .core { opacity: 1; transform: scale(1); background: var(--hold); }
 .stage.deny  .node { border-color: var(--deny); }
 .stage.deny  .node .core { opacity: 1; transform: scale(1); background: var(--deny); }
 .stage .lbl { margin-top: 14px; font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--dim); }
-.stage .sub { margin-top: 4px; font-size: 12px; color: var(--faint); line-height: 1.35; padding: 0 6px; }
+.stage .gc-sub { margin-top: 4px; font-size: 12px; color: var(--faint); line-height: 1.35; padding: 0 6px; }
 @media (prefers-reduced-motion: reduce) {
-  .rail .fill { animation: none; right: 0; }
   .stage .node .core { transition: none !important; }
-  .stage.active .node .core, .stage.hold .node .core, .stage.deny .node .core { opacity: 1; transform: scale(1); }
+  .stage.gc-cleared .node .core, .stage.hold .node .core, .stage.deny .node .core { opacity: 1; transform: scale(1); }
   .brand .dot, .chain-head .status .d { animation: none; }
   .feed-row.new { animation: none; }
 }
 .chain-caption { margin-top: 26px; text-align: center; font-size: 13px; color: var(--faint); }
 .chain-caption b { color: var(--dim); font-weight: 600; }
-@media (max-width: 620px){ .chain { grid-template-columns: repeat(6, 1fr); } .stage .sub { display: none; } .stage .lbl { font-size: 9px; letter-spacing: 0.08em; } }
+@media (max-width: 620px){ .gc-chain { grid-template-columns: repeat(6, 1fr); } .stage .gc-sub { display: none; } .stage .lbl { font-size: 9px; letter-spacing: 0.08em; } }
 
 /* ---------- audit-tail feed + throughput sparkline ---------- */
 .chain-live { margin-top: 18px; display: flex; flex-direction: column; gap: 14px; }
@@ -602,17 +619,20 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     <div class="chain-panel reveal">
       <div class="chain-head">
         <span class="eyebrow">Governance chain</span>
-        <span class="status"><span class="d"></span> Simulated</span>
+        <div class="chain-head-r">
+          <span class="status"><span class="d"></span> Simulated</span>
+          <span class="gc-ill">Illustration · scripted sequence</span>
+        </div>
       </div>
       <div class="chain-body">
-        <div class="chain">
-          <div class="rail"><span class="fill"></span></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Auth</div><div class="sub">Virtual key</div></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Rate</div><div class="sub">Per-org limits</div></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Budget</div><div class="sub">Atomic spend reserve</div></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Guardrail</div><div class="sub">Prompt screening, when on</div></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Upstream</div><div class="sub">Provider or council</div></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Audit</div><div class="sub">Served calls and gate events</div></div>
+        <div class="gc-chain">
+          <div class="gc-rail"></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Auth</div><div class="gc-sub">Virtual key</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Rate</div><div class="gc-sub">Per-org limits</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Budget</div><div class="gc-sub">Atomic spend reserve</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Guardrail</div><div class="gc-sub">Prompt screening, when on</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Upstream</div><div class="gc-sub">Provider or council</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Audit</div><div class="gc-sub">Served calls and gate events</div></div>
         </div>
         <div class="chain-caption">Every request clears auth, limits, budget and screening <b>before a provider is ever called</b> — retries and autonomous runs included.</div>
 
@@ -1155,79 +1175,76 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
   };
 })();
 
-// --- Governance-chain live preview: a deterministic in-file simulation.
-// No Math.random / no network — the demo sequence is reproducible.
+// --- Governance-chain conveyor. Ported from the approved mock's fixed
+// eight-frame SCRIPT (docs/superpowers/research/2026-07-28-landing-mock.html
+// lines 309-338): a literal, hand-authored sequence of settled requests, not
+// a PRNG -- every field below is a fixed value, no Math.random and no seeded
+// generator. Stages are auth/rate/budget/guardrail/upstream/audit (matching
+// CHAIN_STAGES in console/src/lib/chain.ts) and stop is that stage's index.
+// Denials land only where the gateway can actually deny -- rate (429),
+// budget (402), guardrail (400); the upstream frame halts amber ('hold'),
+// never red, because a provider failure is not a denial. auth and audit
+// never appear as a stop, so nothing is ever depicted denying there.
 (function () {
-  var panel = document.querySelector('.chain-panel');
-  if (!panel) return;
-  var stages = Array.prototype.slice.call(panel.querySelectorAll('.stage')); // Auth,Rate,Budget,Guardrail,Upstream,Audit
+  var chain = document.querySelector('.gc-chain');
+  if (!chain) return;
+  var stages = Array.prototype.slice.call(chain.querySelectorAll('.stage')); // Auth,Rate,Budget,Guardrail,Upstream,Audit
   if (stages.length !== 6) return;
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  function mulberry32(a) {
-    return function () {
-      a |= 0; a = (a + 0x6D2B79F5) | 0;
-      var t = Math.imul(a ^ (a >>> 15), 1 | a);
-      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-    };
-  }
-  var rand = mulberry32(0x5EED);
-  // Every id here exists: runtime/council.yaml members 24/30/35/40, priced in
-  // deploy/providers.json. No invented or near-miss model names.
-  var MODELS = ['qwen3.8-max', 'deepseek-v4-pro', 'kimi-k3', 'glm-5.2'];
-  var ORGS = ['acme', 'globex', 'initech', 'umbrella'];
+  // Every model/org id here exists: runtime/council.yaml members 24/30/35/40,
+  // priced in deploy/providers.json, same roster the mulberry32 version used.
+  var SCRIPT = [
+    { stop: 5, outcome: 'ok',   model: 'qwen3.8-max',     org: 'acme',     tokens: 812,  cost: 1.42, latency: 340 },
+    { stop: 5, outcome: 'ok',   model: 'kimi-k3',         org: 'globex',   tokens: 1180, cost: 2.05, latency: 410 },
+    { stop: 1, outcome: 'deny', model: 'deepseek-v4-pro', org: 'initech',  tokens: 0,    cost: 0,    latency: 90  }, // 429 -- rate limit
+    { stop: 5, outcome: 'ok',   model: 'glm-5.2',         org: 'umbrella', tokens: 640,  cost: 0.98, latency: 295 },
+    { stop: 3, outcome: 'deny', model: 'qwen3.8-max',     org: 'acme',     tokens: 0,    cost: 0,    latency: 150 }, // 400 -- guardrail
+    { stop: 5, outcome: 'ok',   model: 'kimi-k3',         org: 'globex',   tokens: 990,  cost: 1.77, latency: 365 },
+    { stop: 4, outcome: 'hold', model: 'deepseek-v4-pro', org: 'initech',  tokens: 0,    cost: 0,    latency: 610 }, // 502 -- upstream, amber
+    { stop: 2, outcome: 'deny', model: 'glm-5.2',         org: 'umbrella', tokens: 0,    cost: 0,    latency: 60  }  // 402 -- budget exhausted
+  ];
 
-  // Decide a request's fate: index of the stage it stops at (0..5) and outcome.
-  // Mirrors the gateway's real outcomes: most clear all six; a provider failure
-  // halts amber at Upstream; denials happen only where the gateway can actually
-  // deny -- rate limit (429), budget (402) or guardrail (400).
-  function nextRequest() {
-    var roll = rand();
-    var stop, outcome;
-    if (roll < 0.8) { stop = 5; outcome = 'ok'; }
-    else if (roll < 0.92) { stop = 4; outcome = 'hold'; }                          // Upstream: governance cleared, provider failed
-    else { stop = 1 + Math.floor(rand() * 3); outcome = 'deny'; }                   // Rate/Budget/Guardrail
-    return {
-      stop: stop, outcome: outcome,
-      model: MODELS[Math.floor(rand() * MODELS.length)],
-      org: ORGS[Math.floor(rand() * ORGS.length)],
-      tokens: 200 + Math.floor(rand() * 1800),
-      cost: Math.round((0.4 + rand() * 6) * 100) / 100,
-      latency: 120 + Math.floor(rand() * 900),
-    };
-  }
-
-  function clearStages() { stages.forEach(function (s) { s.classList.remove('active', 'hold', 'deny'); }); }
-
-  var req = null, at = -1;
-  function tick() {
-    if (!req) { req = nextRequest(); at = -1; clearStages(); }
-    at += 1;
-    if (at <= req.stop) {
-      var stage = stages[at];
-      var terminal = at === req.stop && req.outcome !== 'ok';
-      stage.classList.add(terminal ? req.outcome : 'active');
-      if (at === req.stop) {
-        // request settled — emit it, then start a fresh one next tick
-        onSettled(req);
-        req = null;
-      }
-    }
-  }
-
-  // onSettled is defined in Task 2 (readouts + feed). For Task 1, stub it:
+  // onSettled is defined by the readouts/feed IIFE above; stub it defensively
+  // in case that block's lookups failed and it returned early.
   window.__agentosOnSettled = window.__agentosOnSettled || function () {};
-  function onSettled(r) { window.__agentosOnSettled(r); }
+
+  function draw(f) {
+    stages.forEach(function (stage, k) {
+      stage.classList.remove('gc-cleared', 'hold', 'deny');
+      if (k < f.stop || (k === f.stop && f.outcome === 'ok')) {
+        stage.classList.add('gc-cleared');           // reached -- structural progress, violet
+      } else if (k === f.stop) {
+        stage.classList.add(f.outcome);              // the one stage that actually halted it
+      }
+      // k > f.stop stays unclassed and dark: the request never reached it.
+    });
+  }
 
   if (reduce) {
-    // one representative still: a cleared request lighting all five, no loop.
-    stages.forEach(function (s) { s.classList.add('active'); });
-    onSettled({ stop: 5, outcome: 'ok', model: MODELS[0], org: ORGS[0], tokens: 1024, cost: 2.4, latency: 380 });
+    // The interval must never be created under reduced motion. The still is
+    // SCRIPT[2] -- a rate-stage denial with guardrail/upstream/audit dark --
+    // because it teaches the shape of the chain better than a clean pass.
+    draw(SCRIPT[2]);
+    window.__agentosOnSettled(SCRIPT[2]);
     return;
   }
-  setInterval(tick, 520);
-  tick();
+
+  var i = 0, timer = null;
+  draw(SCRIPT[0]);
+  window.__agentosOnSettled(SCRIPT[0]);
+
+  function start() {
+    if (timer) return;
+    timer = setInterval(function () {
+      i = (i + 1) % SCRIPT.length;
+      draw(SCRIPT[i]);
+      window.__agentosOnSettled(SCRIPT[i]);
+    }, 2200);
+  }
+  function stop() { if (timer) { clearInterval(timer); timer = null; } }
+  document.addEventListener('visibilitychange', function () { document.hidden ? stop() : start(); });
+  start();
 })();
 
 // --- Council panel: quorum rotation. A slow, deterministic interval (its
