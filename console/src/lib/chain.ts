@@ -160,8 +160,17 @@ export function chainStateFromEntry(entry: ChainEvidence): ChainState {
       // row only exists once governance already cleared, so a 401/429/400
       // here is the provider's own credential, rate limit, or request-shape
       // problem, never the caller's — it stops at upstream, not at auth,
-      // rate, or guardrail.
-      return { cleared: 4, stoppedAt: "upstream", outcome: "fail", unproven: [] };
+      // rate, or guardrail. guard.Screen() runs (or is skipped under
+      // ModeOff) entirely before proxy() is ever called, so its evidentiary
+      // status does not depend on whether the provider then succeeds or
+      // fails: guardrail is exactly as unproven here as on the 2xx pass
+      // above, and must render exactly as dark.
+      return {
+        cleared: 4,
+        stoppedAt: "upstream",
+        outcome: "fail",
+        unproven: ["guardrail"],
+      };
 
     default:
       // secret_reload (an admin action, not a /v1/* request) and any kind

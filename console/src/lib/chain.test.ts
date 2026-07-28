@@ -83,7 +83,7 @@ describe("chainStateFromEntry", () => {
       cleared: 4,
       stoppedAt: "upstream",
       outcome: "fail",
-      unproven: [],
+      unproven: ["guardrail"],
     });
   });
 
@@ -92,7 +92,7 @@ describe("chainStateFromEntry", () => {
       cleared: 4,
       stoppedAt: "upstream",
       outcome: "fail",
-      unproven: [],
+      unproven: ["guardrail"],
     });
   });
 
@@ -101,7 +101,7 @@ describe("chainStateFromEntry", () => {
       cleared: 4,
       stoppedAt: "upstream",
       outcome: "fail",
-      unproven: [],
+      unproven: ["guardrail"],
     });
   });
 
@@ -110,7 +110,7 @@ describe("chainStateFromEntry", () => {
       cleared: 4,
       stoppedAt: "upstream",
       outcome: "fail",
-      unproven: [],
+      unproven: ["guardrail"],
     });
   });
 
@@ -184,6 +184,20 @@ describe("stageRenders", () => {
       "cleared",
       "stopped",
       "unlit",
+      "unlit",
+    ]);
+  });
+
+  it("leaves guardrail unlit on an upstream failure too, not just on a pass", () => {
+    // guard.Screen() runs (or is skipped) entirely before proxy() is called,
+    // so a provider 502 is exactly as uninformative about guardrail as a 2xx
+    // is — the node must not light up just because the halt landed later.
+    expect(stageRenders(chainStateFromEntry({ status: 502, kind: "chat" }))).toEqual([
+      "cleared",
+      "cleared",
+      "cleared",
+      "unlit",
+      "stopped",
       "unlit",
     ]);
   });
