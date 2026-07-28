@@ -423,9 +423,12 @@ h3 { font-size: 21px; letter-spacing: -.015em; font-weight: 700; }
   padding: 22px; position: relative; transition: border-color .18s, transform .18s;
 }
 .card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
-.card .legend { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.card .legend { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .card .legend .id { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--faint); }
-.card .ic { color: var(--dim); }
+/* The numbered index is interface chrome (which card is this, out of six),
+   so it takes the violet accent register, matching .eyebrow's own --v2. */
+.card .n { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; color: var(--v2); }
+.card .ic { color: var(--dim); margin-left: auto; }
 .card h3 { font-size: 18px; font-weight: 640; letter-spacing: -0.01em; }
 .card p { margin-top: 8px; font-size: 14px; color: var(--dim); line-height: 1.5; }
 .card .tag { margin-top: 15px; display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
@@ -440,7 +443,10 @@ h3 { font-size: 21px; letter-spacing: -.015em; font-weight: 700; }
 .feature p { margin-top: 14px; color: var(--dim); font-size: 16px; }
 .feature ul { margin-top: 18px; list-style: none; display: flex; flex-direction: column; gap: 10px; }
 .feature li { display: flex; gap: 10px; font-size: 14px; color: var(--dim); }
-.feature li .m { color: var(--live); font-family: var(--mono); font-size: 12px; flex: none; margin-top: 2px; }
+/* Violet, not --live: a list-item marker glyph is typography, not a machine
+   outcome -- the same fix already applied to the brand mark and the chain's
+   "Simulated" status (see the comments at .brand .dot and .chain-head .status). */
+.feature li .m { color: var(--v2); font-family: var(--mono); font-size: 12px; flex: none; margin-top: 2px; }
 .viz {
   border: 1px solid var(--border); border-radius: 10px; background: var(--raised);
   box-shadow: var(--shadow); overflow: hidden;
@@ -454,9 +460,41 @@ h3 { font-size: 21px; letter-spacing: -.015em; font-weight: 700; }
 .pill.ok { color: var(--ok); border-color: color-mix(in srgb, var(--ok) 45%, transparent); }
 .pill.hold { color: var(--hold); border-color: color-mix(in srgb, var(--hold) 45%, transparent); }
 .pill.deny { color: var(--deny); border-color: color-mix(in srgb, var(--deny) 45%, transparent); }
-.verdict { margin-top: 4px; padding: 12px; border-left: 2px solid var(--live); background: var(--bg); border-radius: 4px; }
+/* Violet, not --live: the left rule marks "this is the synthesized verdict
+   panel" (interface structure); the verdict's actual state hue lives on the
+   .pill inside it (--ok "converged" today, never both a state hue and --live
+   on the same panel). */
+.verdict { margin-top: 4px; padding: 12px; border-left: 2px solid var(--v); background: var(--bg); border-radius: 4px; }
 .verdict .vh { display: flex; gap: 9px; align-items: center; margin-bottom: 6px; }
 .verdict .va { font-size: 14px; }
+
+/* ---------- council fan-out ----------
+   Namespaced .cf- / .council-fan / .cdraw against the approved mock
+   (docs/superpowers/research/2026-07-28-landing-mock.html), which defines a
+   bare `.council` wrapper and an unprefixed `.cdraw`. Neither name existed
+   anywhere on this page before this task (confirmed by grep in the task
+   report), so this is a clean port under new names rather than a rename of
+   something already here. */
+.council-fan { margin-bottom: 18px; }
+.council-fan svg { display: block; width: 100%; height: auto; }
+.cf-box { fill: var(--bg); stroke: var(--border-strong); }
+.cf-box.cf-accent { stroke: var(--v); }
+.cf-lbl { font-family: var(--mono); font-size: 12px; fill: var(--ink); }
+.cf-lbl.cf-accent { fill: var(--v3); }
+.cf-sub { font-family: var(--mono); font-size: 9.5px; fill: var(--faint); }
+/* The connectors: a stroke-dashoffset reveal on a pathLength=1 path, exactly
+   the approved mock's technique (docs/.../landing-mock.html:380-381). The
+   base rule's stroke-dashoffset:1 means "fully undrawn" -- WITHOUT the
+   reduced-motion override below, every connector stays invisible forever
+   under reduced motion, because the global animation cap only clamps
+   duration/iteration-count; it does not touch stroke-dashoffset, and an
+   element that never got to animate is stuck at its from-keyframe. This is
+   the R4-trap-3 failure the task brief calls out by name. */
+.cdraw { stroke: var(--v); stroke-width: 1; fill: none; opacity: .55; stroke-dasharray: 1; stroke-dashoffset: 1; animation: cdraw 1.1s var(--ease) forwards; }
+@keyframes cdraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .cdraw { animation: none; stroke-dashoffset: 0; }
+}
 
 /* ---------- oss stack ---------- */
 .stack { margin-top: 36px; display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; }
@@ -472,7 +510,9 @@ h3 { font-size: 21px; letter-spacing: -.015em; font-weight: 700; }
 .band .grid2 { display: grid; grid-template-columns: repeat(3,1fr); gap: 30px; margin-top: 34px; }
 @media (max-width: 720px){ .band .grid2 { grid-template-columns: 1fr; gap: 24px; } }
 .claim h4 { font-size: 16px; font-weight: 640; display: flex; align-items: center; gap: 9px; }
-.claim h4 .m { font-family: var(--mono); color: var(--live); font-size: 13px; }
+/* Violet, not --live: the glyph decorates a claim heading, it does not
+   depict a request in flight. */
+.claim h4 .m { font-family: var(--mono); color: var(--v2); font-size: 13px; }
 .claim p { margin-top: 8px; font-size: 14px; color: var(--dim); }
 
 /* ---------- final cta ---------- */
@@ -566,42 +606,42 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     </div>
     <div class="grid">
       <div class="card reveal">
-        <div class="legend"><span class="id">Engine</span>
+        <div class="legend"><span class="n">01</span><span class="id">Engine</span>
           <svg class="ic" width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square"><path d="M13 8a5 5 0 1 1-1.8-3.85"/><path d="M13.2 2v2.6h-2.6"/></svg></div>
         <h3>Self-improving agents</h3>
         <p>The reflection loop proposes prompt improvements, auto-evaluates candidate against baseline, and ships only what a human approves.</p>
         <span class="tag"><span class="d ok"></span> eval-gated · human-approved</span>
       </div>
       <div class="card reveal">
-        <div class="legend"><span class="id">Observability</span>
+        <div class="legend"><span class="n">02</span><span class="id">Observability</span>
           <svg class="ic" width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square"><path d="M2.5 12.5a5.5 5.5 0 0 1 11 0"/><path d="M8 12.5 11.5 7"/></svg></div>
         <h3>See exactly what agents do</h3>
         <p>OpenTelemetry traces, a bundled Langfuse profile, and a per-key audit log of every served model call — plus tool steps and council verdicts recorded in the runtime, all attributable.</p>
         <span class="tag"><span class="d live"></span> otel · langfuse · audit</span>
       </div>
       <div class="card reveal">
-        <div class="legend"><span class="id">Evaluation</span>
+        <div class="legend"><span class="n">03</span><span class="id">Evaluation</span>
           <svg class="ic" width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square"><path d="M3.5 2.5v11"/><path d="M3.5 5h9"/><path d="M3.5 8.5h6.5"/><path d="M3.5 12h8"/></svg></div>
         <h3>Score and gate performance</h3>
         <p>Eval suites with an LLM judge measure agents against real cases, and an opt-in CI gate fails a build that scores below your threshold.</p>
         <span class="tag"><span class="d ok"></span> llm-judge · ci gate</span>
       </div>
       <div class="card reveal">
-        <div class="legend"><span class="id">Deployment</span>
+        <div class="legend"><span class="n">04</span><span class="id">Deployment</span>
           <svg class="ic" width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square"><circle cx="3.5" cy="8" r="1.5"/><circle cx="12.5" cy="4" r="1.5"/><circle cx="12.5" cy="12" r="1.5"/><path d="M5 7.3 11 4.6"/><path d="M5 8.7 11 11.4"/></svg></div>
         <h3>Ship and scale in production</h3>
         <p>Docker Compose for a laptop, a Helm chart for a cluster — non-root images everywhere but the optional browser connector, and in Helm a hardened security context on the gateway, runtime, sandbox, console and connectors; the sandbox drops all capabilities on a read-only rootfs in both.</p>
         <span class="tag"><span class="d ok"></span> compose · helm · non-root</span>
       </div>
       <div class="card reveal">
-        <div class="legend"><span class="id">Sandbox</span>
+        <div class="legend"><span class="n">05</span><span class="id">Sandbox</span>
           <svg class="ic" width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square"><rect x="3" y="7" width="10" height="6.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg></div>
         <h3>Run generated code safely</h3>
         <p>Agent-written Python executes in an egress-less Rust sandbox: read-only rootfs, every capability dropped, no route to the network.</p>
         <span class="tag"><span class="d ok"></span> egress-less · rlimited</span>
       </div>
       <div class="card reveal">
-        <div class="legend"><span class="id">Fleet</span>
+        <div class="legend"><span class="n">06</span><span class="id">Fleet</span>
           <svg class="ic" width="17" height="17" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square"><circle cx="6" cy="5.5" r="2.5"/><path d="M2.5 13.5a3.5 3.5 0 0 1 7 0"/><path d="M10.5 4.2a2.4 2.4 0 0 1 0 4.6"/><path d="M11.2 10.4a3.5 3.5 0 0 1 2.3 3.1"/></svg></div>
         <h3>Agents for the whole company</h3>
         <p>Multi-tenant orgs, roles, and per-tenant budgets and rate limits. SSO and SCIM provisioning put every team on the same governed gateway.</p>
@@ -689,11 +729,19 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
       <div class="viz reveal" id="council-viz">
         <div class="viz-head">council/multiverse · simulated</div>
         <div class="viz-body">
-          <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">A</span><div class="mid"><div class="a">alpha</div><div class="b">moonshot/kimi-k3</div></div><span class="pill ok">answered</span></div>
-          <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">B</span><div class="mid"><div class="a">beta</div><div class="b">deepseek/deepseek-v4-pro</div></div><span class="pill ok">answered</span></div>
-          <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">C</span><div class="mid"><div class="a">gamma</div><div class="b">alibaba/qwen3.8-max</div></div><span class="pill hold">dissent</span></div>
+          <!-- Fan-out diagram: objective -> the five members that ship
+               enabled -> judge -> verdict + dissent. Drawn by JS below into
+               #council-fan-svg (real coordinates, no randomness); the visible
+               "simulated" marker on .viz-head above already covers this
+               diagram, so it carries no second marker of its own. -->
+          <div class="council-fan"><svg id="council-fan-svg" viewBox="0 0 460 300" preserveAspectRatio="xMidYMid meet" fill="none" aria-hidden="true" focusable="false"></svg></div>
+          <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">A</span><div class="mid"><div class="a">local-qwen36</div><div class="b">ollama/qwen3.6:latest</div></div><span class="pill ok">answered</span></div>
+          <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">B</span><div class="mid"><div class="a">local-qwen35</div><div class="b">ollama/qwen3.5:latest</div></div><span class="pill ok">answered</span></div>
+          <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">C</span><div class="mid"><div class="a">local-gemma4-31b</div><div class="b">ollama/gemma4:31b</div></div><span class="pill ok">answered</span></div>
+          <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">D</span><div class="mid"><div class="a">local-gemma4</div><div class="b">ollama/gemma4:latest</div></div><span class="pill ok">answered</span></div>
+          <div class="member"><span class="mono" style="color:var(--faint);font-size:11px">E</span><div class="mid"><div class="a">local-gemma3</div><div class="b">ollama/gemma3:latest</div></div><span class="pill hold">dissent</span></div>
           <div class="verdict">
-            <div class="vh"><span class="pill ok">converged · agreement 0.67</span><span class="eyebrow">verdict</span></div>
+            <div class="vh"><span class="pill ok">converged · agreement 0.80</span><span class="eyebrow">verdict</span></div>
             <div class="va">Riyadh owes 4,200 SAR across two open invoices.</div>
           </div>
         </div>
@@ -1247,17 +1295,86 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
   start();
 })();
 
+// --- Council fan-out diagram: a static, illustrative wiring diagram --
+// objective -> the five members that ship enabled -> judge -> verdict +
+// dissent -- drawn once into #council-fan-svg. Every coordinate below is a
+// literal constant (no Math.random, no seed); reduced motion is handled
+// entirely by the .cdraw CSS rule above, so this IIFE runs identically
+// either way -- it is only the connectors' draw-in animation that differs,
+// and that is a CSS media query, not a branch here. Member ids and the
+// judge model are verbatim from runtime/council.yaml (the "local members: a
+// real five-way council at $0" block) -- not the five frontier ids two rows
+// below in the HTML member list, which are disabled by default.
+(function () {
+  var el = document.getElementById('council-fan-svg');
+  if (!el) return;
+  var NS = 'http://www.w3.org/2000/svg';
+  function mk(tag, attrs) {
+    var n = document.createElementNS(NS, tag), k;
+    for (k in attrs) { if (Object.prototype.hasOwnProperty.call(attrs, k)) n.setAttribute(k, attrs[k]); }
+    return n;
+  }
+  function box(x, y, w, h, label, sub, accent) {
+    el.appendChild(mk('rect', { x: x, y: y, width: w, height: h, rx: 5, 'class': 'cf-box' + (accent ? ' cf-accent' : '') }));
+    var t = mk('text', { x: x + w / 2, y: y + (sub ? h / 2 - 2 : h / 2 + 4), 'text-anchor': 'middle', 'class': 'cf-lbl' + (accent ? ' cf-accent' : '') });
+    t.textContent = label;
+    el.appendChild(t);
+    if (sub) {
+      var s = mk('text', { x: x + w / 2, y: y + h / 2 + 12, 'text-anchor': 'middle', 'class': 'cf-sub' });
+      s.textContent = sub;
+      el.appendChild(s);
+    }
+  }
+  var delayMs = 0;
+  function curve(x1, y1, x2, y2) {
+    var midY = (y1 + y2) / 2;
+    var d = 'M' + x1 + ' ' + y1 + ' C' + x1 + ' ' + midY + ' ' + x2 + ' ' + midY + ' ' + x2 + ' ' + y2;
+    var p = mk('path', { d: d, 'class': 'cdraw', pathLength: '1' });
+    p.style.animationDelay = delayMs + 'ms';
+    delayMs += 70;
+    el.appendChild(p);
+  }
+
+  var MEMBERS = [
+    { n: 'qwen3.6' }, { n: 'qwen3.5' }, { n: 'gemma4:31b' }, { n: 'gemma4' }, { n: 'gemma3' }
+  ];
+  var MW = 82, MGAP = 10, MY = 80, MH = 32;
+  var MSTART = (460 - (MEMBERS.length * MW + (MEMBERS.length - 1) * MGAP)) / 2;
+  MEMBERS.forEach(function (m, i) { m.x = MSTART + i * (MW + MGAP); });
+
+  var OBJ = { x: 155, y: 10, w: 150, h: 36 };
+  var JUDGE = { x: 155, y: 150, w: 150, h: 36 };
+  var VERDICT = { x: 15, y: 222, w: 210, h: 32 };
+  var DISSENT = { x: 235, y: 222, w: 210, h: 32 };
+
+  // Connectors first, so the boxes painted afterwards sit cleanly on top of
+  // every curve's start/end point instead of a curve overdrawing a box edge.
+  MEMBERS.forEach(function (m) { curve(OBJ.x + OBJ.w / 2, OBJ.y + OBJ.h, m.x + MW / 2, MY); });
+  MEMBERS.forEach(function (m) { curve(m.x + MW / 2, MY + MH, JUDGE.x + JUDGE.w / 2, JUDGE.y); });
+  curve(JUDGE.x + JUDGE.w / 2, JUDGE.y + JUDGE.h, VERDICT.x + VERDICT.w / 2, VERDICT.y);
+  curve(JUDGE.x + JUDGE.w / 2, JUDGE.y + JUDGE.h, DISSENT.x + DISSENT.w / 2, DISSENT.y);
+
+  box(OBJ.x, OBJ.y, OBJ.w, OBJ.h, 'objective', 'one question', true);
+  MEMBERS.forEach(function (m) { box(m.x, MY, MW, MH, m.n, null, false); });
+  box(JUDGE.x, JUDGE.y, JUDGE.w, JUDGE.h, 'judge', 'ollama/qwen3.6:latest', true);
+  box(VERDICT.x, VERDICT.y, VERDICT.w, VERDICT.h, 'verdict', null, false);
+  box(DISSENT.x, DISSENT.y, DISSENT.w, DISSENT.h, 'dissent', null, false);
+})();
+
 // --- Council panel: quorum rotation. A slow, deterministic interval (its
 // own seeded mulberry32, independent of the chain sim above) cycles which
 // member pill reads "dissent" vs "answered". At most one member ever
-// dissents per tick, so the panel's "quorum met" framing always stays true;
-// most ticks land on full concurrence. The verdict pill's agreement figure
-// is derived from that same dissenter, never static: judge.py defines
-// agreement as the fraction of answering members that concurred, so three
-// of three must read 1.00 and two of three 0.67. No Math.random, no
-// network, no restructuring of the shipped member rows/pills.
+// dissents per tick, so the panel's "quorum met" framing always stays true
+// (council.yaml's quorum is 3, and 4 or 5 of 5 always clears it); most ticks
+// land on full concurrence. The verdict pill's agreement figure is derived
+// from that same dissenter, never static: judge.py defines agreement as the
+// fraction of answering members that concurred, so five of five must read
+// 1.00 and four of five 0.80. This IIFE reads pills.length off the DOM, so
+// it needed no edit when the shipped roster grew from three members to the
+// five that ship enabled (runtime/council.yaml's five local Ollama members,
+// not the five disabled frontier ones). No Math.random, no network.
 // Reduced-motion leaves the shipped static state (one honest dissent,
-// agreement 0.67) exactly as authored.
+// agreement 0.80) exactly as authored.
 (function () {
   var viz = document.getElementById('council-viz');
   if (!viz) return;
