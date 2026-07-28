@@ -3,12 +3,70 @@ import { CHAIN_STAGES } from "../../../lib/chain";
 import {
   ARCH_EDGES,
   ARCH_NODES,
+  COUNCIL_LAYOUT,
   COUNCIL_MEMBERS,
   GOVERNANCE_FRAME_MS,
   GOVERNANCE_SCRIPT,
+  LIFECYCLE_DETAIL_Y,
   LIFECYCLE_HOPS,
+  LIFECYCLE_LABEL_Y,
+  LIFECYCLE_RULE_Y,
   clearedCount,
 } from "./geometry";
+
+interface Point {
+  x: number;
+  y: number;
+}
+
+interface Box {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/**
+ * Walks a `d` string built only from M/H/V/L commands (the only commands any
+ * path in this module uses) and returns the point the pen started at and the
+ * point it ended at. Good enough for these axis-aligned edges without pulling
+ * in an SVG path-parsing dependency.
+ */
+function pathEndpoints(d: string): { start: Point; end: Point } {
+  const tokens = d.match(/[MHVL][^MHVL]*/g) ?? [];
+  let cx = 0;
+  let cy = 0;
+  let start: Point | null = null;
+  for (const token of tokens) {
+    const cmd = token[0];
+    const nums = token
+      .slice(1)
+      .trim()
+      .split(/[\s,]+/)
+      .filter((s) => s.length > 0)
+      .map(Number);
+    if (cmd === "M" || cmd === "L") {
+      [cx, cy] = nums;
+    } else if (cmd === "H") {
+      [cx] = nums;
+    } else if (cmd === "V") {
+      [cy] = nums;
+    }
+    if (start === null) start = { x: cx, y: cy };
+  }
+  return { start: start ?? { x: cx, y: cy }, end: { x: cx, y: cy } };
+}
+
+/** Every edge in this module is axis-aligned and snaps exactly onto its node's
+ * boundary, so an exact perimeter match is practical here (no bounding-box
+ * fallback needed). */
+function onPerimeter(box: Box, p: Point): boolean {
+  const withinX = p.x >= box.x && p.x <= box.x + box.w;
+  const withinY = p.y >= box.y && p.y <= box.y + box.h;
+  const onVerticalEdge = (p.x === box.x || p.x === box.x + box.w) && withinY;
+  const onHorizontalEdge = (p.y === box.y || p.y === box.y + box.h) && withinX;
+  return onVerticalEdge || onHorizontalEdge;
+}
 
 describe("architecture geometry", () => {
   it("has unique node ids", () => {
@@ -36,6 +94,20 @@ describe("architecture geometry", () => {
   it("states the invariant on the runtime-to-gateway edge", () => {
     const edge = ARCH_EDGES.find((e) => e.from === "runtime" && e.to === "gateway");
     expect(edge?.note).toMatch(/only via the gateway/i);
+  });
+
+  it("lands every edge's start on its `from` node and its end on its `to` node", () => {
+    const byId = new Map(ARCH_NODES.map((n) => [n.id, n]));
+    for (const e of ARCH_EDGES) {
+      const fromNode = byId.get(e.from);
+      const toNode = byId.get(e.to);
+      expect(fromNode).toBeDefined();
+      expect(toNode).toBeDefined();
+      if (!fromNode || !toNode) continue;
+      const { start, end } = pathEndpoints(e.d);
+      expect(onPerimeter(fromNode, start)).toBe(true);
+      expect(onPerimeter(toNode, end)).toBe(true);
+    }
   });
 });
 
@@ -83,5 +155,55 @@ describe("other visuals", () => {
 
   it("gives the council more than one member, so 'dissent' means something", () => {
     expect(COUNCIL_MEMBERS.length).toBeGreaterThan(1);
+  });
+});
+
+describe("lifecycle geometry", () => {
+  it("orders the label above the rule and the detail text below it", () => {
+    expect(LIFECYCLE_LABEL_Y).toBeLessThan(LIFECYCLE_RULE_Y);
+    expect(LIFECYCLE_DETAIL_Y).toBeGreaterThan(LIFECYCLE_RULE_Y);
+  });
+
+  it("keeps the rule's label and detail text inside the 640x190 viewBox", () => {
+    expect(LIFECYCLE_LABEL_Y).toBeGreaterThanOrEqual(0);
+    expect(LIFECYCLE_DETAIL_Y).toBeLessThanOrEqual(190);
+  });
+});
+
+describe("council layout", () => {
+  it("derives the member fan-out origin from the objective box's right edge, not a bare literal", () => {
+    expect(COUNCIL_LAYOUT.member.x).toBe(COUNCIL_LAYOUT.objective.x + COUNCIL_LAYOUT.objective.w);
+  });
+
+  it("fits every member box inside the 640x280 viewBox", () => {
+    for (const m of COUNCIL_MEMBERS) {
+      expect(COUNCIL_LAYOUT.member.x).toBeGreaterThanOrEqual(0);
+      expect(m.y).toBeGreaterThanOrEqual(0);
+      expect(COUNCIL_LAYOUT.member.x + COUNCIL_LAYOUT.member.w).toBeLessThanOrEqual(640);
+      expect(m.y + COUNCIL_LAYOUT.member.h).toBeLessThanOrEqual(280);
+    }
+  });
+
+  it("fits the objective, judge, verdict, and dissent boxes inside the 640x280 viewBox", () => {
+    const boxes = [
+      COUNCIL_LAYOUT.objective,
+      COUNCIL_LAYOUT.judge,
+      COUNCIL_LAYOUT.verdict,
+      COUNCIL_LAYOUT.dissent,
+    ];
+    for (const b of boxes) {
+      expect(b.x).toBeGreaterThanOrEqual(0);
+      expect(b.y).toBeGreaterThanOrEqual(0);
+      expect(b.x + b.w).toBeLessThanOrEqual(640);
+      expect(b.y + b.h).toBeLessThanOrEqual(280);
+    }
+  });
+
+  it("keeps the judge clear of the member boxes, and verdict/dissent clear of the judge", () => {
+    const memberRight = COUNCIL_LAYOUT.member.x + COUNCIL_LAYOUT.member.w;
+    const judgeRight = COUNCIL_LAYOUT.judge.x + COUNCIL_LAYOUT.judge.w;
+    expect(COUNCIL_LAYOUT.judge.x).toBeGreaterThanOrEqual(memberRight);
+    expect(COUNCIL_LAYOUT.verdict.x).toBeGreaterThanOrEqual(judgeRight);
+    expect(COUNCIL_LAYOUT.dissent.x).toBeGreaterThanOrEqual(judgeRight);
   });
 });

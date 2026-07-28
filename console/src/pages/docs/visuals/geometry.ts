@@ -32,7 +32,11 @@ export interface ArchEdge {
 }
 
 export const ARCH_EDGES: ArchEdge[] = [
-  { from: "console", to: "gateway", d: "M120 46H184" },
+  // Drops from the console's right edge to the same x=152 channel the client
+  // edge uses, but lands on gateway's left edge higher up (y=90 vs the
+  // client's y=108) so the two vertical runs (y 46-90 and y 108-154) never
+  // overlap or cross.
+  { from: "console", to: "gateway", d: "M120 46H152V90H184" },
   { from: "client", to: "gateway", d: "M120 154H152V108H184" },
   { from: "gateway", to: "providers", d: "M248 138V232", note: "the only egress to a model" },
   { from: "runtime", to: "gateway", d: "M376 108H312", note: "models only via the gateway" },
@@ -52,7 +56,16 @@ export interface LifecycleHop {
   x: number;
 }
 
-/** viewBox is 0 0 640 190. Hops sit on a single rule at y=70. */
+/**
+ * viewBox is 0 0 640 190. Hops sit on a single rule at LIFECYCLE_RULE_Y; the
+ * hop label sits above it at LIFECYCLE_LABEL_Y and the detail text sits below
+ * it at LIFECYCLE_DETAIL_Y. Exported so the component reads these instead of
+ * re-hardcoding 70/46/102 as JSX literals.
+ */
+export const LIFECYCLE_RULE_Y = 70;
+export const LIFECYCLE_LABEL_Y = 46;
+export const LIFECYCLE_DETAIL_Y = 102;
+
 export const LIFECYCLE_HOPS: LifecycleHop[] = [
   { id: "client", label: "client", detail: "presents an agos- virtual key", x: 56 },
   { id: "gateway", label: "gateway", detail: "authorises, meters, screens, records", x: 216 },
@@ -68,7 +81,17 @@ export interface CouncilMember {
   y: number;
 }
 
-/** viewBox is 0 0 640 260. Members fan out from x=150 to a judge at x=430. */
+/**
+ * viewBox is 0 0 640 280 for the council visual. (Raised from 260: the last
+ * member box, at y=232 with COUNCIL_LAYOUT.member.h=32, reaches 264 — the
+ * spacing between members is kept as originally authored, so the viewBox
+ * grew to fit it instead.)
+ *
+ * Members fan out from x=150 to a judge at x=430. That x=150 is not a
+ * standalone magic number — see COUNCIL_LAYOUT.member.x below, which is
+ * derived from the objective box's own right edge so the two can never drift
+ * apart again.
+ */
 export const COUNCIL_MEMBERS: CouncilMember[] = [
   { id: "m1", label: "model A", y: 40 },
   { id: "m2", label: "model B", y: 88 },
@@ -77,13 +100,59 @@ export const COUNCIL_MEMBERS: CouncilMember[] = [
   { id: "m5", label: "model E", y: 232 },
 ];
 
+export interface CouncilBox {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Every member box shares these dimensions; only `y` (see COUNCIL_MEMBERS) varies. */
+export interface CouncilMemberBox {
+  x: number;
+  w: number;
+  h: number;
+}
+
+export interface CouncilLayout {
+  /** The prompt/ask box the fan-out originates from. */
+  objective: CouncilBox;
+  /** Shared x/width/height for every member box; combine with a member's own `y`. */
+  member: CouncilMemberBox;
+  /** The single judge box every member's line fans back into. */
+  judge: CouncilBox;
+  /** The majority verdict, drawn once the judge resolves. */
+  verdict: CouncilBox;
+  /** The dissent note — the council is only interesting if not every model agrees. */
+  dissent: CouncilBox;
+}
+
+const COUNCIL_OBJECTIVE_BOX: CouncilBox = { x: 16, y: 108, w: 134, h: 64 };
+
+/**
+ * So the renderer never hardcodes the objective box, the member box, the
+ * judge, or the verdict/dissent boxes as JSX literals. `member.x` is derived
+ * from the objective box's right edge, not duplicated as a bare 150.
+ */
+export const COUNCIL_LAYOUT: CouncilLayout = {
+  objective: COUNCIL_OBJECTIVE_BOX,
+  member: {
+    x: COUNCIL_OBJECTIVE_BOX.x + COUNCIL_OBJECTIVE_BOX.w,
+    w: 110,
+    h: 32,
+  },
+  judge: { x: 430, y: 108, w: 100, h: 64 },
+  verdict: { x: 560, y: 100, w: 64, h: 44 },
+  dissent: { x: 560, y: 156, w: 64, h: 44 },
+};
+
 /* ---------- governance conveyor ---------- */
 
 /**
  * A fixed script. No Math.random anywhere: the sequence is authored so a reader
- * sees a clean pass, a rate-limit denial, a guardrail block, and an upstream
- * failure without waiting on chance, and so two people looking at the same frame
- * see the same thing.
+ * sees a clean pass, a rate-limit denial, a guardrail block, an upstream
+ * failure, and a budget denial without waiting on chance, and so two people
+ * looking at the same frame see the same thing.
  *
  * `stoppedAt: null` means the request cleared every stage.
  */
