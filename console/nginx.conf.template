@@ -21,11 +21,11 @@ server {
         proxy_pass http://runtime:8000/;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
-        # The runtime requires a bearer token on every route (except /healthz).
-        # nginx injects it server-side so the browser never holds it; the value
-        # is substituted from the AGENTOS_RUNTIME_AUTH_TOKEN container env var at
-        # startup (see docker-entrypoint.sh). This is the ONLY variable expanded
-        # by envsubst, so nginx's own $host/$uri are preserved.
+        # The runtime requires a bearer token on every route except /healthz and
+        # POST /operators/webhooks/{token}, where the opaque whk- token in the path is
+        # itself the credential. This proxy injects the bearer server-side, so it never
+        # reaches the browser — and so anything that can reach this port has full
+        # runtime authority.
         proxy_set_header Authorization "Bearer ${AGENTOS_RUNTIME_AUTH_TOKEN}";
         # SSE passthrough for /runs/stream.
         proxy_buffering off;

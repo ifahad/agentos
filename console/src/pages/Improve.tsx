@@ -167,7 +167,7 @@ export function Improve(_props: PageProps) {
           description={
             <>
               It needs the checkpoint database (set{" "}
-              <span className="mono">AGENTOS_CHECKPOINT_DB</span>) to store eval runs and
+              <span className="mono">AGENTOS_CHECKPOINT_DATABASE_URL</span>) to store eval runs and
               prompt proposals — once configured, this page lights up.
             </>
           }
