@@ -117,7 +117,7 @@ The remaining lower-severity items (#13–#22 in the fact sheet: kill-switch cla
 
 ### R4. Mock code — what to port and what will silently break
 
-The approved mock is at `/tmp/claude-1000/-home-iofahd-code/ac2f7c75-c6cb-4ccb-8376-09a3dd58f318/scratchpad/mock/page.src.html`. Its JS is ES5-compatible (`var`/`function`), has no imports, and needs no build. **Port the logic; do not paste the file.**
+The approved mock is at `docs/superpowers/research/2026-07-28-landing-mock.html`. Its JS is ES5-compatible (`var`/`function`), has no imports, and needs no build. **Port the logic; do not paste the file.**
 
 **Traps, each of which fails silently:**
 
