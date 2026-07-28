@@ -48,6 +48,69 @@
   --track: 0.22em;
   --shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 20px 50px -30px rgba(0,0,0,0.8);
   color-scheme: dark;
+
+  /* Light-theme source values. :root[data-theme="light"] and the prefers-color-scheme
+     media query below both only *reference* these — never redeclare a literal value in
+     either place. Change a light-mode color here, once, and both stay in sync by
+     construction instead of by discipline. */
+  --light-bg: #eceae4;
+  --light-raised: #f6f5f1;
+  --light-raised-2: #ffffff;
+  --light-border: rgba(0,0,0,0.10);
+  --light-border-strong: rgba(0,0,0,0.18);
+  --light-ink: #1a1d1f;
+  --light-dim: #565d63;
+  --light-faint: #8a9198;
+  --light-v: #613BF7;
+  --light-v2: #3A0AF5;
+  --light-v3: #2E08C4;
+  --light-live: #12897c;
+  --light-ok: #2f8f57;
+  --light-hold: #a8721c;
+  --light-deny: #bb4038;
+  --light-shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 20px 50px -34px rgba(0,0,0,0.25);
+}
+
+:root[data-theme="light"] {
+  --bg: var(--light-bg);
+  --raised: var(--light-raised);
+  --raised-2: var(--light-raised-2);
+  --border: var(--light-border);
+  --border-strong: var(--light-border-strong);
+  --ink: var(--light-ink);
+  --dim: var(--light-dim);
+  --faint: var(--light-faint);
+  --v: var(--light-v);
+  --v2: var(--light-v2);
+  --v3: var(--light-v3);
+  --live: var(--light-live);
+  --ok: var(--light-ok);
+  --hold: var(--light-hold);
+  --deny: var(--light-deny);
+  --shadow: var(--light-shadow);
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: var(--light-bg);
+    --raised: var(--light-raised);
+    --raised-2: var(--light-raised-2);
+    --border: var(--light-border);
+    --border-strong: var(--light-border-strong);
+    --ink: var(--light-ink);
+    --dim: var(--light-dim);
+    --faint: var(--light-faint);
+    --v: var(--light-v);
+    --v2: var(--light-v2);
+    --v3: var(--light-v3);
+    --live: var(--light-live);
+    --ok: var(--light-ok);
+    --hold: var(--light-hold);
+    --deny: var(--light-deny);
+    --shadow: var(--light-shadow);
+    color-scheme: light;
+  }
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -101,6 +164,7 @@ a { color: inherit; text-decoration: none; }
 .btn:hover { border-color: var(--live); }
 .btn:active { transform: translateY(1px); }
 .btn-solid { background: var(--live); color: #08201e; border-color: var(--live); }
+:root[data-theme="light"] .btn-solid, @media (prefers-color-scheme: light){ :root:not([data-theme="dark"]) .btn-solid{ color: #fff; } }
 .theme-toggle { background: transparent; border: 1px solid var(--border); border-radius: 4px; width: 34px; height: 34px; cursor: pointer; color: var(--dim); display: grid; place-items: center; }
 .theme-toggle:hover { color: var(--ink); border-color: var(--border-strong); }
 @media (max-width: 720px){ .nav { display: none; } }
