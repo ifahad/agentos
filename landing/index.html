@@ -887,14 +887,20 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 30px; }
     <!-- Every line here is the Makefile's own target or README.md's Path 1
          verbatim ("make up"/"make smoke" -- Makefile:17,26; the clone+env
          steps -- README.md:111-117); see the task report for the grep
-         against both. -->
+         against both. The "$0" comment line states Path 2's actual
+         four-variable requirement (README.md:141-155: AGENTOS_MODEL,
+         AGENTOS_EMBED_MODEL, AGENTOS_JUDGE_MODEL, AGENTOS_OLLAMA_BASE_URL
+         must all be set -- pointing AGENTOS_OLLAMA_BASE_URL alone at a
+         local Ollama does not reach the $0 path, since the shipped
+         AGENTOS_MODEL/AGENTOS_JUDGE_MODEL defaults still call Anthropic;
+         deploy/.env.example:11,76). -->
     <div class="term">
       <div class="term-head">
         <span class="term-dots"><span></span><span></span><span></span></span>
         <span class="term-title mono">quickstart</span>
         <button class="term-copy" onclick="copyBlock(this)">copy</button>
       </div>
-      <pre class="term-body mono"><span class="term-ln"><span class="term-p">$</span> git clone &lt;repo-url&gt; agentos &amp;&amp; cd agentos</span><span class="term-ln"><span class="term-p">$</span> cd deploy &amp;&amp; cp .env.example .env</span><span class="term-ln"><span class="term-c"># set AGENTOS_ANTHROPIC_API_KEY, or point AGENTOS_OLLAMA_BASE_URL at a local Ollama for $0</span></span><span class="term-ln"><span class="term-p">$</span> cd .. &amp;&amp; make up</span><span class="term-ln"><span class="term-p">$</span> make smoke</span></pre>
+      <pre class="term-body mono"><span class="term-ln"><span class="term-p">$</span> git clone &lt;repo-url&gt; agentos &amp;&amp; cd agentos</span><span class="term-ln"><span class="term-p">$</span> cd deploy &amp;&amp; cp .env.example .env</span><span class="term-ln"><span class="term-c"># set AGENTOS_ANTHROPIC_API_KEY, or set AGENTOS_MODEL, AGENTOS_EMBED_MODEL, AGENTOS_JUDGE_MODEL and AGENTOS_OLLAMA_BASE_URL for local models at $0</span></span><span class="term-ln"><span class="term-p">$</span> cd .. &amp;&amp; make up</span><span class="term-ln"><span class="term-p">$</span> make smoke</span></pre>
     </div>
     <p class="cta-note" style="margin-top:16px">Then open the console at <span class="mono">localhost:3000</span> and sign in with your admin key.</p>
   </section>
@@ -966,7 +972,7 @@ footer { border-top: 1px solid var(--border); padding: 56px 0 30px; }
   window.copyBlock = function(btn){
     var lines = ['git clone <repo-url> agentos && cd agentos',
       'cd deploy && cp .env.example .env',
-      '# set AGENTOS_ANTHROPIC_API_KEY, or point AGENTOS_OLLAMA_BASE_URL at a local Ollama for $0',
+      '# set AGENTOS_ANTHROPIC_API_KEY, or set AGENTOS_MODEL, AGENTOS_EMBED_MODEL, AGENTOS_JUDGE_MODEL and AGENTOS_OLLAMA_BASE_URL for local models at $0',
       'cd .. && make up',
       'make smoke'];
     navigator.clipboard && navigator.clipboard.writeText(lines.join('\n'));
