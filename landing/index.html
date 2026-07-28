@@ -429,6 +429,16 @@ h3 { font-size: 21px; letter-spacing: -.015em; font-weight: 700; }
    so it takes the violet accent register, matching .eyebrow's own --v2. */
 .card .n { font-family: var(--mono); font-size: 10px; letter-spacing: 0.16em; color: var(--v2); }
 .card .ic { color: var(--dim); margin-left: auto; }
+/* .legend also fronts #governance's 3-card mini-grid two sections up
+   (Attributable/Bounded/Safe-by-default), whose second child is its "01"/
+   "02"/"03" badge -- a bare .mono span, not .ic. That grid predates this
+   task and its cards carry no .ic to inherit the margin-left:auto above, so
+   switching .legend from justify-content:space-between to gap (for the
+   capability grid's new .n badge) otherwise pulls its own badge in from the
+   right edge to sit 8px off the label. Giving the mono badge the same
+   margin-left:auto restores flush-right there without touching that
+   section's markup or re-scoping .legend away from the capability grid. */
+.card .legend .mono { margin-left: auto; }
 .card h3 { font-size: 18px; font-weight: 640; letter-spacing: -0.01em; }
 .card p { margin-top: 8px; font-size: 14px; color: var(--dim); line-height: 1.5; }
 .card .tag { margin-top: 15px; display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
