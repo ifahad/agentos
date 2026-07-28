@@ -46,8 +46,20 @@
   --sans: "Archivo", ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
   --eyebrow: 10px;
   --track: 0.22em;
+  --ease: cubic-bezier(.2,.8,.2,1);
   --shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 20px 50px -30px rgba(0,0,0,0.8);
   color-scheme: dark;
+
+  /* Gate-field paint. The field is an interface illustration, so it is drawn
+     entirely in the violet register; --deny is the only state hue it uses, and
+     only where the drawing depicts an actual gateway denial. "far" is the weak
+     end of a strand (out at the edges of the frame), "near" the strong end (at
+     the gate) — on a dark ground that means brighter, on a light ground darker,
+     so the same gradient reads as "gains contrast toward the gate" either way. */
+  --gf-far: #7A5AF8;
+  --gf-near: #C7B6FF;
+  --gf-packet: #EFEAFF;
+  --gf-halo-a: 0.40;
 
   /* Light-theme source values. :root[data-theme="light"] and the prefers-color-scheme
      media query below both only *reference* these — never redeclare a literal value in
@@ -69,6 +81,10 @@
   --light-hold: #825816;
   --light-deny: #B23D35;
   --light-shadow: 0 1px 0 rgba(255,255,255,0.6) inset, 0 20px 50px -34px rgba(0,0,0,0.25);
+  --light-gf-far: #613BF7;
+  --light-gf-near: #2E08C4;
+  --light-gf-packet: #1B057E;
+  --light-gf-halo-a: 0.20;
 }
 
 :root[data-theme="light"] {
@@ -88,6 +104,10 @@
   --hold: var(--light-hold);
   --deny: var(--light-deny);
   --shadow: var(--light-shadow);
+  --gf-far: var(--light-gf-far);
+  --gf-near: var(--light-gf-near);
+  --gf-packet: var(--light-gf-packet);
+  --gf-halo-a: var(--light-gf-halo-a);
   color-scheme: light;
 }
 
@@ -109,6 +129,10 @@
     --hold: var(--light-hold);
     --deny: var(--light-deny);
     --shadow: var(--light-shadow);
+    --gf-far: var(--light-gf-far);
+    --gf-near: var(--light-gf-near);
+    --gf-packet: var(--light-gf-packet);
+    --gf-halo-a: var(--light-gf-halo-a);
     color-scheme: light;
   }
 }
@@ -128,6 +152,12 @@ body {
 }
 
 .wrap { max-width: 1120px; margin: 0 auto; padding: 0 28px; }
+/* Wider gutter-aligned container shared by the top bar and the hero, so the
+   hero's copy column, its metadata block and the stat rail all line up with
+   the brand mark above them. Named .wrap-x rather than reusing .wrap because
+   the two have different widths and .wrap is load-bearing for every section
+   below the fold. */
+.wrap-x { width: 100%; max-width: 1320px; margin: 0 auto; padding: 0 clamp(22px, 3.2vw, 46px); }
 
 .eyebrow {
   font-family: var(--mono);
@@ -140,44 +170,136 @@ body {
 .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
 
 a { color: inherit; text-decoration: none; }
-:focus-visible { outline: 2px solid var(--live); outline-offset: 3px; border-radius: 3px; }
+/* Violet, not --live: a focus ring is interface chrome, not a machine state. */
+:focus-visible { outline: 2px solid var(--v2); outline-offset: 3px; border-radius: 3px; }
 
 /* ---------- top bar ---------- */
 .bar {
   position: sticky; top: 0; z-index: 50;
-  backdrop-filter: blur(12px);
-  background: color-mix(in srgb, var(--bg) 82%, transparent);
-  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(14px);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  border-bottom: 1px dashed var(--border-strong);
 }
-.bar-in { display: flex; align-items: center; gap: 20px; height: 60px; }
-.brand { display: flex; align-items: center; gap: 9px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; font-size: 14px; }
-.brand .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 45%, transparent); animation: pulse 2s ease-out infinite; }
+.bar-in { display: flex; align-items: center; gap: 18px; height: 62px; }
+.brand { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; font-size: 12.5px; flex: none; }
+/* The brand mark is decoration, so it takes the interface register (violet),
+   not --live. --live means "a request is in flight" and nothing here is. */
+.brand .dot { width: 8px; height: 8px; border-radius: 2px; background: var(--v); box-shadow: 0 0 16px var(--v); animation: brandpulse 3s var(--ease) infinite; }
+@keyframes brandpulse { 0%,100%{opacity:1} 50%{opacity:.45} }
 @keyframes pulse { 0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--live) 45%,transparent);} 70%{box-shadow:0 0 0 7px transparent;} 100%{box-shadow:0 0 0 0 transparent;} }
-.nav { display: flex; gap: 26px; margin-left: auto; }
-.nav a { font-size: 13px; color: var(--dim); transition: color .12s; }
+.nav { display: flex; gap: 26px; margin-left: 14px; }
+.nav a { font-family: var(--mono); font-size: 12.5px; letter-spacing: 0.04em; color: var(--dim); transition: color .16s; }
 .nav a:hover { color: var(--ink); }
+.bar-sp { flex: 1 1 auto; }
 .btn {
+  display: inline-flex; align-items: center;
   font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.04em;
   padding: 9px 16px; border-radius: 4px; border: 1px solid var(--border-strong);
-  color: var(--ink); background: var(--raised-2); cursor: pointer; transition: border-color .15s, transform .1s;
+  color: var(--ink); background: var(--raised-2); cursor: pointer;
+  transition: border-color .15s, transform .12s var(--ease), box-shadow .18s var(--ease);
+  white-space: nowrap;
 }
-.btn:hover { border-color: var(--live); }
+.btn:hover { border-color: var(--v2); }
 .btn:active { transform: translateY(1px); }
-.btn-solid { background: var(--live); color: #08201e; border-color: var(--live); }
-.theme-toggle { background: transparent; border: 1px solid var(--border); border-radius: 4px; width: 34px; height: 34px; cursor: pointer; color: var(--dim); display: grid; place-items: center; }
+/* White on --v measures 4.52:1 on the dark ground and 6.04:1 on the light one
+   (--light-v #613BF7). Both clear AA for normal text. The dark value passes by
+   0.02, so --v must never be lightened here — the hover state adds a shadow
+   and a 1px lift instead of touching the fill. */
+.btn-solid { background: var(--v); color: #FFFFFF; border-color: var(--v); box-shadow: 0 8px 30px -12px color-mix(in srgb, var(--v) 60%, transparent); }
+.btn-solid:hover { background: var(--v); border-color: var(--v); transform: translateY(-1px); box-shadow: 0 12px 38px -12px color-mix(in srgb, var(--v) 72%, transparent); }
+.kbd { font-family: var(--mono); font-size: 9.5px; line-height: 1; border: 1px solid var(--border-strong); border-radius: 3px; padding: 2px 5px; color: var(--dim); margin-left: 9px; }
+.btn-solid .kbd { border-color: rgba(255,255,255,.42); color: #FFFFFF; }
+.theme-toggle { background: transparent; border: 1px solid var(--border); border-radius: 4px; width: 34px; height: 34px; cursor: pointer; color: var(--dim); display: grid; place-items: center; flex: none; }
 .theme-toggle:hover { color: var(--ink); border-color: var(--border-strong); }
-@media (max-width: 720px){ .nav { display: none; } }
+@media (max-width: 860px){ .nav { display: none; } }
 
-/* ---------- hero ---------- */
-.hero { padding: 72px 0 40px; }
-.hero .kicker { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px; border: 1px solid var(--border); border-radius: 999px; margin-bottom: 26px; }
-.hero .kicker .d { width: 5px; height: 5px; border-radius: 50%; background: var(--live); }
-h1 {
-  font-size: 118px; line-height: .9; font-weight: 700;
-  letter-spacing: -.045em; text-wrap: balance; max-width: 15ch;
+/* ---------- hero: the gate field ---------- */
+#hero {
+  position: relative; overflow: hidden;
+  padding: 26px 0 30px;
+  height: clamp(680px, 86vh, 940px);
+  display: grid; grid-template-rows: auto 1fr auto;
 }
-h1 em { font-style: normal; color: var(--live); }
-.lead { margin-top: 22px; font-size: clamp(16px, 2vw, 19px); color: var(--dim); max-width: 56ch; line-height: 1.55; }
+/* Everything the hero paints sits above the field; the field never scrolls
+   into a section below it because #hero clips. */
+#hero > div { position: relative; z-index: 2; }
+.gf-svg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+
+/* The out-fan reaches the top-right corner, so the metadata carries its own
+   halo of page ground rather than a mask hole — a hole there would cut a
+   visible rectangular void out of the brightest part of the fan. */
+.gf-meta { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: var(--faint); line-height: 1.95; text-align: right; text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg), 0 0 8px var(--bg), 0 0 14px var(--bg); }
+.gf-meta b { color: var(--v2); font-weight: 500; }
+.gf-meta .gf-ill { color: var(--faint); opacity: .74; }
+
+/* Above the rail's scrim: .gf-rail is a later sibling, so at equal z-index it
+   would paint its background gradient over the sub-paragraph and the CTAs.
+   The selector has to carry the #hero prefix — a bare .gf-copy loses the
+   z-index cascade to the #hero > div rule above. */
+#hero > .gf-copy { z-index: 3; }
+.gf-copy { align-self: center; }
+.gf-copy .eyebrow { display: block; }
+#hero h1 { margin-top: 20px; max-width: none; }
+h1 {
+  font-size: clamp(40px, 8.1vw, 116px); line-height: .9; font-weight: 700;
+  letter-spacing: -.045em; text-wrap: balance;
+}
+/* Violet, not --live: an emphasised word in a headline is typography. */
+h1 em { font-style: normal; color: var(--v3); }
+.gf-mark { position: relative; display: inline-block; color: #FFFFFF; padding: 0 2px; }
+.gf-mark:before { content: ""; position: absolute; left: -10px; right: -10px; top: 11%; bottom: 1%; background: var(--v); border-radius: 3px; z-index: -1; transform: skewX(-3deg); }
+.gf-sub { margin-top: 26px; font-size: 16.5px; line-height: 1.62; color: var(--dim); max-width: 47ch; text-wrap: pretty; }
+.gf-sub em { font-style: normal; color: var(--ink); }
+#hero .cta-row { margin-top: 32px; }
+
+.gf-rail { align-self: end; }
+.gf-rail:before { content: ""; position: absolute; left: 0; right: 0; bottom: -30px; height: 190px; background: linear-gradient(to top, var(--bg) 62%, transparent); z-index: -1; pointer-events: none; }
+.gf-rail-in { border-top: 1px dashed var(--border-strong); padding-top: 20px; display: flex; gap: 18px; }
+.gf-cell { flex: 1 1 0; min-width: 0; }
+.gf-cell b { display: block; font-family: var(--mono); font-size: 22px; font-weight: 600; letter-spacing: -.01em; font-variant-numeric: tabular-nums; }
+.gf-cell span { display: block; margin-top: 5px; font-size: 11.5px; line-height: 1.45; color: var(--faint); }
+.gf-cell-v b { color: var(--v2); }
+
+/* --- the field itself. Colours come from CSS custom properties, not from
+   presentation attributes, so both themes repaint the same geometry. --- */
+.gf-c-far { stop-color: var(--gf-far); }
+.gf-c-near { stop-color: var(--gf-near); }
+.gf-c-halo { stop-color: var(--gf-far); stop-opacity: var(--gf-halo-a); }
+.gf-c-halo-out { stop-color: var(--gf-far); stop-opacity: 0; }
+.gf-in { stroke: url(#gf-g-in); }
+.gf-out { stroke: url(#gf-g-out); }
+.gf-deny { stroke: url(#gf-g-deny); }
+.gf-c-deny { stop-color: var(--deny); }
+.gf-deny-dot { fill: var(--deny); }
+/* A travelling packet is a 3.5%-long dash on a pathLength=1 path, offset per
+   strand — one keyframe, no SMIL, nothing per-frame in JavaScript. */
+.gf-pk { stroke: var(--gf-packet); stroke-linecap: round; stroke-dasharray: .035 .965; animation: gf-packet 5.5s linear infinite; }
+@keyframes gf-packet { to { stroke-dashoffset: -1; } }
+.gf-bar { fill: var(--v); animation: gf-bar-breathe 3.4s var(--ease) infinite; }
+@keyframes gf-bar-breathe { 0%,100%{opacity:.42} 50%{opacity:.85} }
+.gf-tick { fill: var(--v2); }
+.gf-tick-last { fill: var(--v3); }
+.gf-plate { fill: var(--raised); stroke: var(--border-strong); stroke-width: 1; }
+.gf-lbl { font-family: var(--mono); font-size: 9.5px; letter-spacing: 1.6px; fill: var(--faint); }
+
+@media (prefers-reduced-motion: reduce) {
+  /* Authored stills. The global cap would freeze the packet dash at an
+     arbitrary offset instead of removing it, and would leave the gate bar
+     stuck at whatever opacity the first keyframe happened to land on. */
+  .gf-pk { display: none; }
+  .gf-bar { animation: none; opacity: .62; }
+  .brand .dot { animation: none; }
+}
+/* Below ~900px the field can no longer clear the copy column, so it steps back
+   to a texture and the hero stops being a fixed-height stage. Task 6 owns the
+   full responsive pass; this only keeps the narrow case from breaking now. */
+@media (max-width: 900px) {
+  #hero { height: auto; min-height: 0; padding: 56px 0 40px; row-gap: 40px; }
+  .gf-svg { opacity: .30; }
+  .gf-rail-in { flex-wrap: wrap; gap: 22px 18px; }
+  .gf-cell { flex: 1 1 140px; }
+}
+
 .cta-row { margin-top: 30px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 .cta-note { font-family: var(--mono); font-size: 11px; color: var(--faint); letter-spacing: 0.04em; }
 
@@ -330,71 +452,70 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
 @media (prefers-reduced-motion: reduce){ .reveal { opacity: 1; transform: none; transition: none; } }
 </style>
 
+<!-- Nav anchor contract. Every link below must resolve to a section id that
+     exists on this page: #governance (the chain), #platform (the capability
+     grid), #multiverse (the council), #start (quickstart). The mock this page
+     was ported from pointed its "platform" link at #cap, a caption div inside
+     the conveyor panel rather than the capabilities section — that bug is
+     fixed here. Tasks 4-6 must keep these four ids alive. -->
 <div class="bar">
-  <div class="wrap bar-in">
-    <div class="brand"><span class="dot"></span> AgentOS</div>
+  <div class="wrap-x bar-in">
+    <a class="brand" href="#hero"><span class="dot"></span> AgentOS</a>
     <nav class="nav">
-      <a href="#platform">Platform</a>
-      <a href="#governance">Governance</a>
-      <a href="#multiverse">Multiverse</a>
-      <a href="#oss">Open source</a>
+      <a href="#governance">governance</a>
+      <a href="#platform">platform</a>
+      <a href="#multiverse">council</a>
+      <a href="#start">quickstart</a>
     </nav>
+    <span class="bar-sp"></span>
     <button class="theme-toggle" id="tt" aria-label="Toggle color theme" title="Toggle theme">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><circle cx="8" cy="8" r="3.4"/><path d="M8 1v2M8 13v2M1 8h2M13 8h2M3.2 3.2l1.4 1.4M11.4 11.4l1.4 1.4M12.8 3.2l-1.4 1.4M4.6 11.4l-1.4 1.4"/></svg>
     </button>
-    <button class="btn btn-solid" onclick="document.getElementById('start').scrollIntoView()">Deploy</button>
+    <a class="btn btn-solid" href="#start">run it locally<span class="kbd">R</span></a>
   </div>
 </div>
 
+<!-- ================= HERO: THE GATE FIELD =================
+     The field is an illustration of the gateway's shape, not a readout. It
+     draws 128 strands; 9 of them stop at a gate stage, and the corner metadata
+     states exactly that count so the picture and the number can never drift
+     apart. Every strand's geometry and verdict is a pure function of its index
+     — there is no PRNG here and no seed to quote. -->
+<section id="hero">
+  <svg class="gf-svg" id="gate-field" viewBox="0 0 1440 1000" preserveAspectRatio="xMidYMid slice" fill="none" aria-hidden="true" focusable="false"></svg>
+
+  <div class="gf-meta">
+    <div class="wrap-x">
+      <div>128 CALLS · 6 STAGES</div>
+      <div>CLEARED <b>119</b> · DENIED <b>9</b> — 7.0%</div>
+      <div class="gf-ill">ILLUSTRATION · SCRIPTED SEQUENCE</div>
+    </div>
+  </div>
+
+  <div class="gf-copy">
+    <div class="wrap-x">
+      <span class="eyebrow">Governed agent infrastructure</span>
+      <h1>Every call<br>runs the<br><span class="gf-mark">gauntlet.</span></h1>
+      <p class="gf-sub">Auth, limits, budget and screening — <em>cleared before a provider is ever called.</em> The runtime holds no provider key, so retries and autonomous runs take the same path.</p>
+      <div class="cta-row">
+        <a class="btn btn-solid" href="#start">run it locally<span class="kbd">R</span></a>
+        <a class="btn" href="#governance">see the chain<span class="kbd">G</span></a>
+      </div>
+    </div>
+  </div>
+
+  <div class="gf-rail">
+    <div class="wrap-x gf-rail-in">
+      <div class="gf-cell gf-cell-v"><b>6</b><span>gate stages, every call</span></div>
+      <div class="gf-cell"><b>5</b><span>legacy systems as MCP tools</span></div>
+      <div class="gf-cell"><b>0</b><span>provider keys in the runtime</span></div>
+      <div class="gf-cell"><b>$0</b><span>five-model council on local Ollama</span></div>
+      <div class="gf-cell"><b>7</b><span>audit kinds, nothing invented</span></div>
+    </div>
+  </div>
+</section>
+
 <div class="wrap">
-  <header class="hero">
-    <span class="kicker eyebrow"><span class="d"></span> Sovereign agentic platform</span>
-    <h1>The governed operating layer for <em>AI agents</em>.</h1>
-    <p class="lead">Model-agnostic agents that run under budgets, optional rate limits and guardrails, and an audit record of every served call — self-hosted, open, and yours. Nothing runs unauthorized, unattributed, or unrecorded.</p>
-    <div class="cta-row">
-      <button class="btn btn-solid" onclick="document.getElementById('start').scrollIntoView()">Get started</button>
-      <button class="btn" onclick="document.getElementById('governance').scrollIntoView()">See how governance works</button>
-      <span class="cta-note">docker compose up · air-gapped with local models</span>
-    </div>
-
-    <div class="chain-panel reveal">
-      <div class="chain-head">
-        <span class="eyebrow">Governance chain</span>
-        <span class="status"><span class="d"></span> Simulated</span>
-      </div>
-      <div class="chain-body">
-        <div class="chain">
-          <div class="rail"><span class="fill"></span></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Auth</div><div class="sub">Virtual key</div></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Rate</div><div class="sub">Per-org limits</div></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Budget</div><div class="sub">Atomic spend reserve</div></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Guardrail</div><div class="sub">Prompt screening, when on</div></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Upstream</div><div class="sub">Provider or council</div></div>
-          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Audit</div><div class="sub">Served calls and gate events</div></div>
-        </div>
-        <div class="chain-caption">Every request clears auth, limits, budget and screening <b>before a provider is ever called</b> — retries and autonomous runs included.</div>
-
-        <div class="chain-live">
-          <div class="audit-feed" id="audit-feed" aria-hidden="true"></div>
-          <div class="spark-wrap">
-            <div class="spark-label">Throughput</div>
-            <svg viewBox="0 0 240 40" preserveAspectRatio="none" width="100%" height="40" aria-hidden="true">
-              <line class="spark-base" x1="0" y1="38" x2="240" y2="38"></line>
-              <polyline class="spark-line" id="spark-line" points=""></polyline>
-            </svg>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="readings reveal">
-      <div class="reading"><div class="n" id="rd-count">0</div><div class="k">simulated requests</div></div>
-      <div class="reading"><div class="n" id="rd-spend">$0.00</div><div class="k">simulated spend</div></div>
-      <div class="reading"><div class="n" id="rd-p95">0 ms</div><div class="k">simulated p95</div></div>
-      <div class="reading"><div class="n" id="rd-audit">0</div><div class="k">simulated audit rows</div></div>
-    </div>
-  </header>
-
   <section id="platform">
     <div class="sec-head">
       <span class="eyebrow">The platform</span>
@@ -452,6 +573,42 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
       <span class="eyebrow">Why AgentOS</span>
       <h2>Governance isn't a setting. It's the architecture.</h2>
       <p>The runtime holds no provider credentials. Every model call is issued through the gateway on a virtual key, so it is impossible for an agent — or an autonomous loop — to route around the budgets, limits, and audit that make it accountable.</p>
+    </div>
+    <div class="chain-panel reveal">
+      <div class="chain-head">
+        <span class="eyebrow">Governance chain</span>
+        <span class="status"><span class="d"></span> Simulated</span>
+      </div>
+      <div class="chain-body">
+        <div class="chain">
+          <div class="rail"><span class="fill"></span></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Auth</div><div class="sub">Virtual key</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Rate</div><div class="sub">Per-org limits</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Budget</div><div class="sub">Atomic spend reserve</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Guardrail</div><div class="sub">Prompt screening, when on</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Upstream</div><div class="sub">Provider or council</div></div>
+          <div class="stage"><span class="node"><span class="core"></span></span><div class="lbl">Audit</div><div class="sub">Served calls and gate events</div></div>
+        </div>
+        <div class="chain-caption">Every request clears auth, limits, budget and screening <b>before a provider is ever called</b> — retries and autonomous runs included.</div>
+
+        <div class="chain-live">
+          <div class="audit-feed" id="audit-feed" aria-hidden="true"></div>
+          <div class="spark-wrap">
+            <div class="spark-label">Throughput</div>
+            <svg viewBox="0 0 240 40" preserveAspectRatio="none" width="100%" height="40" aria-hidden="true">
+              <line class="spark-base" x1="0" y1="38" x2="240" y2="38"></line>
+              <polyline class="spark-line" id="spark-line" points=""></polyline>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="readings reveal">
+      <div class="reading"><div class="n" id="rd-count">0</div><div class="k">simulated requests</div></div>
+      <div class="reading"><div class="n" id="rd-spend">$0.00</div><div class="k">simulated spend</div></div>
+      <div class="reading"><div class="n" id="rd-p95">0 ms</div><div class="k">simulated p95</div></div>
+      <div class="reading"><div class="n" id="rd-audit">0</div><div class="k">simulated audit rows</div></div>
     </div>
     <div class="grid" style="margin-top:36px">
       <div class="card reveal">
@@ -596,6 +753,234 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     var o = btn.textContent; btn.textContent = 'copied ✓';
     setTimeout(function(){ btn.textContent = o; }, 1400);
   };
+
+  // The R and G badges on the hero CTAs are real shortcuts, not decoration --
+  // a keyboard hint that does nothing is just another unearned claim.
+  var KEYS = { r: 'start', g: 'governance' };
+  document.addEventListener('keydown', function (ev) {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    var t = ev.target || {};
+    var tag = (t.tagName || '').toLowerCase();
+    if (tag === 'input' || tag === 'textarea' || tag === 'select' || t.isContentEditable) return;
+    var id = KEYS[(ev.key || '').toLowerCase()];
+    if (!id) return;
+    var node = document.getElementById(id);
+    if (!node) return;
+    ev.preventDefault();
+    node.scrollIntoView({ block: 'start' });
+  });
+})();
+
+// --- Hero gate field. Deterministic geometry: every strand's path, verdict
+// and packet is a pure function of its index, so the picture is identical on
+// every load and the corner metadata can quote exact counts. No PRNG at all,
+// no seed, no SMIL -- the packets are a dash on a pathLength=1 path, animated
+// by one CSS keyframe.
+(function () {
+  var el = document.getElementById('gate-field');
+  if (!el) return;
+  var NS = 'http://www.w3.org/2000/svg';
+
+  // viewBox is 1440 x 1000. GX is the gate, MY the axis the fan converges on.
+  var W = 1440, GX = 980, MY = 520, N = 128, SPREAD = 430;
+  // The six stages the gateway actually runs, in order (CHAIN_STAGES).
+  var STAGES = ['auth', 'rate', 'budget', 'guardrail', 'upstream', 'audit'];
+  // The only three it can deny at: rate (429), budget (402), guardrail (400).
+  // auth failures never reach the chain drawing and audit cannot deny; an
+  // upstream failure is not a denial and is not drawn here at all.
+  var DENY_AT = [1, 2, 3];
+
+  function stageY(k) { return MY - 66 + k * 26.5; }
+  function f(n) { return n.toFixed(1); }
+  function mk(tag, attrs) {
+    var n = document.createElementNS(NS, tag), k;
+    for (k in attrs) { if (Object.prototype.hasOwnProperty.call(attrs, k)) n.setAttribute(k, attrs[k]); }
+    return n;
+  }
+  function stroke(parent, d, cls, w, o) {
+    var p = mk('path', { d: d, 'class': cls, 'stroke-width': w, opacity: o, fill: 'none' });
+    parent.appendChild(p);
+    return p;
+  }
+
+  // All three strand gradients use userSpaceOnUse. With objectBoundingBox the
+  // two strands that run dead-flat through MY have a zero-height bounding box,
+  // and a zero-extent bbox makes an objectBoundingBox gradient undefined --
+  // the centre of the fan would silently drop out.
+  var defs = mk('defs', {});
+  defs.innerHTML =
+    '<linearGradient id="gf-g-in" gradientUnits="userSpaceOnUse" x1="-40" y1="0" x2="980" y2="0">' +
+      '<stop offset="0" class="gf-c-far" stop-opacity="0"/>' +
+      '<stop offset=".46" class="gf-c-far" stop-opacity="0"/>' +
+      '<stop offset=".74" class="gf-c-far" stop-opacity=".42"/>' +
+      '<stop offset="1" class="gf-c-near" stop-opacity=".95"/>' +
+    '</linearGradient>' +
+    '<linearGradient id="gf-g-out" gradientUnits="userSpaceOnUse" x1="980" y1="0" x2="1480" y2="0">' +
+      '<stop offset="0" class="gf-c-near" stop-opacity=".95"/>' +
+      '<stop offset=".5" class="gf-c-far" stop-opacity=".4"/>' +
+      '<stop offset="1" class="gf-c-far" stop-opacity="0"/>' +
+    '</linearGradient>' +
+    '<linearGradient id="gf-g-deny" gradientUnits="userSpaceOnUse" x1="716" y1="0" x2="958" y2="0">' +
+      '<stop offset="0" class="gf-c-deny" stop-opacity="0"/>' +
+      '<stop offset=".45" class="gf-c-deny" stop-opacity=".62"/>' +
+      '<stop offset="1" class="gf-c-deny" stop-opacity=".62"/>' +
+    '</linearGradient>' +
+    '<radialGradient id="gf-g-halo">' +
+      '<stop offset="0" class="gf-c-halo"/><stop offset="1" class="gf-c-halo-out"/>' +
+    '</radialGradient>' +
+    '<filter id="gf-soft" x="-30%" y="-40%" width="160%" height="180%">' +
+      '<feGaussianBlur stdDeviation="46"/>' +
+    '</filter>' +
+    // The text column is cut out of the field with a soft-edged hole rather
+    // than trusting the strand gradient to be dark enough there. fitHole()
+    // sizes it from the measured copy block, so the guarantee "no strand
+    // crosses the headline" survives any width the page is rendered at.
+    '<mask id="gf-mask" maskUnits="userSpaceOnUse" x="-120" y="-120" width="1680" height="1240">' +
+      '<rect x="-120" y="-120" width="1680" height="1240" fill="#fff"/>' +
+      '<rect id="gf-hole" x="40" y="250" width="760" height="470" rx="40" fill="#000" filter="url(#gf-soft)"/>' +
+    '</mask>';
+  el.appendChild(defs);
+
+  el.appendChild(mk('circle', { cx: GX - 26, cy: MY, r: 196, fill: 'url(#gf-g-halo)' }));
+
+  var field = mk('g', { mask: 'url(#gf-mask)' });
+  el.appendChild(field);
+  // The denied strands stay out of the mask -- they are already a 7% minority
+  // and dimming them further would erase the one thing the field is asserting.
+  // Their own gradient fades them in well clear of the copy column instead.
+  var denied = mk('g', {});
+  el.appendChild(denied);
+
+  var cleared = 0, stopped = 0;
+  for (var i = 0; i < N; i++) {
+    var t = i / (N - 1);
+    var e = Math.sin((t - 0.5) * Math.PI);
+    var y0 = MY + e * SPREAD;
+    var m = i % 29;
+    var dens = 1 - Math.abs(t - 0.5) * 2;
+
+    if (m === 7 || m === 19) {
+      // A denied call: it terminates at the stage that stopped it, and nothing
+      // downstream of that stage is drawn, because it never ran.
+      stopped += 1;
+      var si = DENY_AT[i % 3];
+      var yEnd = stageY(si) + ((i % 7) - 3) * 1.7;
+      var xEnd = GX - 30 - (i % 4) * 2.5;
+      var x0 = GX - 260;
+      var yStart = MY + e * 190;
+      stroke(denied,
+        'M' + x0 + ' ' + f(yStart) +
+        ' C' + (x0 + 96) + ' ' + f(yStart) +
+        ' ' + f(xEnd - 118) + ' ' + f(yEnd) +
+        ' ' + f(xEnd) + ' ' + f(yEnd),
+        'gf-deny', 1.2, 1);
+      denied.appendChild(mk('circle', { cx: f(xEnd), cy: f(yEnd), r: 2.3, 'class': 'gf-deny-dot' }));
+      continue;
+    }
+
+    cleared += 1;
+    var hot = (i % 17 === 8);
+    var op = hot ? 0.95 : (0.07 + 0.22 * dens);
+    var din = 'M-40 ' + f(y0) +
+      ' C' + f(GX * 0.52) + ' ' + f(y0) +
+      ' ' + f(GX * 0.87) + ' ' + MY +
+      ' ' + GX + ' ' + MY;
+    var y1 = MY + e * SPREAD * 0.86;
+    var dout = 'M' + GX + ' ' + MY +
+      ' C' + (GX + 120) + ' ' + MY +
+      ' ' + f(GX + (W - GX) * 0.5) + ' ' + f(y1) +
+      ' ' + (W + 40) + ' ' + f(y1);
+    stroke(field, din, 'gf-in', hot ? 1.6 : 0.75, op);
+    stroke(field, dout, 'gf-out', hot ? 1.6 : 0.75, op);
+    if (hot) {
+      var pk = stroke(field, din + ' ' + dout.replace('M', 'L'), 'gf-pk', 1.8, 0.9);
+      pk.setAttribute('pathLength', '1');
+      pk.style.animationDelay = (-(i % 5) * 1.1) + 's';
+    }
+  }
+
+  // The gate itself is drawn last and outside the mask: the six ticks, an
+  // opaque plate under each label so the converging fan cannot strike through
+  // the words, and the bar the strands resolve onto.
+  var gate = mk('g', {});
+  el.appendChild(gate);
+  gate.appendChild(mk('rect', { x: GX - 1, y: MY - 88, width: 2, height: 176, rx: 1, 'class': 'gf-bar' }));
+  for (var k = 0; k < STAGES.length; k++) {
+    var y = stageY(k);
+    gate.appendChild(mk('rect', { x: GX - 11, y: f(y - 1.25), width: 22, height: 2.5, rx: 1.25, 'class': 'gf-tick' + (k === 5 ? ' gf-tick-last' : '') }));
+    gate.appendChild(mk('rect', { x: GX + 22, y: f(y - 9), width: 94, height: 18, rx: 4, 'class': 'gf-plate' }));
+    var tx = mk('text', { x: GX + 30, y: f(y + 4.2), 'class': 'gf-lbl' });
+    tx.textContent = STAGES[k].toUpperCase();
+    gate.appendChild(tx);
+  }
+
+  // The drawn counts are the numbers the corner metadata quotes. If the two
+  // ever diverge this warns in the console instead of shipping a lie.
+  var metaEl = document.querySelector('.gf-meta');
+  if (metaEl && (cleared !== 119 || stopped !== 9)) {
+    metaEl.setAttribute('data-drawn', cleared + '/' + stopped);
+    if (window.console && console.warn) {
+      console.warn('gate field: drew ' + cleared + ' cleared / ' + stopped + ' denied; hero metadata says 119 / 9');
+    }
+  }
+
+  // --- keep the field clear of the copy column at any width ---
+  var hole = el.querySelector('#gf-hole');
+  var copy = document.querySelector('.gf-copy .wrap-x');
+  function inked(node, out) {
+    if (!node) return;
+    var r = document.createRange();
+    r.selectNodeContents(node);
+    var rects = r.getClientRects();
+    for (var j = 0; j < rects.length; j++) {
+      if (rects[j].width > 0 && rects[j].height > 0) out.push(rects[j]);
+    }
+    r.detach && r.detach();
+  }
+  function fitHole() {
+    if (!hole || !copy) return;
+    var box = el.getBoundingClientRect();
+    if (!box.width || !box.height) return;
+    var scale = Math.max(box.width / 1440, box.height / 1000);
+    var offX = (box.width - 1440 * scale) / 2;
+    var offY = (box.height - 1000 * scale) / 2;
+
+    var rects = [];
+    inked(copy.querySelector('.eyebrow'), rects);
+    inked(copy.querySelector('h1'), rects);
+    inked(copy.querySelector('.gf-sub'), rects);
+    var ctas = copy.querySelectorAll('.cta-row > *');
+    for (var j = 0; j < ctas.length; j++) rects.push(ctas[j].getBoundingClientRect());
+    if (!rects.length) return;
+
+    var L = Infinity, R = -Infinity, T = Infinity, B = -Infinity;
+    for (var q = 0; q < rects.length; q++) {
+      L = Math.min(L, rects[q].left); R = Math.max(R, rects[q].right);
+      T = Math.min(T, rects[q].top);  B = Math.max(B, rects[q].bottom);
+    }
+    // screen px -> viewBox units
+    var vL = (L - box.left - offX) / scale, vR = (R - box.left - offX) / scale;
+    var vT = (T - box.top - offY) / scale,  vB = (B - box.top - offY) / scale;
+    // Pad outward. The 46px blur means the mask is only ~50% opaque at the
+    // rect edge, so the right pad has to clear the text by more than the text
+    // itself needs -- but it is clamped short of the convergence so the gate
+    // never gets dimmed.
+    vL -= 90; vT -= 44; vB += 44;
+    vR = Math.min(vR + 118, GX - 96);
+    hole.setAttribute('x', f(vL));
+    hole.setAttribute('y', f(vT));
+    hole.setAttribute('width', f(Math.max(0, vR - vL)));
+    hole.setAttribute('height', f(Math.max(0, vB - vT)));
+  }
+  fitHole();
+  if (document.fonts && document.fonts.ready && document.fonts.ready.then) {
+    document.fonts.ready.then(fitHole);
+  }
+  var pending = 0;
+  window.addEventListener('resize', function () {
+    if (pending) return;
+    pending = requestAnimationFrame(function () { pending = 0; fitHole(); });
+  });
 })();
 
 // --- Live readouts + audit-tail feed + throughput sparkline. This defines
