@@ -3,6 +3,7 @@ import { CHAIN_STAGES } from "../../../lib/chain";
 import {
   ARCH_EDGES,
   ARCH_NODES,
+  COUNCIL_FANOUT_GAP,
   COUNCIL_LAYOUT,
   COUNCIL_MEMBERS,
   GOVERNANCE_FRAME_MS,
@@ -171,8 +172,23 @@ describe("lifecycle geometry", () => {
 });
 
 describe("council layout", () => {
-  it("derives the member fan-out origin from the objective box's right edge, not a bare literal", () => {
-    expect(COUNCIL_LAYOUT.member.x).toBe(COUNCIL_LAYOUT.objective.x + COUNCIL_LAYOUT.objective.w);
+  it("derives the member column from the objective box's right edge plus the gap, not a bare literal", () => {
+    expect(COUNCIL_LAYOUT.member.x).toBe(
+      COUNCIL_LAYOUT.objective.x + COUNCIL_LAYOUT.objective.w + COUNCIL_FANOUT_GAP,
+    );
+  });
+
+  /**
+   * The fan-out needs somewhere to be drawn. At a zero gap the member boxes'
+   * left border IS the objective's right border, three rects fuse into one
+   * glyph, and a diagram about five models branching off one ask shows no
+   * branch at all on its left half.
+   */
+  it("leaves a real horizontal run for the fan-out", () => {
+    expect(COUNCIL_FANOUT_GAP).toBeGreaterThan(0);
+    expect(COUNCIL_LAYOUT.member.x).toBeGreaterThan(
+      COUNCIL_LAYOUT.objective.x + COUNCIL_LAYOUT.objective.w,
+    );
   });
 
   it("fits every member box inside the 640x280 viewBox", () => {

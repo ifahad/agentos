@@ -15,17 +15,21 @@ const FIRST_HOP = LIFECYCLE_HOPS[0];
 const LAST_HOP = LIFECYCLE_HOPS[LIFECYCLE_HOPS.length - 1];
 
 /**
- * Widest a centred detail column may be: it must not run off either end of the
- * viewBox, and two neighbouring columns must not collide. Every hop's detail is
- * longer than this (the shortest is 174 units of text), so all of them wrap.
+ * Line budget for each hop's centred detail column, computed from that hop's
+ * own neighbours rather than from one global minimum.
+ *
+ * A column may run to the edge of the viewBox, but only halfway to the next
+ * hop — both neighbours apply the same rule, so halves cannot collide. Taking
+ * a single minimum across all four hops instead would let the first hop's
+ * tight left clearance (112 units) govern the middle two, which have 160 and
+ * 176, and that orphaned "key" on a line of its own.
  */
-const DETAIL_W = Math.min(
-  2 * FIRST_HOP.x,
-  2 * (VIEW_W - LAST_HOP.x),
-  ...LIFECYCLE_HOPS.slice(1).map((hop, i) => hop.x - LIFECYCLE_HOPS[i].x),
-);
-
-const DETAIL_CHARS = monoCharsInWidth(DETAIL_W, DETAIL_SIZE);
+const DETAIL_CHARS = LIFECYCLE_HOPS.map((hop, i) => {
+  const left = i === 0 ? hop.x : (hop.x - LIFECYCLE_HOPS[i - 1].x) / 2;
+  const right =
+    i === LIFECYCLE_HOPS.length - 1 ? VIEW_W - hop.x : (LIFECYCLE_HOPS[i + 1].x - hop.x) / 2;
+  return monoCharsInWidth(2 * Math.min(left, right), DETAIL_SIZE);
+});
 
 /**
  * One governed request, hop by hop.
@@ -62,7 +66,7 @@ export function RequestLifecycleVisual() {
             >
               {hop.label}
             </text>
-            {wrapMono(hop.detail, DETAIL_CHARS).map((line, li) => (
+            {wrapMono(hop.detail, DETAIL_CHARS[i]).map((line, li) => (
               <text
                 key={`${hop.id}-${li}`}
                 className="docs-node-sub"

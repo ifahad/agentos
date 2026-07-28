@@ -196,15 +196,20 @@
 }
 
 /* The halting stage takes the outcome colour; everything after it stays dark,
-   because the request never reached it. */
-.docs-chain[data-outcome="deny"] .docs-chain-stage[data-render="stopped"] .docs-chain-node {
+   because the request never reached it.
+
+   Gated exactly the way Chain.css gates it: a stopped stage is --deny by
+   default and only an outcome of "fail" overrides that. Requiring
+   [data-outcome="deny"] instead would leave a halted stage with no hue at all
+   if a frame ever paired a stoppedAt with any other outcome. */
+.docs-chain-stage[data-render="stopped"] .docs-chain-node {
   background: var(--deny);
   box-shadow:
     inset 0 0 0 1px var(--deny),
     0 0 0 3px rgba(226, 104, 95, 0.16);
 }
 
-.docs-chain[data-outcome="deny"] .docs-chain-stage[data-render="stopped"] .docs-chain-label {
+.docs-chain-stage[data-render="stopped"] .docs-chain-label {
   color: var(--deny);
 }
 

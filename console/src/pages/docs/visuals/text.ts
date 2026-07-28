@@ -23,25 +23,49 @@ export function monoCharsInWidth(width: number, fontSize: number): number {
 }
 
 /**
+ * A token that is punctuation only — the `·` these labels use to separate a
+ * language from a port from a caveat. It is a break opportunity, never a word.
+ */
+const SEPARATOR = /^[^\p{L}\p{N}]+$/u;
+
+/**
+ * Drop any separator left stranded at the end of a line. The line break itself
+ * already separates the two halves, so a trailing `·` is noise — and a leading
+ * one on the next line is worse. At least one token always survives.
+ */
+function withoutTrailingSeparator(line: string): string {
+  const tokens = line.split(" ");
+  while (tokens.length > 1 && SEPARATOR.test(tokens[tokens.length - 1])) tokens.pop();
+  return tokens.join(" ");
+}
+
+/**
  * Greedy word wrap to `maxChars` per line.
  *
  * A single word longer than `maxChars` is left whole on its own line rather
  * than broken: a port range, an `agos-` prefix, or a model id has to stay
  * readable, and every such word in these visuals still fits its box.
+ *
+ * Separators are handled specially, so "Anthropic · OpenAI · Ollama" wraps to
+ * "Anthropic" / "OpenAI · Ollama" rather than dangling the dot at the end of
+ * the first line. No line may begin or end with one.
  */
 export function wrapMono(text: string, maxChars: number): string[] {
   const lines: string[] = [];
   let line = "";
   for (const word of text.split(" ")) {
     if (word === "") continue;
+    // A separator can never open a line: if one lands here, the break it would
+    // have followed is doing its job already.
+    if (line === "" && SEPARATOR.test(word)) continue;
     const candidate = line === "" ? word : `${line} ${word}`;
     if (line === "" || candidate.length <= maxChars) {
       line = candidate;
     } else {
-      lines.push(line);
-      line = word;
+      lines.push(withoutTrailingSeparator(line));
+      line = SEPARATOR.test(word) ? "" : word;
     }
   }
-  if (line !== "") lines.push(line);
+  if (line !== "") lines.push(withoutTrailingSeparator(line));
   return lines;
 }

@@ -94,7 +94,7 @@ export function ArchitectureVisual() {
             strings at one point.
 
             The runtime → gateway note sits above the top row because the gap it
-            annotates is 64 units wide and the string is 156; the gateway →
+            annotates is 64 units wide and the string is 162; the gateway →
             providers note is set to the left of its own edge so that vertical
             rule does not strike through it. */}
         <text className="docs-edge-note" x="344" y="68" textAnchor="middle">

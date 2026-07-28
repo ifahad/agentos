@@ -3,6 +3,8 @@ import { Illustration } from "./Illustration";
 
 const { objective, member, judge, verdict, dissent } = COUNCIL_LAYOUT;
 
+const OBJECTIVE_RIGHT = objective.x + objective.w;
+const OBJECTIVE_MID_Y = objective.y + objective.h / 2;
 const JUDGE_MID_Y = judge.y + judge.h / 2;
 const MEMBER_RIGHT = member.x + member.w;
 const JUDGE_RIGHT = judge.x + judge.w;
@@ -18,11 +20,11 @@ function memberMidY(y: number): number {
 }
 
 /**
- * Horizontal control-point offset for the fan-in curves: 40% of the run, so
- * every member's line leaves its box horizontally and arrives at the judge
- * horizontally.
+ * Control-point offsets: half the run in every case, so each curve is a
+ * symmetric S that leaves its box horizontally and arrives horizontally.
  */
-const FAN_BEND = (judge.x - MEMBER_RIGHT) * 0.4;
+const FAN_OUT_BEND = (member.x - OBJECTIVE_RIGHT) / 2;
+const FAN_IN_BEND = (judge.x - MEMBER_RIGHT) / 2;
 const OUT_BEND = (verdict.x - JUDGE_RIGHT) / 2;
 
 /** What the judge emits. Two boxes, and the second one is the point of the visual. */
@@ -34,11 +36,13 @@ const OUTPUTS = [
 /**
  * Many models, one verdict.
  *
- * Every box, and the fan-out origin, comes from COUNCIL_LAYOUT rather than from
- * JSX literals — the layout derives `member.x` from the objective box's own
- * right edge, so the objective and the member column share a single vertical
- * rule. That rule is the fan-out: the objective hands the ask to a bus and each
- * member taps it, which is also why no member line can drift off the origin.
+ * Every box and every curve endpoint comes from COUNCIL_LAYOUT rather than from
+ * JSX literals: the layout derives `member.x` from the objective box's right
+ * edge plus COUNCIL_FANOUT_GAP, so the fan-out's origin and its landing points
+ * cannot drift apart. One line per member leaves the objective and one returns
+ * to the judge, and both live inside that member's own group so the line
+ * reveals with the box it belongs to rather than appearing whole while the
+ * boxes are still staggering in.
  *
  * Reveal is the shared docs-hop keyframe with an inline per-member
  * animationDelay. Nothing loops, and nothing here carries a state hue: a
@@ -70,20 +74,18 @@ export function CouncilFanoutVisual() {
           objective
         </text>
 
-        {/* The fan-out spine: the objective's right edge and every member box's
-            left edge sit on this line, so it reads as one run the members hang
-            off rather than five lines of zero length. */}
-        <path
-          className="docs-edge"
-          d={`M${member.x} ${memberMidY(COUNCIL_MEMBERS[0].y)}V${memberMidY(
-            COUNCIL_MEMBERS[COUNCIL_MEMBERS.length - 1].y,
-          )}`}
-        />
-
         {COUNCIL_MEMBERS.map((m, i) => {
           const midY = memberMidY(m.y);
           return (
             <g key={m.id} className="docs-hop" style={{ animationDelay: `${i * 60}ms` }}>
+              {/* The fan-out: one branch per member, off the objective's right
+                  edge. It reveals with its own member's box. */}
+              <path
+                className="docs-edge"
+                d={`M${OBJECTIVE_RIGHT} ${OBJECTIVE_MID_Y}C${
+                  OBJECTIVE_RIGHT + FAN_OUT_BEND
+                } ${OBJECTIVE_MID_Y} ${member.x - FAN_OUT_BEND} ${midY} ${member.x} ${midY}`}
+              />
               <rect
                 className="docs-node-box"
                 x={member.x}
@@ -102,8 +104,8 @@ export function CouncilFanoutVisual() {
               </text>
               <path
                 className="docs-edge"
-                d={`M${MEMBER_RIGHT} ${midY}C${MEMBER_RIGHT + FAN_BEND} ${midY} ${
-                  judge.x - FAN_BEND
+                d={`M${MEMBER_RIGHT} ${midY}C${MEMBER_RIGHT + FAN_IN_BEND} ${midY} ${
+                  judge.x - FAN_IN_BEND
                 } ${JUDGE_MID_Y} ${judge.x} ${JUDGE_MID_Y}`}
               />
             </g>

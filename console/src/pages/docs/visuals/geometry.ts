@@ -87,10 +87,10 @@ export interface CouncilMember {
  * spacing between members is kept as originally authored, so the viewBox
  * grew to fit it instead.)
  *
- * Members fan out from x=150 to a judge at x=430. That x=150 is not a
- * standalone magic number — see COUNCIL_LAYOUT.member.x below, which is
- * derived from the objective box's own right edge so the two can never drift
- * apart again.
+ * Members fan out from x=240 to a judge at x=430. That x=240 is not a
+ * standalone magic number — see COUNCIL_LAYOUT.member.x below, which is the
+ * objective box's own right edge plus COUNCIL_FANOUT_GAP, so the origin and
+ * the objective can never drift apart again.
  */
 export const COUNCIL_MEMBERS: CouncilMember[] = [
   { id: "m1", label: "model A", y: 40 },
@@ -130,14 +130,29 @@ export interface CouncilLayout {
 const COUNCIL_OBJECTIVE_BOX: CouncilBox = { x: 16, y: 108, w: 134, h: 64 };
 
 /**
+ * Horizontal run between the objective's right edge and the member column —
+ * the space the fan-out itself is drawn in.
+ *
+ * It must not be zero. With the member column starting exactly at the
+ * objective's right edge, m3's whole left border was the objective's right
+ * border and m2 shared twelve more units of it: three rects fused into one
+ * glyph, and the left half of a picture captioned "fans out to five
+ * model-bound members" showed no branching at all. 90 units gives every member
+ * a visible curve of its own and still leaves the column clear of the judge
+ * (240 + 110 = 350 <= 430).
+ */
+export const COUNCIL_FANOUT_GAP = 90;
+
+/**
  * So the renderer never hardcodes the objective box, the member box, the
  * judge, or the verdict/dissent boxes as JSX literals. `member.x` is derived
- * from the objective box's right edge, not duplicated as a bare 150.
+ * from the objective box's right edge plus the fan-out gap, not duplicated as
+ * a bare 240.
  */
 export const COUNCIL_LAYOUT: CouncilLayout = {
   objective: COUNCIL_OBJECTIVE_BOX,
   member: {
-    x: COUNCIL_OBJECTIVE_BOX.x + COUNCIL_OBJECTIVE_BOX.w,
+    x: COUNCIL_OBJECTIVE_BOX.x + COUNCIL_OBJECTIVE_BOX.w + COUNCIL_FANOUT_GAP,
     w: 110,
     h: 32,
   },
