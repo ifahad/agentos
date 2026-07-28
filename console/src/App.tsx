@@ -31,6 +31,7 @@ import type { WhoAmI } from "./lib/types";
 import { ToastProvider, pageTransition } from "./ui";
 import { Audit } from "./pages/Audit";
 import { Documents } from "./pages/Documents";
+import { Docs } from "./pages/Docs";
 import { Improve } from "./pages/Improve";
 import { Multiverse } from "./pages/Multiverse";
 import { Operators } from "./pages/Operators";
@@ -68,6 +69,7 @@ const ROUTES: Route[] = [
   { path: "/improve", label: "Improve", icon: "improve", Component: Improve },
   { path: "/multiverse", label: "Multiverse", icon: "multiverse", Component: Multiverse },
   { path: "/operators", label: "Operators", icon: "operators", Component: Operators },
+  { path: "/docs", label: "Docs", icon: "docs", Component: Docs },
   {
     path: "/orgs",
     label: "Orgs",
