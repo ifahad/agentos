@@ -46,6 +46,10 @@
   --sans: "Archivo", ui-sans-serif, system-ui, "Segoe UI", Helvetica, Arial, sans-serif;
   --eyebrow: 10px;
   --track: 0.22em;
+  /* Height of the sticky bar, border included. .bar-in subtracts the 1px back
+     out, so this is the single source both the bar and every scroll-margin-top
+     that has to clear it read from. */
+  --nav-h: 63px;
   --ease: cubic-bezier(.2,.8,.2,1);
   --shadow: 0 1px 0 rgba(255,255,255,0.03) inset, 0 20px 50px -30px rgba(0,0,0,0.8);
   color-scheme: dark;
@@ -180,7 +184,7 @@ a { color: inherit; text-decoration: none; }
   background: color-mix(in srgb, var(--bg) 78%, transparent);
   border-bottom: 1px dashed var(--border-strong);
 }
-.bar-in { display: flex; align-items: center; gap: 18px; height: 62px; }
+.bar-in { display: flex; align-items: center; gap: 18px; height: calc(var(--nav-h) - 1px); }
 .brand { display: flex; align-items: center; gap: 9px; font-family: var(--mono); font-weight: 600; letter-spacing: 0.2em; text-transform: uppercase; font-size: 12.5px; flex: none; }
 /* The brand mark is decoration, so it takes the interface register (violet),
    not --live. --live means "a request is in flight" and nothing here is. */
@@ -217,8 +221,22 @@ a { color: inherit; text-decoration: none; }
 #hero {
   position: relative; overflow: hidden;
   padding: 26px 0 30px;
-  height: clamp(680px, 86vh, 940px);
-  display: grid; grid-template-rows: auto 1fr auto;
+  /* min-height, never height. The clip has to stay — it is the only thing
+     keeping the strands out of the section below — but paired with a fixed
+     height it also cut the stat rail, which lives inside that same clipping box
+     and so could not be scrolled back into view. Once the headline reaches its
+     116px cap (~1432px wide and up) the hero holds ~720px of content against a
+     floor of 86vh, so every viewport shorter than ~838 CSS px lost the bottom
+     ~10px of the 16.7px rail labels: a 1440×900 laptop is ~790px of viewport
+     after browser chrome, squarely inside that window. min-height lets the
+     stage keep its full height wherever there is room and grow instead of
+     cutting where there is not. row-gap is what stops the CTA row sitting down
+     on the rail's dashed rule once the 1fr track is squeezed to its content. */
+  min-height: clamp(680px, 86vh, 940px);
+  display: grid; grid-template-rows: auto 1fr auto; row-gap: 30px;
+  /* The bar is sticky, so #hero's own top would land underneath it and hide
+     the corner metadata — the ILLUSTRATION line included. */
+  scroll-margin-top: var(--nav-h);
 }
 /* Everything the hero paints sits above the field; the field never scrolls
    into a section below it because #hero clips. */
@@ -230,7 +248,14 @@ a { color: inherit; text-decoration: none; }
    visible rectangular void out of the brightest part of the fan. */
 .gf-meta { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: var(--faint); line-height: 1.95; text-align: right; text-shadow: 0 0 3px var(--bg), 0 0 3px var(--bg), 0 0 8px var(--bg), 0 0 14px var(--bg); }
 .gf-meta b { color: var(--v2); font-weight: 500; }
-.gf-meta .gf-ill { color: var(--faint); opacity: .74; }
+/* No opacity on this one, ever. It is the line that tells a reader the counts
+   above it are drawn rather than measured, so it cannot be the least legible
+   text in the block it disclaims. At `--faint` + `opacity:.74` the rendered
+   glyphs measured 3.24:1 dark / 2.98:1 light — under AA at 10px, and under even
+   the 3:1 large-text floor on the light ground. --faint alone is 5.13 / 4.84;
+   --dim is 7.74 / 5.56, which also puts the disclaimer at least level with the
+   violet numerals it qualifies (7.36 / 6.87) instead of below them. */
+.gf-meta .gf-ill { color: var(--dim); }
 
 /* Above the rail's scrim: .gf-rail is a later sibling, so at equal z-index it
    would paint its background gradient over the sub-paragraph and the CTAs.
@@ -294,7 +319,7 @@ h1 em { font-style: normal; color: var(--v3); }
    to a texture and the hero stops being a fixed-height stage. Task 6 owns the
    full responsive pass; this only keeps the narrow case from breaking now. */
 @media (max-width: 900px) {
-  #hero { height: auto; min-height: 0; padding: 56px 0 40px; row-gap: 40px; }
+  #hero { min-height: 0; padding: 56px 0 40px; row-gap: 40px; }
   .gf-svg { opacity: .30; }
   .gf-rail-in { flex-wrap: wrap; gap: 22px 18px; }
   .gf-cell { flex: 1 1 140px; }
@@ -852,6 +877,10 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
   el.appendChild(denied);
 
   var cleared = 0, stopped = 0;
+  // Queue position of each denial within its own stage, in index order. Purely
+  // positional, not random -- it only spaces the stubs that share a row so they
+  // can all sit hard against that row's tick without landing on each other.
+  var denyQ = [0, 0, 0, 0, 0, 0];
   for (var i = 0; i < N; i++) {
     var t = i / (N - 1);
     var e = Math.sin((t - 0.5) * Math.PI);
@@ -862,10 +891,22 @@ footer { border-top: 1px solid var(--border); padding: 34px 0; }
     if (m === 7 || m === 19) {
       // A denied call: it terminates at the stage that stopped it, and nothing
       // downstream of that stage is drawn, because it never ran.
+      //
+      // The stub has to die *on* its stage's row and hard up against that
+      // stage's tick. Ending it 30-37 units short of the bar put the whole rank
+      // of ticks between a stub and the plate naming its stage, so "this call
+      // died at rate" could only be read by tracing a horizontal line across
+      // the bar. GX-11 is the tick's left edge and the dot has r=2.3, so
+      // GX-14 abuts it without the gate group (drawn later) painting over it;
+      // each further stub in the same stage steps 6 left of the one before.
+      // The residual y offset stays under a fifth of the 26.5 row pitch, which
+      // separates stubs sharing a row without blurring which row they are on.
       stopped += 1;
       var si = DENY_AT[i % 3];
-      var yEnd = stageY(si) + ((i % 7) - 3) * 1.7;
-      var xEnd = GX - 30 - (i % 4) * 2.5;
+      var q = denyQ[si];
+      denyQ[si] = q + 1;
+      var yEnd = stageY(si) + ((i % 7) - 3) * 1.1;
+      var xEnd = GX - 14 - q * 6;
       var x0 = GX - 260;
       var yStart = MY + e * 190;
       stroke(denied,
