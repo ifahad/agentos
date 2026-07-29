@@ -199,6 +199,15 @@ services:
       - gateway
       - runtime
 
+  # The public landing page. It is a static, self-contained document that calls
+  # no API and holds no credential, so unlike the console it has no depends_on
+  # and no proxy config — it comes up and stays up independently of whether the
+  # rest of the stack is healthy.
+  landing:
+    build: ../landing
+    ports:
+      - "${AGENTOS_LANDING_PORT:-8081}:8080"
+
 networks:
   # Internal-only network for the code-execution sandbox: containers on it
   # can talk to each other, but there is no gateway to the host or internet

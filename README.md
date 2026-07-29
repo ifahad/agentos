@@ -49,7 +49,9 @@ to the audit log. Coverage on the **refusal** side is deliberately partial and
 documented as such — see [`SECURITY.md`](SECURITY.md).
 
 The project's public landing page is [`landing/index.html`](landing/index.html)
-(self-contained; open it in a browser or serve the `landing/` directory). The
+— one self-contained file, so you can open it straight from disk. Compose also
+serves it at `http://localhost:8081` as the `landing` service, which calls no
+API and depends on nothing else in the stack. The
 operator console runs at `http://localhost:3000` once the stack is up and is
 documented in [`docs/console.md`](docs/console.md). The same handbook also
 rides along in the running console itself, at `/docs` — reachable from the
