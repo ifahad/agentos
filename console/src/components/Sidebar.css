@@ -42,8 +42,8 @@
   background: transparent;
 }
 
-/* Selection is a machined edge, not a colored tab: a raised panel with a hard
-   rule down its leading edge. Colour would compete with the status signals. */
+/* Selection is the interface speaking about itself, so it carries the violet
+   accent rather than a state hue — a teal marker would read as "in flight". */
 .nav-pill {
   position: absolute;
   inset: 0;

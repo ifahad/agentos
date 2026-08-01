@@ -4,12 +4,20 @@
  * or unrecorded. The interface is built to match: it is a panel you read, not a
  * product you are sold.
  *
- * THE RULE THAT DEFINES THIS DESIGN: chroma is reserved for machine state.
- * There is no decorative accent. If something on screen is colored, the system
- * is telling you it is running, held, denied, or over budget. Everything else —
- * navigation, buttons, selection, links, charts at rest — is built from graphite
- * and ink alone. A quiet screen means a healthy one, readable at a glance from
- * across a room. Do not add a brand color; it would make the signals lie.
+ * THE RULE THAT DEFINES THIS DESIGN: chroma is PARTITIONED. Violet means "this
+ * is interface" — navigation, controls, links, focus, headings. The four state
+ * hues (--live, --ok, --hold, --deny) mean "this is a machine outcome" and
+ * appear only where a real outcome is depicted. A violet button and a red chain
+ * node can share a screen without ambiguity because they speak different
+ * languages.
+ *
+ * This replaces an earlier rule that reserved chroma outright and forbade any
+ * accent. That rule protected something real — a quiet screen reads as a
+ * healthy one — and the partition keeps it where it matters: instrument
+ * surfaces stay graphite-plus-signal. What changed is that the protection is
+ * now enforced by styles.partition.test.ts rather than by this comment. The
+ * dead `--accent: var(--text)` alias this file used to carry is what an
+ * unenforced convention decays into.
  */
 
 @import "./fonts/fonts.css";
