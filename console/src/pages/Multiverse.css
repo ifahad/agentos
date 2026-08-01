@@ -53,7 +53,7 @@
 
 .mv-member-model {
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

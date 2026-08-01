@@ -98,7 +98,7 @@
 
 .ov-feed-sub {
   font-size: 11.5px;
-  color: var(--text-faint);
+  color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -123,7 +123,7 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 /* ---- Budget meters ---- */
@@ -162,7 +162,7 @@
   font-family: var(--mono);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
+  color: var(--text-dim);
   flex-shrink: 0;
 }
 

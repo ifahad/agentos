@@ -106,7 +106,7 @@
 
 .breakdown-empty {
   font-size: 12px;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 @keyframes chart-bar {

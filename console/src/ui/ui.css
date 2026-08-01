@@ -146,7 +146,7 @@
 .ui-empty {
   padding: 40px 18px;
   text-align: center;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .ui-empty-title {

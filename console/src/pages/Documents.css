@@ -51,7 +51,7 @@
 .doc-hint {
   margin: 8px 0 12px;
   font-size: 12px;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 @media (prefers-reduced-motion: reduce) {

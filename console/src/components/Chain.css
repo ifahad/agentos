@@ -83,7 +83,11 @@
   font-weight: 500;
   letter-spacing: var(--eyebrow-track);
   text-transform: uppercase;
-  color: var(--text-faint);
+  /* --text-faint fails 4.5:1 on the light ground at this size (2.65:1 on
+     --bg); --text-dim clears it and matches what the cleared-stage rule
+     below already promotes to, so a pending label no longer differs from a
+     cleared one only in whether it's readable. */
+  color: var(--text-dim);
   white-space: nowrap;
   transition: color var(--dur-med) var(--ease);
 }

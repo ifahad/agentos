@@ -28,7 +28,7 @@
 /* The marker is deliberately quiet but always present: it is the difference
    between an illustration and a claim about the running system. */
 .docs-fig-marker {
-  color: var(--text-faint);
+  color: var(--text-dim);
   white-space: nowrap;
 }
 
@@ -178,7 +178,7 @@
 
 .docs-chain-label {
   font-size: 10px;
-  color: var(--text-faint);
+  color: var(--text-dim);
   transition: color var(--dur-med) var(--ease);
 }
 
@@ -227,7 +227,7 @@
 .docs-chain-caption {
   margin-top: 14px;
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 /* Labels drop before nodes do — the same order the live chain uses. */
@@ -311,7 +311,7 @@
 .docs-code-lang {
   display: block;
   margin-bottom: 6px;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .docs-keyvals {
@@ -321,7 +321,7 @@
 .docs-keyvals-cap {
   display: block;
   margin-bottom: 8px;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .docs-keyvals dl {
@@ -364,7 +364,7 @@
 
 .docs-fig-caption {
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-dim);
   margin: -6px 0 14px;
 }
 
@@ -402,7 +402,7 @@
   border: none;
   background: transparent;
   border-radius: var(--radius-sm);
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-family: var(--sans);
   font-size: 12px;
   text-align: left;
@@ -441,7 +441,7 @@
 
 .docs-blurb {
   font-size: 12px;
-  color: var(--text-faint);
+  color: var(--text-dim);
   margin: 0 0 18px;
 }
 
