@@ -5,6 +5,7 @@ import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import type { ChainStage, ChainState } from "../lib/chain";
 import { CHAIN_STAGES, IDLE_CHAIN, chainFeedCount, latestChainState, stageRenders } from "../lib/chain";
 import type { AuditEntry } from "../lib/types";
+import { EASE } from "../ui";
 import { StateIcon } from "../ui/icons";
 import "./Chain.css";
 
@@ -116,7 +117,10 @@ export function Chain({ adminKey }: ChainProps) {
             className="chain-fill"
             initial={false}
             animate={{ scaleX: progress }}
-            transition={{ duration: 0.55, ease: [0.2, 0.8, 0.2, 1] }}
+            /* Not transitionFast/transition: this is the chain filling to reflect
+               real cleared-stage progress, deliberately slower (550ms) than any
+               UI-chrome preset so the ink read as tracking evidence, not a blip. */
+            transition={{ duration: 0.55, ease: EASE }}
           />
         )}
       </div>

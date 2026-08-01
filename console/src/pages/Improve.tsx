@@ -37,9 +37,8 @@ import {
   fadeRiseReduced,
   staggerContainer,
   staggerItem,
+  transition,
   transitionFast,
-  DUR_MED,
-  EASE,
 } from "../ui";
 import type { BadgeVariant } from "../ui";
 import "./Improve.css";
@@ -314,7 +313,7 @@ function ActivePromptBanner({ active }: { active: ActivePrompt }) {
             initial={reduced ? { opacity: 1 } : { opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={reduced ? { opacity: 1 } : { opacity: 0, height: 0 }}
-            transition={{ duration: DUR_MED, ease: EASE }}
+            transition={transition}
           >
             <div className="panel-body">
               <pre className="prompt-text mono">{active.prompt}</pre>
@@ -476,7 +475,7 @@ function ProposalCard({
               initial={reduced ? { opacity: 1 } : { opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={reduced ? { opacity: 1 } : { opacity: 0, height: 0 }}
-              transition={{ duration: DUR_MED, ease: EASE }}
+              transition={transition}
             >
               <pre className="prompt-text mono">{proposal.prompt_text}</pre>
             </motion.div>
