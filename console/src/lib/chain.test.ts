@@ -2,11 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   CHAIN_STAGES,
   IDLE_CHAIN,
+  chainFeedCount,
   chainStateFromEntry,
   latestChainState,
   stageRenders,
 } from "./chain";
-import type { GatewayAuditKind } from "./chain";
+import type { ChainEvidence, GatewayAuditKind } from "./chain";
 
 describe("CHAIN_STAGES", () => {
   it("matches the gateway's /v1/* pipeline order", () => {
@@ -291,5 +292,29 @@ describe("stageRenders", () => {
 
   it("returns one render per stage", () => {
     expect(stageRenders(IDLE_CHAIN)).toHaveLength(CHAIN_STAGES.length);
+  });
+});
+
+describe("chainFeedCount", () => {
+  it("counts only entries that describe a /v1 request", () => {
+    const entries: ChainEvidence[] = [
+      { status: 200, kind: "chat" },
+      { status: 200, kind: "secret_reload" },
+      { status: 200, kind: "embeddings" },
+    ];
+    expect(chainFeedCount(entries)).toBe(2);
+  });
+
+  it("returns 0 for an admin-plane-only feed", () => {
+    expect(chainFeedCount([{ status: 200, kind: "secret_reload" }])).toBe(0);
+  });
+
+  it("agrees with latestChainState on what it ignores", () => {
+    // A feed that grew by an admin-plane row alone places nothing on the
+    // chain, so it must not be reported as growth either.
+    const before: ChainEvidence[] = [{ status: 200, kind: "chat" }];
+    const after: ChainEvidence[] = [{ status: 200, kind: "secret_reload" }, ...before];
+    expect(latestChainState(after)).toEqual(latestChainState(before));
+    expect(chainFeedCount(after)).toBe(chainFeedCount(before));
   });
 });

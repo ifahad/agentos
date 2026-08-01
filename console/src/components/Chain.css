@@ -53,7 +53,7 @@
   min-width: 0;
 }
 
-/* Equal stages keep the fill fraction (cleared / 5) landing exactly on a
+/* Equal stages keep the fill fraction (cleared / 6) landing exactly on a
    boundary, so the rule can never imply a stage half-ran. */
 .chain-stage {
   flex: 1;
