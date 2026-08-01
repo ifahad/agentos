@@ -737,7 +737,12 @@ In `console/src/styles.css`, replace the `.btn.primary` block:
 
 ```css
 .btn:hover {
-  border-color: color-mix(in srgb, var(--v) 55%, var(--border-strong));
+  /* Solid, not a mix into --border-strong: that token is translucent, so
+     mixing into it lets the button's own ground bleed through and drops the
+     edge to 2.55:1 — below the 3:1 non-text floor, on the only hover cue
+     plain buttons have. --v is opaque and clears the floor on every surface
+     a button sits on: 4.21-4.51:1 dark, 4.17-5.00:1 light. */
+  border-color: var(--v);
 }
 ```
 
