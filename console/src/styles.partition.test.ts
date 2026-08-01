@@ -1,8 +1,21 @@
-import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const SRC = join(process.cwd(), "src");
+/**
+ * Every .css file under src/, contents inlined at collect time via Vite's
+ * `import.meta.glob`. This is a Vite project — `vite/client` types are
+ * already in `tsconfig.json`'s `types` array — so reading CSS this way
+ * needs no Node APIs at all. `node:fs`/`node:path`/`process.cwd()` have no
+ * type declarations under this tsconfig (`@types/node` is not installed),
+ * so a Node-API version of this file type-checks fine under `vitest run`
+ * (which never runs `tsc`) while failing `tsc` / `npm run build` outright —
+ * exactly the gap this test exists to prevent, just one layer up the
+ * toolchain. `query: "?raw", import: "default"` with `eager: true` yields
+ * plain file contents (not a CSS module, not a loader function).
+ */
+const rawCssModules = import.meta.glob("./**/*.css", { query: "?raw", import: "default", eager: true }) as Record<
+  string,
+  string
+>;
 
 /**
  * Removes /* ... *\/ comments but keeps every newline inside them, so line
@@ -14,19 +27,12 @@ function stripComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ""));
 }
 
-/** Every .css file under src/, as [relative path, comment-stripped contents]. */
+/** Every .css file under src/, as [path relative to src/, comment-stripped contents]. */
 function cssFiles(): Array<[string, string]> {
-  const out: Array<[string, string]> = [];
-  (function walk(dir: string) {
-    for (const name of readdirSync(dir)) {
-      const full = join(dir, name);
-      if (statSync(full).isDirectory()) walk(full);
-      else if (name.endsWith(".css")) {
-        out.push([full.slice(SRC.length + 1), stripComments(readFileSync(full, "utf8"))]);
-      }
-    }
-  })(SRC);
-  return out;
+  // Glob keys are relative to this file, e.g. "./components/Chain.css";
+  // strip the leading "./" so they compare equal to INSTRUMENT_FILES entries
+  // like "components/Chain.css".
+  return Object.entries(rawCssModules).map(([path, css]) => [path.replace(/^\.\//, ""), stripComments(css)]);
 }
 
 function stylesCss(): string {
