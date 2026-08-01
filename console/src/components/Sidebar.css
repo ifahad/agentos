@@ -42,8 +42,10 @@
   background: transparent;
 }
 
-/* Selection is the interface speaking about itself, so it carries the violet
-   accent rather than a state hue — a teal marker would read as "in flight". */
+/* Selection is the interface speaking about itself, so the active marker is
+   meant to carry the violet accent, not a state hue — a teal marker would
+   read as "in flight". Not wired yet: the box-shadow below still resolves
+   through --text-dim; the violet lands when this marker is re-skinned. */
 .nav-pill {
   position: absolute;
   inset: 0;
