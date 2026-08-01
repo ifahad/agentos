@@ -15,12 +15,12 @@
 @import "./fonts/fonts.css";
 
 :root {
-  /* ---- Surfaces: graphite panels, not a black void. Lifted off pure black so
-     hairlines read as machined edges rather than as glow. ---- */
-  --bg: #121517;
-  --raised: #191d20;
-  --raised-2: #20252a;
-  --inset: #0d0f11;
+  /* ---- Surfaces: near-black ground, panels lifted off it. Matches
+     landing/index.html so moving between the two reads as one product. ---- */
+  --bg: #07080b;
+  --raised: #0e1015;
+  --raised-2: #151821;
+  --inset: #040507;
   /* Legacy aliases (pages migrate incrementally) */
   --bg-raised: var(--raised);
   --bg-inset: var(--inset);
@@ -48,10 +48,17 @@
   --amber: var(--hold);
   --red: var(--deny);
 
-  /* --accent no longer exists as a brand color. It resolves to ink so any
-     unmigrated rule degrades to monochrome instead of reintroducing blue. */
-  --accent: var(--text);
-  --accent-dim: rgba(255, 255, 255, 0.07);
+  /* ---- INTERFACE. Violet marks what is interface: controls, navigation,
+     links, focus, headings. It is the other half of the partition — see the
+     header comment. ---- */
+  --v: #7a5af8;   /* FILL ONLY. 4.43:1 on --bg, below the text floor. */
+  --v2: #a78bfa;  /* accent text, eyebrows, active labels. 7.36:1. */
+  --v3: #c7b6ff;  /* display type. 11.03:1. */
+
+  /* --accent is the pre-partition name. It now resolves to the violet fill so
+     the ten existing call sites pick up the accent without being rewritten. */
+  --accent: var(--v);
+  --accent-dim: color-mix(in srgb, var(--v) 16%, transparent);
 
   /* ---- Radii: machined, not soft. ---- */
   --radius-sm: 3px;
@@ -71,6 +78,68 @@
   /* Eyebrow/label treatment, used verbatim wherever a field is named. */
   --eyebrow-size: 10px;
   --eyebrow-track: 0.16em;
+
+  /* ---- Aliases for the landing page's token names, so a rule copied from
+     landing/index.html works here unchanged and vice versa. ---- */
+  --ink: var(--text);
+  --dim: var(--text-dim);
+  --faint: var(--text-faint);
+  --line: var(--border);
+  --line2: var(--border-strong);
+  --raised2: var(--raised-2);
+}
+
+/* ---- Light ground. Values are Cycle 1's tuned light palette; the violet
+   ladder is computed for this ground and INVERTS — on a dark ground emphasis
+   gets brighter, here it gets darker. Derivation is recorded in the spec,
+   §4.3: hue locked to 252.2deg at saturation 0.637, value walked down until
+   the colour clears 4.5:1 both as a fill under a white label and as text on
+   --bg. #6D50DE is the first passing value; the source #7A5AF8 fails at
+   3.76:1 and cannot be reused. ---- */
+:root[data-theme="light"] {
+  --bg: #eceae4;
+  --raised: #f6f5f1;
+  --raised-2: #ffffff;
+  --inset: #e4e1d9;
+  --border: rgba(0, 0, 0, 0.1);
+  --border-strong: rgba(0, 0, 0, 0.18);
+  --text: #1a1d1f;
+  --text-dim: #565d63;
+  --text-faint: #8a9198;
+
+  --live: #12897c;
+  --ok: #2f8f57;
+  --hold: #a8721c;
+  --deny: #bb4038;
+
+  --v: #6d50de;  /* white-on-it 5.45:1, on --bg 4.53:1 */
+  --v2: #5f46c2; /* on --bg 5.56:1 */
+  --v3: #503ba3; /* on --bg 6.99:1 */
+}
+
+@media (prefers-color-scheme: light) {
+  /* Default for anyone who has not chosen. An explicit data-theme always
+     wins, because it is set on the same element with higher specificity. */
+  :root:not([data-theme]) {
+    --bg: #eceae4;
+    --raised: #f6f5f1;
+    --raised-2: #ffffff;
+    --inset: #e4e1d9;
+    --border: rgba(0, 0, 0, 0.1);
+    --border-strong: rgba(0, 0, 0, 0.18);
+    --text: #1a1d1f;
+    --text-dim: #565d63;
+    --text-faint: #8a9198;
+
+    --live: #12897c;
+    --ok: #2f8f57;
+    --hold: #a8721c;
+    --deny: #bb4038;
+
+    --v: #6d50de;
+    --v2: #5f46c2;
+    --v3: #503ba3;
+  }
 }
 
 * {
@@ -116,23 +185,25 @@ pre,
   color: var(--text-faint);
 }
 
-/* Links carry no hue: an underline marks them, since color is reserved for
-   machine state. */
+/* Links carry the interface accent and an underline. Under the partition a
+   link is interface, so violet is correct here and a state hue would not be. */
 a {
-  color: var(--text);
+  color: var(--v2);
   text-decoration: underline;
-  text-decoration-color: var(--border-strong);
+  text-decoration-color: color-mix(in srgb, var(--v2) 45%, transparent);
   text-underline-offset: 3px;
   transition: text-decoration-color var(--dur-fast) var(--ease);
 }
 
 a:hover {
-  text-decoration-color: var(--text-dim);
+  text-decoration-color: var(--v2);
 }
 
-/* Focus is a signal — it reports where input will land. */
+/* Focus reports where input will land. It is interface, not machine state:
+   before the partition this used --live, which made a focus ring read as an
+   in-flight signal. */
 :focus-visible {
-  outline: 1px solid var(--live);
+  outline: 1px solid var(--v);
   outline-offset: 2px;
   border-radius: 2px;
 }

@@ -30,6 +30,19 @@ export function SettingsModal({
 }: Props) {
   const [mode, setMode] = useState<"root" | "user">(role === "root" ? "root" : "user");
   const [value, setValue] = useState(adminKey);
+  const [theme, setThemeState] = useState<"dark" | "light">(
+    () => (document.documentElement.getAttribute("data-theme") as "dark" | "light" | null) ?? "dark",
+  );
+
+  function setTheme(next: "dark" | "light") {
+    document.documentElement.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem("agentos-theme", next);
+    } catch {
+      // Privacy mode: the choice applies for this session only.
+    }
+    setThemeState(next);
+  }
 
   // The modal now stays mounted between opens (so the Modal primitive's exit
   // animation can run) — reset the form to the current credentials each time
@@ -97,6 +110,23 @@ export function SettingsModal({
           </p>
         </>
       )}
+
+      <div className="field">
+        <span className="eyebrow">Appearance</span>
+        <div className="theme-toggle">
+          {(["dark", "light"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              className={`btn small${theme === t ? " primary" : ""}`}
+              aria-pressed={theme === t}
+              onClick={() => setTheme(t)}
+            >
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="mode-toggle">
         <Button small variant={mode === "root" ? "primary" : "ghost"} onClick={() => setMode("root")}>
