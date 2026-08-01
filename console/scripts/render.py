@@ -8,7 +8,7 @@ it alone overstates contrast on anything faded. Every measurement here
 composites opacity against the resolved background first.
 """
 import sys, pathlib
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
 
 ROUTES = ["/", "/keys", "/audit", "/playground", "/documents", "/improve",
           "/multiverse", "/operators", "/docs", "/orgs", "/users", "/secrets",
@@ -127,38 +127,141 @@ AUDIT_JS = r"""
     if (ratio < floor) out.push({tag: el.tagName, cls: el.className, text: el.textContent.trim().slice(0,40),
                                  ratio: +ratio.toFixed(2), floor, size});
   }
-  return {failures: out, measured};
+  // Whether the route's own content is present, checked in the SAME
+  // execution context and at the SAME instant as the measurement above —
+  // not in an earlier, separate wait_for_selector call. A selector check
+  // made even a moment before this evaluate() runs leaves a gap: the app
+  // can mount, get confirmed present, and then unmount or remount (a
+  // client-side redirect, a dev-server HMR full-reload of the React tree)
+  // before the audit actually runs. That gap is exactly how one run of
+  // this sweep once measured 11 elements on /audit — the 11 injected test
+  // badges (appended straight to <body>, outside React's tree, so they
+  // survive a React remount) with zero of the ~28 real elements the route
+  // always has, and 11 cleared the bare "did anything render" floor. Only
+  // a check made atomically alongside the count closes that gap.
+  return {failures: out, measured, mounted: document.querySelector('MOUNT_SELECTOR_PLACEHOLDER') !== null};
 }
 """
+
+# Every console route renders the sidebar unconditionally — App.tsx falls
+# back to ROUTES[0] for an unknown path rather than rendering nothing, and
+# the shell (Sidebar + governance chain + heading) is the one thing every
+# route has regardless of auth state. `networkidle` alone isn't enough: it's
+# satisfied the instant the network goes quiet, which is also true mid-flight
+# during a client-side redirect, and — as an actual run of this sweep proved
+# during hardening — even a `wait_for_selector` made before the audit isn't
+# enough, because the app can mount, get confirmed present by that earlier
+# check, and then unmount or remount (an HMR full-reload of the React tree,
+# observed live on /audit: the page went from 39 measured elements to 11 —
+# exactly the 11 test badges appended straight to <body>, outside React's
+# tree, with every one of the ~28 real elements gone) before the audit
+# actually runs. So MOUNT_SELECTOR is checked twice: once here, before doing
+# any work, as a cheap early-out; and again inside AUDIT_JS itself, in the
+# same evaluate() call as the element count, which is the check that
+# actually matters because nothing can race between a check and a
+# measurement that happen atomically together.
+MOUNT_SELECTOR = ".sidebar"
+AUDIT_JS = AUDIT_JS.replace("MOUNT_SELECTOR_PLACEHOLDER", MOUNT_SELECTOR)
+
+# Real routes in this app measure 28-69 elements (see the sweep in the Task
+# 6 report). 10 is comfortably below every legitimate count and comfortably
+# above zero, so it catches "this route did not render" without being
+# fragile to ordinary content variation. It is the secondary signal, though:
+# `mounted` (see above) is what actually caught the one real anomaly found
+# while hardening this, because that anomaly's count (11) cleared 10.
+MIN_MEASURED = 10
+
+
+def is_valid(result):
+    return result["measured"] >= MIN_MEASURED and result.get("mounted", True)
+
+
+def render_and_audit(browser, base, outdir, theme, route):
+    """Load one route in one theme, wait for it to actually mount, screenshot
+    and audit it. Returns the audit result dict.
+
+    Nothing in here is allowed to raise past this function: a route that
+    fails to mount, a navigation that errors outright, or a client-side
+    redirect that destroys the execution context mid-evaluate (Playwright
+    raises "Execution context was destroyed, most likely because of a
+    navigation" for exactly this race — the failure mode this hardening
+    exists for) must all come back as a low/zero `measured` count for the
+    caller's floor check to report, not as an uncaught traceback that kills
+    the sweep on whichever route happens to hit it."""
+    pg = browser.new_page(viewport={"width": 1440, "height": 900})
+    try:
+        try:
+            pg.goto(base + route, wait_until="networkidle")
+            pg.evaluate(f"document.documentElement.setAttribute('data-theme','{theme}')")
+            try:
+                pg.wait_for_selector(MOUNT_SELECTOR, state="attached", timeout=8000)
+            except PWTimeout:
+                pass  # let the measured-count floor below report this, clearly labelled
+            pg.wait_for_timeout(600)
+            if route == BADGE_ROUTE:
+                pg.evaluate(INJECT_BADGES_JS)
+                badge_count = pg.evaluate("document.querySelectorAll('#__badge-audit-probe .badge').length")
+                print(f"INJECTED {theme}{route}: {badge_count} badge variants "
+                      f"({'OK' if badge_count == len(BADGE_VARIANTS) else 'EXPECTED ' + str(len(BADGE_VARIANTS)) + ' — CHECK INJECTION'})")
+            name = (route.strip("/") or "overview").replace("/", "-")
+            pg.screenshot(path=str(outdir / f"{theme}-{name}.png"), full_page=True)
+            return pg.evaluate(AUDIT_JS)
+        except Exception as e:
+            print(f"WARN {theme}{route}: render/audit step raised {type(e).__name__}: "
+                  f"{str(e).splitlines()[0]!r} — treating as an unmounted page")
+            return {"measured": 0, "failures": [], "mounted": False}
+    finally:
+        pg.close()
+
 
 def main():
     base, outdir = sys.argv[1], pathlib.Path(sys.argv[2])
     outdir.mkdir(parents=True, exist_ok=True)
     failures = 0
+    harness_errors = 0
+    coverage = {}  # (theme, route) -> measured count actually used
+    valid = {}     # (theme, route) -> is_valid(result), for the summary flag
     with sync_playwright() as p:
         b = p.chromium.launch()
         for theme in ("dark", "light"):
             for route in ROUTES:
-                pg = b.new_page(viewport={"width": 1440, "height": 900})
-                pg.goto(base + route, wait_until="networkidle")
-                pg.evaluate(f"document.documentElement.setAttribute('data-theme','{theme}')")
-                pg.wait_for_timeout(600)
-                if route == BADGE_ROUTE:
-                    pg.evaluate(INJECT_BADGES_JS)
-                    badge_count = pg.evaluate("document.querySelectorAll('#__badge-audit-probe .badge').length")
-                    print(f"INJECTED {theme}{route}: {badge_count} badge variants "
-                          f"({'OK' if badge_count == len(BADGE_VARIANTS) else 'EXPECTED ' + str(len(BADGE_VARIANTS)) + ' — CHECK INJECTION'})")
-                name = (route.strip("/") or "overview").replace("/", "-")
-                pg.screenshot(path=str(outdir / f"{theme}-{name}.png"), full_page=True)
-                result = pg.evaluate(AUDIT_JS)
-                print(f"MEASURED {theme}{route}: {result['measured']} elements")
-                for bad in result['failures']:
+                result = render_and_audit(b, base, outdir, theme, route)
+                attempts = 1
+                if not is_valid(result):
+                    why = "MOUNT_SELECTOR absent at audit time" if not result.get("mounted", True) \
+                          else f"only {result['measured']} elements (floor {MIN_MEASURED})"
+                    print(f"WARN {theme}{route}: {why} on attempt 1 — retrying once before failing the run")
+                    result = render_and_audit(b, base, outdir, theme, route)
+                    attempts = 2
+                coverage[(theme, route)] = result["measured"]
+                valid[(theme, route)] = is_valid(result)
+                if not is_valid(result):
+                    harness_errors += 1
+                    why = "the mount selector was gone by the time the audit ran" if not result.get("mounted", True) \
+                          else f"only {result['measured']} elements measured (floor {MIN_MEASURED})"
+                    print(f"HARNESS FAILURE {theme}{route}: {why}, after {attempts} attempt(s). This route "
+                          f"did not render — it is a harness failure, NOT a passing (contrast-clean) page.")
+                else:
+                    suffix = f" (needed a retry: attempt {attempts})" if attempts > 1 else ""
+                    print(f"MEASURED {theme}{route}: {result['measured']} elements{suffix}")
+                for bad in result["failures"]:
                     failures += 1
                     print(f"FAIL {theme}{route}: {bad['ratio']}:1 < {bad['floor']} "
                           f"{bad['tag']}.{bad['cls']} {bad['size']}px {bad['text']!r}")
-                pg.close()
         b.close()
-    print(f"\n{failures} contrast failures")
-    sys.exit(1 if failures else 0)
+
+    print("\n=== coverage summary (measured elements per route x theme) ===")
+    for route in ROUTES:
+        dark_n = coverage.get(("dark", route), "?")
+        light_n = coverage.get(("light", route), "?")
+        ok = valid.get(("dark", route), False) and valid.get(("light", route), False)
+        flag = "" if ok else " <-- HARNESS FAILURE"
+        print(f"  {route:<16} dark={dark_n:<4} light={light_n:<4}{flag}")
+
+    if harness_errors:
+        print(f"\n{harness_errors} route(s) did not render (harness failure — the run below is "
+              f"NOT a certified 0-contrast-failures result, regardless of the count)")
+    print(f"{failures} contrast failures")
+    sys.exit(1 if (failures or harness_errors) else 0)
 
 main()
