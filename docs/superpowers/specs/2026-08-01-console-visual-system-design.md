@@ -197,11 +197,10 @@ entrance, stagger and page transition are one system.
 Reduced motion is already handled — globally in `styles.css` for CSS keyframes
 and transitions, and per-component via `useReducedMotion()`. That stays.
 
-**One addition.** The sidebar active indicator becomes a violet `layoutId` bar
-that slides between items, replacing a static marker. It is the single place
-where movement carries information rather than decorating: it shows where you
-came from. It respects `useReducedMotion()` and renders as a static bar when
-reduced motion is set.
+**No addition either.** This spec originally proposed making the sidebar active
+indicator a sliding `layoutId` bar. Reading `Sidebar.css:44` shows it already is
+one — Track A built it, moved by framer-motion under `layoutId="nav-pill"`. Only
+its colour changes, and that belongs to the primitive re-skin (§7), not here.
 
 ## 9. Rollout
 
@@ -214,7 +213,7 @@ implementer, a scoped reviewer and a fix loop; then a whole-branch review.
 | 1 | Token layer — both grounds, aliases, toggle, `prefers-color-scheme` |
 | 2 | Guard test + rewritten `styles.css` header |
 | 3 | Primitive re-skin (§7) |
-| 4 | The 31 hardcoded literals |
+| 4 | The 43 hardcoded literals (31 in page/component CSS + 12 in `styles.css`) |
 | 5 | Motion consolidation (§8) |
 | 6 | Page sweep — all 13 pages, both themes |
 | 7 | Whole-branch review |
@@ -238,16 +237,22 @@ Also required:
 
 ## 11. Carried-over follow-ups
 
-Three open items live in files this cycle opens anyway, and are folded in as task 0:
+Two open items live in files this cycle opens anyway, and are folded in as task 0:
 
 1. `console/src/components/Chain.tsx:93,96` — the in-flight pulse compares
    `entries.length` against the unfiltered feed while `:105` derives progress from
-   the filtered `state.cleared`. Mixed sources; the pulse can fire on traffic the
-   chain does not show.
-2. `console/src/lib/types.ts:26` — `AuditKind` declares 4 kinds; `gateway/internal/store`
-   defines 7. Missing: `guardrail_error`, `rate_limited`, `secret_reload`.
-3. `console/src/components/Chain.css:56` — comment reads `(cleared / 5)` for a
+   the filtered `state.cleared`. Mixed sources: an admin-plane `secret_reload` row
+   grows the raw count and fires the pulse, announcing a request the chain itself
+   refuses to place.
+2. `console/src/components/Chain.css:56` — comment reads `(cleared / 5)` for a
    six-stage chain.
+
+**Withdrawn.** `console/src/lib/types.ts:26` was previously listed here as a
+defect for declaring 4 of the gateway's 7 audit kinds. It is not one.
+`lib/chain.ts:100-104` documents the choice: the chain keeps its own wider
+`GatewayAuditKind` **specifically so** the shared type — and with it every
+`Badge variant={kind}` call site — does not have to widen. That is a recorded
+trade-off with a written rationale. Do not "fix" it.
 
 The fourth known follow-up — the `require_auth` docstrings at
 `runtime/src/agentos_runtime/api.py:68`, `api.py:256` and `config.py:13`, which
