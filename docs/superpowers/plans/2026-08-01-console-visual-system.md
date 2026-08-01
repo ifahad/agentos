@@ -50,7 +50,7 @@ Every task's requirements implicitly include this section.
 | `console/src/components/Chain.tsx` | Pulse counts the filtered feed |
 | `console/src/lib/chain.ts` | New `chainFeedCount` helper |
 | `console/src/components/SettingsModal.tsx` | Theme control |
-| 11 animating files | Motion consolidation onto `ui/motion` presets |
+| 3 animating files (Sidebar, Chain, GovernanceChainVisual) | Motion consolidation onto `ui/motion` presets |
 
 ## Conversion Inventory
 
@@ -815,7 +815,7 @@ git commit -m "feat(console): re-skin primitives onto the violet accent"
 
 ### Task 5: Motion consolidation
 
-`ui/motion.ts` already exports `DUR_FAST`, `DUR_MED`, `DUR_PAGE`, `EASE`, `STAGGER`, `STAGGER_MAX_ITEMS`, `transition`, `transitionFast`, `fadeRise`, `fadeRiseReduced`, `fade`, `staggerContainer`, `staggerItem`, `staggerItemReduced`, `modalBackdrop`, `modalPanel`, `modalPanelReduced`, `toastItem`, `toastItemReduced`, `pageTransition` — all re-exported from `ui/index.ts`. Only `ui/Toast.tsx` and `ui/Tabs.tsx` use them.
+`ui/motion.ts` already exports `DUR_FAST`, `DUR_MED`, `DUR_PAGE`, `EASE`, `STAGGER`, `STAGGER_MAX_ITEMS`, `transition`, `transitionFast`, `fadeRise`, `fadeRiseReduced`, `fade`, `staggerContainer`, `staggerItem`, `staggerItemReduced`, `modalBackdrop`, `modalPanel`, `modalPanelReduced`, `toastItem`, `toastItemReduced`, `pageTransition` — all re-exported from `ui/index.ts`. Eight files already use them via the barrel (App, CommandPalette, LiveList, Docs, Improve, Keys, Overview, Playground); three hand-roll their own (Sidebar, Chain, GovernanceChainVisual).
 
 **Files:**
 - Modify: `App.tsx`, `pages/Overview.tsx`, `pages/Keys.tsx`, `pages/Docs.tsx`, `pages/Improve.tsx`, `pages/Playground.tsx`, `components/Sidebar.tsx`, `components/Chain.tsx`, `components/LiveList.tsx`, `components/CommandPalette.tsx`, `pages/docs/visuals/GovernanceChainVisual.tsx`
@@ -882,8 +882,8 @@ cd /home/iofahd/code/agentos/console && npm run build && npx vitest run
 git add console/src
 git commit -m "refactor(console): route animation through the shared presets
 
-ui/motion.ts had two consumers while eleven files hand-rolled variants
-around it. No new animation is authored."
+Eight files already used ui/motion via the ../ui barrel; three hand-roll
+variants (Sidebar, Chain, GovernanceChainVisual). No new animation is authored."
 ```
 
 ---

@@ -29,11 +29,12 @@ Measured, not assumed:
   import from `../ui`.
 - **Icons are done.** `ui/icons.tsx` (468 lines) provides `Icon`, `BrandMark` and
   `StateIcon`, used by 8 files.
-- **Motion is half-adopted.** `ui/motion.ts` is imported by exactly two consumers
-  (`ui/Toast.tsx`, `ui/Tabs.tsx`). Eleven other files that animate — Overview,
-  Keys, Docs, Improve, Playground, Sidebar, Chain, LiveList, CommandPalette, App,
-  GovernanceChainVisual — import framer-motion directly and hand-roll variants.
-  The shared system exists and is bypassed.
+- **Motion is mostly adopted already.** `ui/motion.ts` is re-exported from the
+  `../ui` barrel, which eight files already consume: App, CommandPalette,
+  LiveList, Docs, Improve, Keys, Overview, Playground. Three files hand-roll
+  their own variants and sit outside the consolidated system — Sidebar, Chain,
+  GovernanceChainVisual — so the work is two gaps, not eleven files. (Earlier
+  grepping missed barrel imports and undercounted existing adoption.)
 - **The console has no light theme.** Zero occurrences of `data-theme` or
   `prefers-color-scheme` in any console CSS. The landing ships both.
 
@@ -190,9 +191,10 @@ whose entire job is depicting machine state has no violet in it.
 
 ## 8. Motion
 
-**No new animation is authored.** The work is routing the eleven files that
-hand-roll framer-motion variants through the existing `ui/motion` presets, so
-entrance, stagger and page transition are one system.
+**No new animation is authored.** The work is routing three files that
+hand-roll framer-motion variants (Sidebar, Chain, GovernanceChainVisual) through
+the existing `ui/motion` presets, joining the eight files that already use them
+via the `../ui` barrel. Entrance, stagger and page transition become one system.
 
 Reduced motion is already handled — globally in `styles.css` for CSS keyframes
 and transitions, and per-component via `useReducedMotion()`. That stays.
