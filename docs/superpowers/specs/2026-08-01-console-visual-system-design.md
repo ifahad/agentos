@@ -116,11 +116,35 @@ darker is unnecessary and drains the hue; the source `#7A5AF8` itself fails at
 3.76:1 on the light ground and cannot be reused. `--v2` at value 0.760 and `--v3`
 at 0.640 continue the ladder downward.
 
-Surfaces and light-adapted state hues come from Cycle 1 §5.6, already tuned:
-`--bg #eceae4`, `--raised #f6f5f1`, `--raised-2 #ffffff`,
-`--border rgba(0,0,0,.10)`, `--border-strong rgba(0,0,0,.18)`, `--text #1a1d1f`,
-`--text-dim #565d63`, `--text-faint #8a9198`, `--live #12897c`, `--ok #2f8f57`,
-`--hold #a8721c`, `--deny #bb4038`.
+Surfaces come from Cycle 1 §5.6, already tuned: `--bg #eceae4`,
+`--raised #f6f5f1`, `--raised-2 #ffffff`, `--border rgba(0,0,0,.10)`,
+`--border-strong rgba(0,0,0,.18)`, `--text #1a1d1f`, `--text-dim #565d63`,
+`--text-faint #8a9198`, `--live #12897c`.
+
+**`--ok`/`--hold`/`--deny` were re-derived in the Task 6 page sweep** and no
+longer match Cycle 1 §5.6's figures. Those figures (`--ok #2f8f57`,
+`--hold #a8721c`, `--deny #bb4038`) were tuned for the landing page and were
+never checked as small text against the console's badge surface — a `.badge`
+tints its own background 8% into `--raised`/`--raised-2`, and against that
+composited tint the Cycle 1 values measure 3.39–3.76:1 / 3.47–3.76:1 /
+4.42–4.81:1, all below the 4.5:1 floor for 10px badge text. Rendering all 13
+console routes never caught it because no route in that sweep had gateway
+data populated enough to put a state badge on screen; injecting one of each
+`.badge` variant into the harness did.
+
+Hue and saturation held exactly; lightness was walked down to the first value
+clearing 4.5:1 on the badge tint:
+
+| Token | Cycle 1 value | Console value | On badge tint (`--raised`/`--raised-2`) | On `--bg` |
+|---|---|---|---|---|
+| `--ok` | `#2F8F57` | `#277749` | 4.54:1 / 4.93:1 | 4.57:1 |
+| `--hold` | `#A8721C` | `#8E6018` | 4.53:1 / 4.91:1 | 4.55:1 |
+| `--deny` | `#BB4038` | `#B83F37` | 4.51:1 / 4.93:1 | 4.59:1 |
+
+Console-only: `landing/index.html` keeps the Cycle 1 figures — the landing
+page has no small badge text this dense, and Cycle 2 does not touch it. Dark
+theme's `--ok`/`--hold`/`--deny` (`#6cc48f`/`#e3a851`/`#e2685f`) already clear
+every surface at 4.94–8.06:1 and are unchanged.
 
 ### 4.4 Mechanics
 
