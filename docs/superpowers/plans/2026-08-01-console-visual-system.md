@@ -505,14 +505,14 @@ describe("chroma partition", () => {
   });
 
   it("keeps violet off instrument surfaces", () => {
+    const offenders: string[] = [];
     for (const [path, css] of cssFiles()) {
       if (!INSTRUMENT_FILES.includes(path)) continue;
-      const offenders = css
-        .split("\n")
-        .map((line, i) => [i + 1, line] as const)
-        .filter(([, line]) => VIOLET.test(line));
-      expect(offenders, `${path} depicts machine state; violet is banned there`).toEqual([]);
+      css.split("\n").forEach((line, i) => {
+        if (VIOLET.test(line)) offenders.push(`${path}:${i + 1} ${line.trim()}`);
+      });
     }
+    expect(offenders, "these files depict machine state; violet is banned there").toEqual([]);
   });
 
   it("keeps violet out of badge rules", () => {
@@ -529,13 +529,13 @@ describe("chroma partition", () => {
   it("never uses --v as a text colour", () => {
     // --v is 4.43:1 on --bg, below the 4.5:1 floor. It is a fill.
     const COLOR_DECL = /(?<![-\w])color\s*:\s*[^;{}]*var\(\s*--v\s*\)/;
+    const offenders: string[] = [];
     for (const [path, css] of cssFiles()) {
-      const offenders = css
-        .split("\n")
-        .map((line, i) => `${path}:${i + 1}` as const)
-        .filter((_, i) => COLOR_DECL.test(css.split("\n")[i]));
-      expect(offenders, "--v is fill-only; use --v2 for text").toEqual([]);
+      css.split("\n").forEach((line, i) => {
+        if (COLOR_DECL.test(line)) offenders.push(`${path}:${i + 1} ${line.trim()}`);
+      });
     }
+    expect(offenders, "--v is fill-only; use --v2 for text").toEqual([]);
   });
 });
 ```
@@ -672,13 +672,25 @@ Apply the same substitution everywhere, preserving each site's own percentage an
 
 - [ ] **Step 5: Verify no literals remain**
 
+Two checks, because `styles.css` legitimately contains literals (they are the token *definitions*) and no other file does.
+
 ```bash
-cd /home/iofahd/code/agentos/console/src && \
-  grep -nE '#[0-9a-fA-F]{3,8}\b|rgba?\(' $(find . -name '*.css') \
-  | grep -v 'styles.css:[1-9][0-9]\?:' | grep -v 'fonts.css'
+# 1. No CSS file except styles.css may contain any colour literal.
+cd <worktree>/console/src && \
+  grep -nE '#[0-9a-fA-F]{3,8}\b|rgba?\(' \
+  $(find . -name '*.css' ! -name 'styles.css' ! -name 'fonts.css')
 ```
 
-Expected: only matches inside the `:root`, `[data-theme]` and `@media (prefers-color-scheme)` blocks of `styles.css`, which are token *definitions*. Any other hit is unconverted.
+Expected: **no output at all** (grep exits 1).
+
+```bash
+# 2. In styles.css, every literal must sit inside a token-definition block.
+cd <worktree>/console/src && \
+  awk '/^:root|^\[data-theme|^@media|^\}/ { blk = $0 } \
+       /#[0-9a-fA-F]{3,8}|rgba?\(/ { print NR": "blk" | "$0 }' styles.css
+```
+
+Expected: every line reports a `blk` of `:root`, `:root[data-theme="light"]` or `@media (prefers-color-scheme: light)`. **One deliberate exception:** `.btn.primary { color: #ffffff }` from Task 4, which is a literal on purpose — `--text` follows the theme and would turn near-black on the light ground, where the violet fill stays dark. If Task 4 has not run yet, that line will not be present.
 
 - [ ] **Step 6: Run the suite and commit**
 
