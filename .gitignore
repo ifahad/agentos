@@ -26,6 +26,8 @@ sandbox/target/
 
 # SDD worktrees (local, never committed)
 .worktrees/
+# Worktrees created by the harness's native tool land here instead.
+.claude/worktrees/
 
 # SDD workspace (ledger, briefs, review packages — local scratch)
 .superpowers/
