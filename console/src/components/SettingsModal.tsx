@@ -30,9 +30,14 @@ export function SettingsModal({
 }: Props) {
   const [mode, setMode] = useState<"root" | "user">(role === "root" ? "root" : "user");
   const [value, setValue] = useState(adminKey);
-  const [theme, setThemeState] = useState<"dark" | "light">(
-    () => (document.documentElement.getAttribute("data-theme") as "dark" | "light" | null) ?? "dark",
-  );
+  const [theme, setThemeState] = useState<"dark" | "light">(() => {
+    const attr = document.documentElement.getAttribute("data-theme") as "dark" | "light" | null;
+    if (attr === "dark" || attr === "light") return attr;
+    // No explicit choice stored: fall back to the same media query the
+    // pre-paint bootstrap in index.html defers to, so the toggle's pressed
+    // state always matches what the console is actually rendering.
+    return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  });
 
   function setTheme(next: "dark" | "light") {
     document.documentElement.setAttribute("data-theme", next);

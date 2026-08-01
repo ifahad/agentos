@@ -486,7 +486,8 @@ td.dim {
 
 /* ---- Forms & buttons ---- */
 
-label.field {
+label.field,
+.field {
   display: block;
   margin-bottom: 14px;
 }
@@ -542,6 +543,21 @@ textarea:focus {
   display: flex;
   gap: 8px;
   margin-bottom: 16px;
+}
+
+/* The appearance toggle inside .field mirrors .mode-toggle's layout exactly:
+   same flex row, same gap, same .btn.small buttons. The eyebrow above it
+   gets the same 5px separation label.field > span gives a form label,
+   without touching that rule (which would also override .eyebrow's own
+   size/colour, since ".field > span" is more specific than ".eyebrow"). */
+.field > .eyebrow {
+  display: block;
+  margin-bottom: 6px;
+}
+
+.theme-toggle {
+  display: flex;
+  gap: 8px;
 }
 
 textarea {
@@ -787,7 +803,7 @@ button {
 }
 
 .event .tool-name {
-  color: var(--accent);
+  color: var(--v2);
   font-weight: 600;
 }
 
