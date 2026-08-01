@@ -49,13 +49,13 @@
 }
 
 .ui-tab.active {
-  color: var(--text);
+  color: var(--v2);
 }
 
 .ui-tab-pill {
   position: absolute;
   inset: 0;
-  background: var(--raised);
+  background: var(--v);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-sm);
 }

@@ -596,7 +596,7 @@ button {
 }
 
 .btn:hover {
-  border-color: var(--text-faint);
+  border-color: color-mix(in srgb, var(--v) 55%, var(--border-strong));
 }
 
 .btn:active:not(:disabled) {
@@ -609,9 +609,12 @@ button {
 }
 
 .btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--bg);
+  background: var(--v);
+  border-color: var(--v);
+  /* White, not --text: --text follows the theme and would turn near-black on
+     the light ground, where the violet fill stays dark. White on --v is
+     4.52:1 dark and 5.45:1 light. */
+  color: #ffffff;
   font-weight: 600;
 }
 
@@ -1135,7 +1138,7 @@ button {
 }
 
 .th-sort.active {
-  color: var(--text);
+  color: var(--v2);
 }
 
 .th-sort-icon {

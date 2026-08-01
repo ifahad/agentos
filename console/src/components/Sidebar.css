@@ -42,16 +42,15 @@
   background: transparent;
 }
 
-/* Selection is the interface speaking about itself, so the active marker is
-   meant to carry the violet accent, not a state hue — a teal marker would
-   read as "in flight". Not wired yet: the box-shadow below still resolves
-   through --text-dim; the violet lands when this marker is re-skinned. */
+/* Selection is the interface speaking about itself, so the active marker
+   carries the violet accent, not a state hue — a teal marker would read as
+   "in flight". */
 .nav-pill {
   position: absolute;
   inset: 0;
   border-radius: var(--radius-sm);
-  background: var(--raised-2);
-  box-shadow: inset 2px 0 0 0 var(--text-dim);
+  background: color-mix(in srgb, var(--v) 12%, var(--raised-2));
+  box-shadow: inset 2px 0 0 0 var(--v);
 }
 
 .nav-item-label,
@@ -69,6 +68,11 @@
 .nav-item:hover .nav-icon,
 .nav-item.active .nav-icon {
   color: var(--text);
+}
+
+.nav-item.active .nav-item-label,
+.nav-item.active .nav-icon {
+  color: var(--v2);
 }
 
 /* Waiting on a credential is a held state, drawn with the same amber the
