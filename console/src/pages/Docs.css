@@ -206,7 +206,7 @@
   background: var(--deny);
   box-shadow:
     inset 0 0 0 1px var(--deny),
-    0 0 0 3px rgba(226, 104, 95, 0.16);
+    0 0 0 3px color-mix(in srgb, var(--deny) 16%, transparent);
 }
 
 .docs-chain-stage[data-render="stopped"] .docs-chain-label {
@@ -217,7 +217,7 @@
   background: var(--hold);
   box-shadow:
     inset 0 0 0 1px var(--hold),
-    0 0 0 3px rgba(227, 168, 81, 0.16);
+    0 0 0 3px color-mix(in srgb, var(--hold) 16%, transparent);
 }
 
 .docs-chain[data-outcome="fail"] .docs-chain-stage[data-render="stopped"] .docs-chain-label {
