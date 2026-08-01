@@ -23,6 +23,17 @@
 @import "./fonts/fonts.css";
 
 :root {
+  /* Binds the UA's own rendering — <input>/<select> interiors, scrollbars,
+     date and colour pickers, spin buttons — to the theme this stylesheet is
+     painting. index.html's <meta name="color-scheme" content="light dark">
+     only DECLARES which schemes the page supports; it does not choose one,
+     so without this property every native control follows the OS and a
+     light-OS visitor got white input boxes on the #07080b ground. The
+     property is the switch; the meta tag is only the capability list. Each
+     of the three surface blocks below sets it alongside its own tokens, so
+     the native layer can never disagree with --bg. */
+  color-scheme: dark;
+
   /* ---- Surfaces: near-black ground, panels lifted off it. Matches
      landing/index.html so moving between the two reads as one product. ---- */
   --bg: #07080b;
@@ -64,7 +75,16 @@
   --v3: #c7b6ff;  /* display type. 11.03:1. */
 
   /* --accent is the pre-partition name. It now resolves to the violet fill so
-     the ten existing call sites pick up the accent without being rewritten. */
+     the ten existing call sites pick up the accent without being rewritten.
+     WARNING: because of that repointing, --accent is no longer a neutral
+     "whatever the emphasis colour is" — it IS violet, and under the
+     partition violet asserts "this is interface". Reaching for --accent on
+     anything that depicts a machine outcome (a run event, a budget bar, a
+     credential's held state) puts brand chroma into the state-hue vocabulary
+     and is a partition violation, however innocuous the token name looks.
+     Three sites did exactly that when this alias was repointed and have been
+     moved back to neutral ink. If what you are colouring is interface, use
+     --accent; if it is evidence, use --text-dim or the state hue it means. */
   --accent: var(--v);
   --accent-dim: color-mix(in srgb, var(--v) 16%, transparent);
 
@@ -105,6 +125,11 @@
    --bg. #6D50DE is the first passing value; the source #7A5AF8 fails at
    3.76:1 and cannot be reused. ---- */
 :root[data-theme="light"] {
+  /* Overrides :root's `dark` so native controls follow the explicit choice,
+     not the OS. Without it, OS-dark + data-theme="light" renders dark input
+     interiors inside a light console. */
+  color-scheme: light;
+
   --bg: #eceae4;
   --raised: #f6f5f1;
   --raised-2: #ffffff;
@@ -139,6 +164,11 @@
   /* Default for anyone who has not chosen. An explicit data-theme always
      wins, because it is set on the same element with higher specificity. */
   :root:not([data-theme]) {
+    /* Same reason as :root[data-theme="light"] — the light palette and the
+       native controls' scheme must move together, or an unchosen light
+       visitor gets dark-scheme inputs on a light ground. */
+    color-scheme: light;
+
     --bg: #eceae4;
     --raised: #f6f5f1;
     --raised-2: #ffffff;
@@ -644,8 +674,14 @@ button {
   filter: brightness(1.08);
 }
 
+/* Solid --deny, not a 50% mix into transparent: mixed, the button's own ground
+   bleeds through and the edge computes 2.25-2.27:1 dark / 2.02-2.15:1 light
+   against --inset/--raised/--bg, under the 3:1 non-text floor — the same
+   defect class as .btn:hover's border one rule above, and a destructive
+   control is the last edge that should be hard to see. Solid --deny measures
+   5.78-6.19:1 dark and 4.22-5.06:1 light on those same three surfaces. */
 .btn.danger {
-  border-color: color-mix(in srgb, var(--deny) 50%, transparent);
+  border-color: var(--deny);
   color: var(--red);
 }
 
@@ -747,7 +783,13 @@ button {
 /* A freshly minted credential is shown once and demands attention: that is a
    held moment, so it takes the hold hue — never a brand blue. */
 .secret-reveal {
-  background: var(--accent-dim);
+  /* Neutral tint, not --accent-dim: that alias is a 16% violet mix, and a
+     violet ground under a --hold border contradicts the comment directly
+     above — the hue that carries the meaning here is hold, on the border.
+     This is the color-mix equivalent of the rgba(255,255,255,.07) this rule
+     originally carried, expressed against --text so it inverts with the
+     theme. */
+  background: color-mix(in srgb, var(--text) 7%, transparent);
   border: 1px solid color-mix(in srgb, var(--hold) 45%, transparent);
   border-radius: var(--radius-md);
   padding: 16px 18px;
@@ -783,9 +825,13 @@ button {
   vertical-align: middle;
 }
 
+/* The fill is neutral, not --accent: paired with .meter.hot's --deny below it
+   would read violet-means-under-budget / red-means-over, i.e. violet standing
+   in as a machine state. Only the hot bar carries a hue, because only "over
+   budget" is an outcome. */
 .meter > div {
   height: 100%;
-  background: var(--accent);
+  background: var(--text-dim);
 }
 
 .meter.hot > div {
@@ -820,8 +866,15 @@ button {
   border-left: 3px solid var(--text-faint);
 }
 
+/* Neutral ink, deliberately: this left rule sits in the same 3px slot, in the
+   same vertical list, as .event.output (--ok), .event.pending (--hold) and
+   .event.error (--deny). Anything chromatic here reads as a fifth machine
+   state. A step is run evidence — the agent called a tool — so it must not
+   take the interface accent (which --accent now resolves to), and there is no
+   state hue it honestly means either. --text-dim says "this happened" without
+   claiming an outcome. */
 .event.step {
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--text-dim);
 }
 
 .event.output {
@@ -971,10 +1024,19 @@ button {
 
 /* ---- Modal ---- */
 
+/* A scrim's job is to REMOVE luminance from everything behind the dialog.
+   Mixing --bg toward transparent cannot do that on the light ground: the
+   scrim is then the page's own colour, so it subtracts nothing and the dialog
+   separated from the page at ~1.1:1, carried entirely by a 1px hairline.
+   #07080b is the dark ground's value frozen as a deliberate literal (the same
+   move .btn.primary makes with #ffffff): it leaves the dark theme's scrim
+   pixel-identical to what it was, and gives the light theme a real dimming
+   pass. Using a token here would reintroduce the bug the moment the token
+   follows the theme, which is exactly what a scrim must not do. */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  background: color-mix(in srgb, #07080b 70%, transparent);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1014,10 +1076,13 @@ button {
    dialog. Rows follow the sidebar nav-item convention: faint by default,
    full ink only when active — chroma stays reserved for machine state. */
 
+/* Same fixed dark constant as .modal-backdrop, for the same reason — see the
+   comment there. The two scrims must stay identical: they are the same
+   gesture at two z-indexes. */
 .cmdk-backdrop {
   position: fixed;
   inset: 0;
-  background: color-mix(in srgb, var(--bg) 70%, transparent);
+  background: color-mix(in srgb, #07080b 70%, transparent);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -1162,8 +1227,12 @@ button {
   cursor: pointer;
 }
 
+/* One step up from the base --text-dim. It must DIFFER from the base: the
+   header raised to --text-dim this cycle and the hover was left behind at the
+   same value, which made every sortable column inert under the pointer while
+   still running a transition that animated nothing. */
 .th-sort:hover {
-  color: var(--text-dim);
+  color: var(--text);
 }
 
 .th-sort.active {

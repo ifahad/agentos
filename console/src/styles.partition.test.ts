@@ -45,28 +45,68 @@ function stylesCss(): string {
 const INSTRUMENT_FILES = ["components/Chain.css", "pages/Audit.css", "charts/charts.css"];
 
 /**
- * Custom properties declared anywhere in `css` (already comment-stripped)
- * whose value resolves — directly, or through a chain of `var(--x)` aliases
- * — to `--${root}`. Always includes `root` itself.
+ * How strictly a custom property has to carry a colour before it counts as
+ * "being" that colour.
  *
- * A value only counts as an alias if it is *exactly* `var(--name)`.
- * Expressions like `color-mix(in srgb, var(--v) 16%, transparent)` are
- * deliberately not followed: they no longer carry the aliased colour
- * verbatim (a 16%-mixed tint is not the same fill or text risk as the
- * source token), so treating them as full aliases would be its own kind of
- * false positive.
+ * - `"alias"`: only an *exact* `var(--name)` value is followed.
+ *   `color-mix(in srgb, var(--v) 16%, transparent)` is NOT followed, because
+ *   a 16% tint is not the same contrast risk as the source token. This is
+ *   the right test for the fill-only `color:` ban, whose whole argument is
+ *   about the source token's own measured ratio (--v is 4.43:1 on --bg).
  *
- * This is what lets `--accent` (`--accent: var(--v);`) get caught by the
- * same rule as `--v` without hardcoding the name "accent" anywhere: if a
- * new alias is added tomorrow, it is picked up automatically because it is
- * discovered by walking the `--name: value;` graph, not by string-matching
- * known names.
+ * - `"mention"`: a value counts if it MENTIONS a carrier anywhere, including
+ *   inside a `color-mix()`, a gradient, or a shadow. This is the right test
+ *   for the two SURFACE bans, which say "no violet on this surface at any
+ *   strength" — a 16% violet wash on a chain node is still violet on an
+ *   instrument surface, and the reviewer proved the alias-only rule could
+ *   not see it: `.probe-mix { background: var(--accent-dim); }` in
+ *   Chain.css left the guard at 4 passed / 0 failed.
  */
-function resolvesTo(css: string, root: string): Set<string> {
+type Carrier = "alias" | "mention";
+
+/**
+ * Custom properties declared anywhere in `css` (already comment-stripped)
+ * that carry `--${root}` under the given `mode`. Always includes `root`
+ * itself.
+ *
+ * Either way the set is DISCOVERED by walking the `--name: value;` graph,
+ * never by string-matching known names: that is what lets `--accent`
+ * (`--accent: var(--v);`) and `--accent-dim` (a color-mix of `--v`) get
+ * caught by the same rules as `--v`, and what makes an alias added tomorrow
+ * picked up for free.
+ *
+ * `"mention"` iterates to a fixpoint rather than recursing, because a
+ * mention edge can appear through a property that only became a carrier on a
+ * previous pass (`--a: color-mix(… var(--v) …)`, `--b: color-mix(… var(--a)
+ * …)`). Each pass can only add names, and there are finitely many, so it
+ * terminates; re-testing only not-yet-found names keeps it cheap and makes
+ * cycles harmless.
+ */
+function resolvesTo(css: string, root: string, mode: Carrier = "alias"): Set<string> {
   const declRe = /--([\w-]+)\s*:\s*([^;]+);/g;
   const valueOf = new Map<string, string>();
   let m: RegExpExecArray | null;
   while ((m = declRe.exec(css))) valueOf.set(m[1], m[2].trim());
+
+  const found = new Set<string>([root]);
+
+  if (mode === "mention") {
+    for (let grew = true; grew; ) {
+      grew = false;
+      // Rebuilt each pass so newly found carriers are themselves matchable.
+      // wholeTokenPattern is used rather than a plain substring test so
+      // `--v-offset` is not read as a mention of `--v`.
+      const carriers = wholeTokenPattern(found);
+      for (const [name, value] of valueOf) {
+        if (found.has(name)) continue;
+        if (carriers.test(value)) {
+          found.add(name);
+          grew = true;
+        }
+      }
+    }
+    return found;
+  }
 
   const aliasOf = /^var\(\s*--([\w-]+)\s*\)$/;
   function chases(name: string, seen: Set<string>): boolean {
@@ -77,7 +117,6 @@ function resolvesTo(css: string, root: string): Set<string> {
     return match ? chases(match[1], seen) : false;
   }
 
-  const found = new Set<string>([root]);
   for (const name of valueOf.keys()) {
     if (chases(name, new Set())) found.add(name);
   }
@@ -104,6 +143,17 @@ function wholeTokenPattern(names: Iterable<string>): RegExp {
   return new RegExp(`--(?:${alternation})(?![\\w-])`);
 }
 
+/**
+ * A pattern matching any custom property that carries violet — `--v`, `--v2`,
+ * `--v3`, or anything reaching them under `mode`. The two surface bans pass
+ * `"mention"`; the fill-only `color:` ban keeps `"alias"`.
+ */
+function violetPattern(css: string, mode: Carrier): RegExp {
+  return wholeTokenPattern(
+    new Set([...resolvesTo(css, "v", mode), ...resolvesTo(css, "v2", mode), ...resolvesTo(css, "v3", mode)]),
+  );
+}
+
 describe("chroma partition", () => {
   it("finds the instrument files it is meant to guard", () => {
     const present = cssFiles().map(([p]) => p);
@@ -111,17 +161,14 @@ describe("chroma partition", () => {
   });
 
   it("keeps violet off instrument surfaces", () => {
-    // Every custom property that is violet or resolves to violet (--v, --v2,
-    // --v3, or an alias like --accent) is banned here, not just the three
-    // literal token names — an instrument surface reached through an alias
-    // is still an instrument surface reached by violet.
-    const styles = stylesCss();
-    const violetNames = new Set([
-      ...resolvesTo(styles, "v"),
-      ...resolvesTo(styles, "v2"),
-      ...resolvesTo(styles, "v3"),
-    ]);
-    const VIOLET = wholeTokenPattern(violetNames);
+    // Every custom property that IS violet or CARRIES violet (--v, --v2,
+    // --v3, an alias like --accent, or a mix like --accent-dim) is banned
+    // here, not just the three literal token names — an instrument surface
+    // reached through an alias is still an instrument surface reached by
+    // violet, and so is one reached through a 16% wash. "This surface is
+    // graphite plus signal" admits no strength of brand chroma, so this ban
+    // uses "mention", not "alias".
+    const VIOLET = violetPattern(stylesCss(), "mention");
 
     const offenders: string[] = [];
     for (const [path, css] of cssFiles()) {
@@ -134,13 +181,11 @@ describe("chroma partition", () => {
   });
 
   it("keeps violet out of badge rules", () => {
+    // Same surface ban, same "mention" strictness as the instrument files: a
+    // badge names a machine state, so a violet TINT behind one is the same
+    // category error as a violet fill.
     const styles = stylesCss();
-    const violetNames = new Set([
-      ...resolvesTo(styles, "v"),
-      ...resolvesTo(styles, "v2"),
-      ...resolvesTo(styles, "v3"),
-    ]);
-    const VIOLET = wholeTokenPattern(violetNames);
+    const VIOLET = violetPattern(styles, "mention");
 
     // Comments are already stripped by stylesCss(), so a naive split on "}"
     // then "{" is safe: CSS rules do not nest, so each segment between two
@@ -160,6 +205,13 @@ describe("chroma partition", () => {
     // token name differs, the pixels don't. Anything else that resolves to
     // --v inherits the same ban. --v2 and --v3 are excluded on purpose:
     // they are the text-safe rungs of the ladder.
+    //
+    // This one keeps "alias" while the two surface bans above use "mention",
+    // and the asymmetry is deliberate rather than an oversight: this ban's
+    // entire justification is --v's own measured ratio, and a 16% tint of it
+    // is a different colour with a different ratio. Widening this to
+    // "mention" would ban `color: var(--accent-dim)` on the strength of an
+    // argument that does not apply to it.
     const violetFillNames = resolvesTo(stylesCss(), "v");
     const names = [...violetFillNames].map(reEscape).join("|");
     const COLOR_DECL = new RegExp(`(?<![-\\w])color\\s*:\\s*[^;{}]*var\\(\\s*--(?:${names})\\s*\\)`);

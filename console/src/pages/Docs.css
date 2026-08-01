@@ -410,21 +410,29 @@
   transition: color var(--dur-fast) var(--ease);
 }
 
+/* One step up from the base --text-dim, matching .th-sort:hover. The base rose
+   to --text-dim this cycle and the hover was left at the old value, so every
+   rail item stopped responding to the pointer while keeping its transition. */
 .docs-rail-item:hover {
-  color: var(--text-dim);
+  color: var(--text);
 }
 
 .docs-rail-item.active {
   color: var(--text);
 }
 
-/* Own pill class and own layoutId — the sidebar's are global. */
+/* Own pill class and own layoutId — the sidebar's are global. The treatment
+   is .nav-pill's, verbatim: same interaction (a sliding layoutId marker for
+   the selected item), so it must speak the same language. Selection is the
+   interface reporting on itself, which under the partition is violet, not a
+   state hue. Leaving this on --raised-2/--text-dim while the sidebar went
+   violet gave the console two dialects for one gesture. */
 .docs-rail-pill {
   position: absolute;
   inset: 0;
   border-radius: var(--radius-sm);
-  background: var(--raised-2);
-  box-shadow: inset 2px 0 0 0 var(--text-dim);
+  background: color-mix(in srgb, var(--v) 12%, var(--raised-2));
+  box-shadow: inset 2px 0 0 0 var(--v);
 }
 
 .docs-rail-icon,
