@@ -6,6 +6,9 @@ export type { ButtonProps } from "./Button";
 export { Card, Panel, PanelHead } from "./Card";
 export type { CardProps, PanelHeadProps } from "./Card";
 
+export { Disclosure } from "./Disclosure";
+export type { DisclosureProps } from "./Disclosure";
+
 export { Stat } from "./Stat";
 export type { StatProps } from "./Stat";
 

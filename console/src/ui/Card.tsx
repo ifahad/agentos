@@ -56,14 +56,24 @@ export function Panel({ children, animate = true, className = "", ...rest }: Car
 
 export interface PanelHeadProps {
   title: ReactNode;
+  /**
+   * One line stating what this panel contains and whether anything needs
+   * attention — "12 keys · 2 inactive". Derived from data the page already
+   * has; never fetched. Omit the attention clause when the count is zero so a
+   * quiet panel reads quiet.
+   */
+  summary?: ReactNode;
   /** Right-aligned slot (actions, badges, filters). */
   actions?: ReactNode;
 }
 
-export function PanelHead({ title, actions }: PanelHeadProps) {
+export function PanelHead({ title, summary, actions }: PanelHeadProps) {
   return (
     <div className="panel-head">
-      <h2>{title}</h2>
+      <div className="panel-head-text">
+        <h2>{title}</h2>
+        {summary != null && <div className="panel-head-summary">{summary}</div>}
+      </div>
       {actions}
     </div>
   );
