@@ -576,6 +576,15 @@ select {
   cursor: pointer;
 }
 
+/* The UA placeholder colour (#757575) does not follow the theme, so binding
+   the field background to --inset left it at 4.43:1 dark and 3.53:1 light —
+   both below the 4.5:1 floor. --text-dim tracks the theme and clears it on
+   both grounds: 7.77:1 dark, 5.12:1 light. */
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-dim);
+}
+
 input:focus,
 select:focus,
 textarea:focus {
