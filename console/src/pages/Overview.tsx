@@ -61,6 +61,14 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
   );
   const usage = usageRes.data ?? [];
   const usageLoading = usageRes.status === "loading";
+  // All four stat tiles read this one resource — `totals` reduces over `usage`
+  // and "Active keys" is `usage.length` — so one condition governs all four.
+  // Gating on `!adminKey` was not enough: with a key set and the admin API
+  // returning 401 the tiles asserted 0/0/$0.00/0 while the Budgets summary
+  // below them was correctly silent. This fetcher has no catch swallowing the
+  // rejection, so `data` is null both when the resource is disabled and when it
+  // fails — "the reading arrived", which is what `unavailable` is asking.
+  const usageMeasured = usageRes.data != null;
 
   // Keys/budgets — degrade to empty on a role that can't list keys. The catch
   // resolves to NULL, not `[]`: swallowing the rejection into an empty array
@@ -150,7 +158,7 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
               label="Requests"
               value={totals.requests}
               delay={0}
-              unavailable={!adminKey}
+              unavailable={!usageMeasured}
               spark={
                 sparkValues.length > 0 ? (
                   <Sparkline
@@ -160,20 +168,20 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
                 ) : undefined
               }
             />
-            <Stat label="Tokens" value={totals.tokens} delay={60} unavailable={!adminKey} />
+            <Stat label="Tokens" value={totals.tokens} delay={60} unavailable={!usageMeasured} />
             <Stat
               label="Spend"
               value={totals.spend}
               decimals={2}
               prefix="$"
               delay={120}
-              unavailable={!adminKey}
+              unavailable={!usageMeasured}
             />
             <Stat
               label="Active keys"
               value={usage.length}
               delay={180}
-              unavailable={!adminKey}
+              unavailable={!usageMeasured}
             />
           </>
         )}
