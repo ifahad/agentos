@@ -153,6 +153,9 @@
   padding: 40px 18px;
   text-align: center;
   color: var(--text-dim);
+  /* Empty states nest inside table cells (a td defaults to nowrap), which
+     would otherwise clip a multi-word description instead of wrapping it. */
+  white-space: normal;
 }
 
 .ui-empty-title {
@@ -189,6 +192,33 @@
 
 .btn.icon-only .btn-icon {
   margin-right: 0;
+}
+
+/* ---- PanelHead summary ---- */
+
+/* The title and its summary stack; actions stay on the right, so the head
+   keeps its existing two-column shape. */
+.panel-head-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* A reading, not a label: mono for the machine-produced counts, --text-dim so
+   it sits under the title without competing with it. */
+.panel-head-summary {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Disclosure ---- */
+
+/* Height is animated, so the body must not spill while collapsing. */
+.ui-disclosure {
+  overflow: hidden;
 }
 
 /* ---- Reduced motion ---- */

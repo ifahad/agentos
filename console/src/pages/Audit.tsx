@@ -11,8 +11,9 @@ import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import { downloadBlob, toCSV, toJSON } from "../lib/export";
 import type { Column } from "../lib/export";
 import { formatInt, formatLatency, formatTimestamp, formatUSD } from "../lib/format";
+import { auditEventsSummary } from "../lib/summaries";
 import type { AuditEntry } from "../lib/types";
-import { Badge, Button, Panel, PanelHead, Table, Tbody, Tr } from "../ui";
+import { Badge, Button, EmptyState, Panel, PanelHead, Table, Tbody, Tr } from "../ui";
 import { feedEntryId, mergeFeedEntries } from "./overviewFeed";
 import "./Audit.css";
 
@@ -53,6 +54,12 @@ export function Audit({ adminKey, openSettings }: PageProps) {
     setRowsAt(res.updatedAt);
   }, [res.data, res.updatedAt, paused]);
 
+  // `rows` starts empty and only ever grows from a resolved fetch, so an
+  // unconditional summary reads "0 events" when the console never reached the
+  // audit API — a claim that the gateway recorded nothing and blocked nothing.
+  // Gate on the resource having produced data for the current key.
+  const eventsMeasured = res.data != null;
+
   // Search/filter/sort/paginate over the live feed — sort null preserves the
   // merge's newest-first order; picking a sort intentionally overrides it.
   const t = useTableView(rows, { searchFields: SEARCH_FIELDS, pageSize: 25 });
@@ -79,48 +86,59 @@ export function Audit({ adminKey, openSettings }: PageProps) {
       />
       {!adminKey && <NeedsKey openSettings={openSettings} />}
       <ErrorNotice error={res.error} />
-      {adminKey && (
-        <>
-          {rows.length > 0 && (
-            <Panel>
-              <PanelHead title="Spend" />
-              <UsageChart
-                values={series.map((p) => p.value)}
-                label="Spend per day"
-                xLabels={series.map((p) => new Date(p.t).toISOString().slice(5, 10))}
-                formatValue={formatUSD}
+      {rows.length > 0 && (
+        <Panel>
+          <PanelHead title="Spend" />
+          <UsageChart
+            values={series.map((p) => p.value)}
+            label="Spend per day"
+            xLabels={series.map((p) => new Date(p.t).toISOString().slice(5, 10))}
+            formatValue={formatUSD}
+          />
+        </Panel>
+      )}
+      <Panel>
+        <PanelHead
+          title="Events"
+          summary={eventsMeasured ? auditEventsSummary(rows) : undefined}
+          actions={
+            <span className="head-group">
+              <TableToolbar
+                query={t.query}
+                onQuery={t.setQuery}
+                facets={[
+                  {
+                    key: "kind",
+                    label: "Kind",
+                    options: KIND_OPTIONS,
+                    value: t.facets.kind ?? "",
+                    onChange: (v) => t.setFacet("kind", v),
+                  },
+                ]}
+                onExport={onExport}
               />
-            </Panel>
-          )}
-          <Panel>
-            <PanelHead
-              title="Events"
-              actions={
-                <span className="head-group">
-                  <TableToolbar
-                    query={t.query}
-                    onQuery={t.setQuery}
-                    facets={[
-                      {
-                        key: "kind",
-                        label: "Kind",
-                        options: KIND_OPTIONS,
-                        value: t.facets.kind ?? "",
-                        onChange: (v) => t.setFacet("kind", v),
-                      },
-                    ]}
-                    onExport={onExport}
-                  />
-                  <Button small onClick={() => setPaused((p) => !p)}>
-                    {paused ? "Paused" : "Live"}
-                  </Button>
-                  <Freshness updatedAt={rowsAt} />
-                  <Button small icon="refresh" onClick={res.reload}>
-                    Refresh
-                  </Button>
-                </span>
-              }
-            />
+              <Button small onClick={() => setPaused((p) => !p)}>
+                {paused ? "Paused" : "Live"}
+              </Button>
+              <Freshness updatedAt={rowsAt} />
+              <Button small icon="refresh" onClick={res.reload}>
+                Refresh
+              </Button>
+            </span>
+          }
+        />
+        {!adminKey ? (
+          <EmptyState
+            title="No admin key configured"
+            description="Gateway events — chat and embedding calls plus guardrail verdicts — appear here once the console can reach the admin API."
+            action={
+              <Button variant="primary" onClick={openSettings}>
+                Open settings
+              </Button>
+            }
+          />
+        ) : (
+          <>
             <Table>
               <thead>
                 <tr>
@@ -203,10 +221,19 @@ export function Audit({ adminKey, openSettings }: PageProps) {
                     </td>
                   </Tr>
                 ))}
-                {t.view.rows.length === 0 && (
+                {t.view.rows.length === 0 && res.status !== "loading" && (
                   <Tr animate={false}>
-                    <td colSpan={8} className="empty">
-                      {rows.length === 0 ? "No audit events yet." : "No events match your search."}
+                    <td colSpan={8} className={rows.length === 0 ? undefined : "empty"}>
+                      {rows.length === 0 ? (
+                        // No action: this is a read-only feed of gateway
+                        // traffic — there's no control here that generates it.
+                        <EmptyState
+                          title="No audit events yet"
+                          description="Every chat and embedding call through the gateway lands here, newest first, along with any guardrail verdict — a quiet feed means no traffic has hit the gateway yet, not that anything is being hidden."
+                        />
+                      ) : (
+                        "No events match your search."
+                      )}
                     </td>
                   </Tr>
                 )}
@@ -229,9 +256,9 @@ export function Audit({ adminKey, openSettings }: PageProps) {
                 </Button>
               </div>
             )}
-          </Panel>
-        </>
-      )}
+          </>
+        )}
+      </Panel>
     </>
   );
 }

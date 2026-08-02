@@ -15,10 +15,12 @@ import {
   setEnabledRequest,
   triggerSummary,
 } from "../lib/operators";
+import { operatorsSummary } from "../lib/summaries";
 import type { Operator, OperatorRun, OperatorTrigger } from "../lib/types";
 import {
   Badge,
   Button,
+  Disclosure,
   EmptyState,
   Input,
   Panel,
@@ -55,6 +57,7 @@ export function Operators(_props: PageProps) {
   const [cron, setCron] = useState("0 9 * * *");
   const [selected, setSelected] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
   // Manual "Run" clicks in flight — the only "currently running" signal the
   // API surfaces client-side (a run's own status only exists once it has
   // already completed, needs approval, or errored).
@@ -78,6 +81,11 @@ export function Operators(_props: PageProps) {
   const disabled = operators.data === DISABLED;
   const list = operators.data !== DISABLED ? (operators.data?.operators ?? []) : [];
   const operatorsLoading = operators.status === "loading";
+  // Runtime-backed and always enabled, so the fetch resolving is the only
+  // proof there is: `list` is `?? []` and would otherwise read "0 operators"
+  // whether the runtime said "none" or never answered. (The panel itself is
+  // already behind `!disabled`, which covers the 503 "not configured" case.)
+  const operatorsMeasured = operators.data != null;
   const now = useNowTick(1000);
 
   async function act(run: () => Promise<void>, ok: string) {
@@ -125,6 +133,7 @@ export function Operators(_props: PageProps) {
       }
       setName("");
       setGoal("");
+      setCreateOpen(false);
     }, "Operator created");
 
   return (
@@ -144,61 +153,81 @@ export function Operators(_props: PageProps) {
 
       {!disabled && (
         <>
-          <Panel>
-            <PanelHead title="New operator" />
-            <div className="op-form">
-              <div className="op-form-row">
-                <Input
-                  label="Name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="nightly-invoice-report"
-                />
-                <Select
-                  label="Trigger"
-                  value={kind}
-                  onChange={(e) => setKind(e.target.value as OperatorTrigger["type"])}
-                >
-                  <option value="interval">interval</option>
-                  <option value="cron">cron</option>
-                  <option value="webhook">webhook</option>
-                </Select>
-                {kind === "interval" && (
-                  <Input
-                    label="Interval (s)"
-                    value={intervalS}
-                    onChange={(e) => setIntervalS(e.target.value)}
-                  />
-                )}
-                {kind === "cron" && (
-                  <Input label="Cron" value={cron} onChange={(e) => setCron(e.target.value)} />
-                )}
-                {kind === "webhook" && (
-                  <div className="op-webhook-note eyebrow">token issued on create</div>
-                )}
-              </div>
-              <Textarea
-                label="Goal"
-                value={goal}
-                onChange={(e) => setGoal(e.target.value)}
-                placeholder="What should this operator do each time it fires?"
-                rows={3}
-              />
-              <Button icon="plus" onClick={create} disabled={!name.trim() || !goal.trim()}>
-                Create operator
-              </Button>
-            </div>
-          </Panel>
-
           <div className="op-split">
             <Panel>
-              <PanelHead title="Operators" />
+              <PanelHead
+                title="Operators"
+                summary={operatorsMeasured ? operatorsSummary(list) : undefined}
+                actions={
+                  <Button
+                    variant="primary"
+                    icon="plus"
+                    aria-expanded={createOpen}
+                    aria-controls="operators-create"
+                    onClick={() => setCreateOpen((v) => !v)}
+                  >
+                    New operator
+                  </Button>
+                }
+              />
+              <Disclosure open={createOpen} onOpenChange={setCreateOpen} id="operators-create">
+                <div className="op-form">
+                  <div className="op-form-row">
+                    <Input
+                      label="Name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="nightly-invoice-report"
+                    />
+                    <Select
+                      label="Trigger"
+                      value={kind}
+                      onChange={(e) => setKind(e.target.value as OperatorTrigger["type"])}
+                    >
+                      <option value="interval">interval</option>
+                      <option value="cron">cron</option>
+                      <option value="webhook">webhook</option>
+                    </Select>
+                    {kind === "interval" && (
+                      <Input
+                        label="Interval (s)"
+                        value={intervalS}
+                        onChange={(e) => setIntervalS(e.target.value)}
+                      />
+                    )}
+                    {kind === "cron" && (
+                      <Input label="Cron" value={cron} onChange={(e) => setCron(e.target.value)} />
+                    )}
+                    {kind === "webhook" && (
+                      <div className="op-webhook-note eyebrow">token issued on create</div>
+                    )}
+                  </div>
+                  <Textarea
+                    label="Goal"
+                    value={goal}
+                    onChange={(e) => setGoal(e.target.value)}
+                    placeholder="What should this operator do each time it fires?"
+                    rows={3}
+                  />
+                  <Button icon="plus" onClick={create} disabled={!name.trim() || !goal.trim()}>
+                    Create operator
+                  </Button>
+                </div>
+              </Disclosure>
               {operatorsLoading && !operators.data ? (
                 <div className="op-pad">
                   <Skeleton lines={3} height={14} />
                 </div>
               ) : list.length === 0 ? (
-                <EmptyState title="No operators" description="Create one above to begin." />
+                <EmptyState
+                  title="No operators"
+                  description="An operator is a standing objective the runtime pursues on its own — on an interval, a cron schedule, or an inbound webhook — until you pause or delete it."
+                  action={
+                    <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>
+                      New operator
+                    </Button>
+                  }
+                />
               ) : (
                 <Table>
                   <thead>
@@ -271,9 +300,11 @@ export function Operators(_props: PageProps) {
             <Panel>
               <PanelHead title={selected ? "Runs" : "Select an operator"} />
               {!selected ? (
+                // No action: selecting an operator happens by clicking a row
+                // in the list panel to the left, not from a control here.
                 <EmptyState
                   title="No operator selected"
-                  description="Pick an operator to see its run history."
+                  description="Pick an operator from the list to see its recent runs — status, cycle count and any output or error."
                 />
               ) : detail.loading && !detail.data ? (
                 <div className="op-pad">
@@ -297,7 +328,23 @@ export function Operators(_props: PageProps) {
                     </Button>
                   </div>
                   {detail.data.recent_runs.length === 0 ? (
-                    <EmptyState title="No runs yet" description="Run it now, or wait for its trigger." />
+                    <EmptyState
+                      title="No runs yet"
+                      description="A run captures the operator's cycles, its output and any error each time it fires — manually or on its trigger."
+                      action={
+                        <Button
+                          variant="primary"
+                          icon="run"
+                          // detail.data is narrowed truthy by the enclosing
+                          // ternary, but that narrowing doesn't survive into
+                          // this closure — assert it explicitly.
+                          onClick={() => runNow(detail.data!.operator)}
+                          disabled={runningIds.has(detail.data.operator.id)}
+                        >
+                          Run now
+                        </Button>
+                      }
+                    />
                   ) : (
                     detail.data.recent_runs.map((r) => (
                       <div key={r.id} className="op-run">

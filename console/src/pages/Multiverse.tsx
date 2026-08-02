@@ -16,13 +16,27 @@ import {
   pauseRequest,
 } from "../lib/council";
 import { formatTimestamp } from "../lib/format";
+import { objectivesSummary } from "../lib/summaries";
 import type {
   CouncilCycle,
   CouncilMember,
   CouncilObjective,
   CouncilProposal,
 } from "../lib/types";
-import { Badge, Button, EmptyState, Input, Panel, PanelHead, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
+import {
+  Badge,
+  Button,
+  Disclosure,
+  EmptyState,
+  Input,
+  Panel,
+  PanelHead,
+  Skeleton,
+  Table,
+  Tbody,
+  Tr,
+  useToast,
+} from "../ui";
 import type { BadgeVariant } from "../ui";
 import { Icon } from "../ui/icons";
 import "./Multiverse.css";
@@ -46,6 +60,7 @@ export function Multiverse({ adminKey }: PageProps) {
   const [input, setInput] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const members = useLoad(
     () => orDisabled(apiFetch<{ members: CouncilMember[] }>(listMembersRequest())),
@@ -89,12 +104,27 @@ export function Multiverse({ adminKey }: PageProps) {
     act(async () => {
       await apiFetchRaw(createObjectiveRequest(input.trim()));
       setInput("");
+      setCreateOpen(false);
     }, "Objective queued");
 
   const memberList = members.data !== DISABLED ? (members.data?.members ?? []) : [];
   const objectiveList = objectives.data !== DISABLED ? (objectives.data?.objectives ?? []) : [];
   const proposalList = proposals.data !== DISABLED ? (proposals.data?.proposals ?? []) : [];
   const enabledCount = memberList.filter((m) => m.enabled).length;
+  // True only before the first successful fetch resolves — mirrors the
+  // members panel's `members.loading && !members.data` gate, so the "No
+  // objectives yet" empty state can't render before we actually know.
+  const objectivesLoading = objectives.status === "loading" && objectives.data == null;
+  // The summary reads both arrays — objectives for the count, proposals for
+  // "with pending writes" — so neither half is provable until both resources
+  // have answered. `data` is null while the council resources are disabled or
+  // failing, and DISABLED means the runtime has no council at all; in either
+  // case "0 objectives" would be a reading the console never took.
+  const objectivesMeasured =
+    objectives.data != null &&
+    objectives.data !== DISABLED &&
+    proposals.data != null &&
+    proposals.data !== DISABLED;
 
   return (
     <>
@@ -169,31 +199,57 @@ export function Multiverse({ adminKey }: PageProps) {
             )}
           </Panel>
 
-          <Panel>
-            <PanelHead title="New objective" />
-            <div className="mv-launch">
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask the council a question…"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && input.trim()) launch();
-                }}
-              />
-              <Button onClick={launch} disabled={!input.trim()}>
-                Queue
-              </Button>
-            </div>
-          </Panel>
-
           <div className="mv-split">
             <Panel>
               <PanelHead
                 title="Objectives"
-                actions={<Freshness updatedAt={objectives.updatedAt} />}
+                summary={
+                  objectivesMeasured ? objectivesSummary(objectiveList, proposalList) : undefined
+                }
+                actions={
+                  <span className="head-group">
+                    <Freshness updatedAt={objectives.updatedAt} />
+                    <Button
+                      variant="primary"
+                      icon="plus"
+                      aria-expanded={createOpen}
+                      aria-controls="multiverse-create"
+                      onClick={() => setCreateOpen((v) => !v)}
+                    >
+                      New objective
+                    </Button>
+                  </span>
+                }
               />
-              {objectiveList.length === 0 ? (
-                <EmptyState title="No objectives yet" description="Queue one above to begin." />
+              <Disclosure open={createOpen} onOpenChange={setCreateOpen} id="multiverse-create">
+                <div className="mv-launch">
+                  <Input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ask the council a question…"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && input.trim()) launch();
+                    }}
+                  />
+                  <Button onClick={launch} disabled={!input.trim()}>
+                    Queue
+                  </Button>
+                </div>
+              </Disclosure>
+              {objectivesLoading ? (
+                <div className="mv-pad">
+                  <Skeleton lines={3} height={14} />
+                </div>
+              ) : objectiveList.length === 0 ? (
+                <EmptyState
+                  title="No objectives yet"
+                  description="An objective is a goal you hand to the council; each one runs as cycles you can inspect and approve."
+                  action={
+                    <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>
+                      New objective
+                    </Button>
+                  }
+                />
               ) : (
                 <Table>
                   <thead>
@@ -229,9 +285,11 @@ export function Multiverse({ adminKey }: PageProps) {
             <Panel>
               <PanelHead title={selected ? "Verdict" : "Select an objective"} />
               {!selected ? (
+                // No action: selecting an objective happens by clicking a
+                // row in the list panel to the left, not from a control here.
                 <EmptyState
                   title="No objective selected"
-                  description="Pick an objective to see its cycles and dissent."
+                  description="Pick an objective from the list to see its cycles, the council's verdict and any dissent."
                 />
               ) : detail.loading && !detail.data ? (
                 <div className="mv-pad">
@@ -255,7 +313,13 @@ export function Multiverse({ adminKey }: PageProps) {
                     )}
                   </div>
                   {detail.data.cycles.length === 0 ? (
-                    <EmptyState title="No cycles yet" description="The council has not run yet." />
+                    // No action: cycles run automatically as the council
+                    // works an objective — there's no manual "run a cycle"
+                    // control.
+                    <EmptyState
+                      title="No cycles yet"
+                      description="A cycle is one round of the council's deliberation — each model's answer, the judge's verdict and any dissent. The council has not run one yet."
+                    />
                   ) : (
                     detail.data.cycles.map((c) => (
                       <div key={c.id} className="mv-cycle">

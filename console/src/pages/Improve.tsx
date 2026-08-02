@@ -161,6 +161,8 @@ export function Improve(_props: PageProps) {
     return (
       <>
         {head}
+        {/* No action: enabling this requires setting an environment variable
+            and restarting the runtime — nothing to click from here. */}
         <EmptyState
           title="Self-improvement is not enabled on this runtime"
           description={
@@ -219,7 +221,12 @@ export function Improve(_props: PageProps) {
         ) : runRows.length === 0 ? (
           <EmptyState
             title="No eval runs yet"
-            description="Run the default suite to get a baseline."
+            description="An eval run scores the current system prompt against a suite of test cases — the baseline every improvement proposal is measured against."
+            action={
+              <Button variant="primary" icon="run" onClick={() => void runEvals()} disabled={running}>
+                {running ? "Running evals…" : "Run evals"}
+              </Button>
+            }
           />
         ) : (
           <Table>
@@ -274,6 +281,11 @@ export function Improve(_props: PageProps) {
             <EmptyState
               title="No proposals yet"
               description="“Propose improvement” asks the model to rewrite the system prompt, then auto-evaluates the candidate against the baseline."
+              action={
+                <Button variant="primary" onClick={() => void propose()} disabled={improving}>
+                  {improving ? "Proposing… (model call, may take a while)" : "Propose improvement"}
+                </Button>
+              }
             />
           ) : (
             proposalRows.map((p) => (

@@ -13,8 +13,23 @@ import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import { formatTimestamp } from "../lib/format";
 import { activeBadge } from "../lib/provisioning";
 import { ROLES, can, roleLabel } from "../lib/rbac";
+import { usersSummary } from "../lib/summaries";
 import type { CreatedUser, Org, Role, User } from "../lib/types";
-import { Badge, Button, Input, Panel, PanelHead, Select, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
+import {
+  Badge,
+  Button,
+  Disclosure,
+  EmptyState,
+  Input,
+  Panel,
+  PanelHead,
+  Select,
+  Skeleton,
+  Table,
+  Tbody,
+  Tr,
+  useToast,
+} from "../ui";
 
 export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
   const allowed = can(role, "user.view");
@@ -27,11 +42,20 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
     () =>
       adminKey && allowed && isRoot
         ? apiFetch<Org[]>(gatewayAdminRequest("/admin/orgs", adminKey))
-        : Promise.resolve<Org[]>([]),
+        : Promise.resolve<Org[] | null>(null),
     [adminKey, allowed, isRoot],
   );
 
   const orgs = orgsLoad.data ?? [];
+  // Each load needs BOTH its own guard AND a resolved fetch, and the "not
+  // allowed to fetch" branch must resolve to NULL rather than `[]` for the
+  // second half to mean anything. `useLoad` does not clear `data` when its deps
+  // change, so a placeholder `[]` written on the first render survives into the
+  // real request and makes `data != null` true even after that request fails —
+  // which is exactly how "0 members" survived a 500 (usersLoad's deps include
+  // `activeOrg`, empty until the org list lands, so its placeholder always ran
+  // first). `?? []` below keeps the rendering identical either way.
+  const orgsMeasured = Boolean(adminKey) && allowed && isRoot && orgsLoad.data != null;
   const [chosen, setChosen] = useState("");
   const activeOrg = isRoot ? chosen || orgs[0]?.id || "" : orgId;
 
@@ -39,7 +63,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
     () =>
       adminKey && allowed && activeOrg
         ? apiFetch<User[]>(gatewayAdminRequest(`/admin/orgs/${activeOrg}/users`, adminKey))
-        : Promise.resolve<User[]>([]),
+        : Promise.resolve<User[] | null>(null),
     [adminKey, allowed, activeOrg],
   );
 
@@ -48,6 +72,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
   const [inviting, setInviting] = useState(false);
   const [created, setCreated] = useState<CreatedUser | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const canInvite = can(role, "user.invite");
   const canRemove = can(role, "user.remove");
@@ -68,6 +93,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
       setCreated(res);
       setEmail("");
       toast.success(`Invited ${res.email} as ${res.role}.`);
+      setCreateOpen(false);
       usersLoad.reload();
     } catch (err) {
       toast.error(errorMessage(err));
@@ -97,13 +123,15 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
   };
 
   const users = usersLoad.data ?? [];
+  const usersMeasured =
+    Boolean(adminKey) && allowed && Boolean(activeOrg) && usersLoad.data != null;
   const showSkeleton = usersLoad.loading && users.length === 0 && !!activeOrg;
 
   return (
     <>
       <PageHead
         title="Users"
-        subtitle="Members of an org and their roles. Inviting a user issues a one-time agu- token; removing one revokes it."
+        subtitle="Members of an org and their roles. Inviting a user issues a one-time token prefixed agu-; removing one revokes it."
       />
       {!adminKey && <NeedsKey openSettings={openSettings} />}
       {adminKey && !allowed && (
@@ -111,14 +139,16 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
       )}
       <ErrorNotice error={orgsLoad.error} />
 
-      {adminKey && allowed && (
+      {(!adminKey || allowed) && (
         <>
           <div className="thread-line">
             {isRoot ? (
               <>
                 <span>Org</span>
                 <Select value={activeOrg} onChange={(e) => setChosen(e.target.value)} aria-label="Org">
-                  {orgs.length === 0 && <option value="">no orgs</option>}
+                  {orgs.length === 0 && (
+                    <option value="">{orgsMeasured ? "no orgs" : "no admin key"}</option>
+                  )}
                   {orgs.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.name} ({o.id})
@@ -149,102 +179,145 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
             </div>
           )}
 
-          {canInvite && (
-            <Panel>
-              <PanelHead title="Invite user" />
-              <div className="panel-body">
-                <div className="form-row">
-                  <Input
-                    label="Email"
-                    type="text"
-                    value={email}
-                    placeholder="person@acme.com"
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                  <Select
-                    label="Role"
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value as Role)}
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {roleLabel(r)}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <Button
-                  variant="primary"
-                  icon="plus"
-                  onClick={() => void invite()}
-                  disabled={inviting || !activeOrg}
-                >
-                  {inviting ? "Inviting…" : "Invite user"}
-                </Button>
-              </div>
-            </Panel>
-          )}
-
           <Panel>
-            <PanelHead title="Members" />
+            <PanelHead
+              title="Members"
+              summary={usersMeasured ? usersSummary(users) : undefined}
+              actions={
+                canInvite && (
+                  <Button
+                    variant="primary"
+                    icon="plus"
+                    aria-expanded={createOpen}
+                    aria-controls="users-create"
+                    onClick={() => setCreateOpen((v) => !v)}
+                  >
+                    Invite user
+                  </Button>
+                )
+              }
+            />
+            {canInvite && (
+              <Disclosure open={createOpen} onOpenChange={setCreateOpen} id="users-create">
+                <div className="panel-body">
+                  <div className="form-row">
+                    <Input
+                      label="Email"
+                      type="text"
+                      value={email}
+                      placeholder="person@acme.com"
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                    <Select
+                      label="Role"
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as Role)}
+                    >
+                      {ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {roleLabel(r)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <Button
+                    variant="primary"
+                    icon="plus"
+                    onClick={() => void invite()}
+                    disabled={inviting || !activeOrg}
+                  >
+                    {inviting ? "Inviting…" : "Invite user"}
+                  </Button>
+                </div>
+              </Disclosure>
+            )}
             <ErrorNotice error={usersLoad.error} />
-            <Table>
-              <thead>
-                <tr>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  {canRemove && <th></th>}
-                </tr>
-              </thead>
-              <Tbody staggerKey={`${activeOrg}:${users.length}`}>
-                {showSkeleton &&
-                  Array.from({ length: 3 }, (_, i) => (
-                    <Tr key={`skel-${i}`} animate={false}>
-                      <td><Skeleton width={180} /></td>
-                      <td><Skeleton width={56} /></td>
-                      <td><Skeleton width={56} /></td>
-                      <td><Skeleton width={120} /></td>
-                      {canRemove && <td className="num"><Skeleton width={64} /></td>}
-                    </Tr>
-                  ))}
-                {users.map((u) => {
-                  const b = activeBadge(u.active);
-                  return (
-                    <Tr key={u.id}>
-                      <td>{u.email}</td>
-                      <td>
-                        <Badge>{u.role}</Badge>
-                      </td>
-                      <td>
-                        <Badge variant={u.active ? "pass" : "inactive"}>{b.label}</Badge>
-                      </td>
-                      <td className="dim mono">{formatTimestamp(u.created_at)}</td>
-                      {canRemove && (
-                        <td className="num">
-                          <Button
-                            small
-                            variant="danger"
-                            onClick={() => void remove(u)}
-                            disabled={removing === u.id}
-                          >
-                            {removing === u.id ? "Removing…" : "Remove"}
-                          </Button>
+            {!adminKey ? (
+              <EmptyState
+                title="No admin key configured"
+                description="Members of an org and their roles appear here once the console can reach the admin API."
+                action={
+                  <Button variant="primary" onClick={openSettings}>
+                    Open settings
+                  </Button>
+                }
+              />
+            ) : (
+              <Table>
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    {canRemove && <th></th>}
+                  </tr>
+                </thead>
+                <Tbody staggerKey={`${activeOrg}:${users.length}`}>
+                  {showSkeleton &&
+                    Array.from({ length: 3 }, (_, i) => (
+                      <Tr key={`skel-${i}`} animate={false}>
+                        <td><Skeleton width={180} /></td>
+                        <td><Skeleton width={56} /></td>
+                        <td><Skeleton width={56} /></td>
+                        <td><Skeleton width={120} /></td>
+                        {canRemove && <td className="num"><Skeleton width={64} /></td>}
+                      </Tr>
+                    ))}
+                  {users.map((u) => {
+                    const b = activeBadge(u.active);
+                    return (
+                      <Tr key={u.id}>
+                        <td>{u.email}</td>
+                        <td>
+                          <Badge>{u.role}</Badge>
                         </td>
-                      )}
+                        <td>
+                          <Badge variant={u.active ? "pass" : "inactive"}>{b.label}</Badge>
+                        </td>
+                        <td className="dim mono">{formatTimestamp(u.created_at)}</td>
+                        {canRemove && (
+                          <td className="num">
+                            <Button
+                              small
+                              variant="danger"
+                              onClick={() => void remove(u)}
+                              disabled={removing === u.id}
+                            >
+                              {removing === u.id ? "Removing…" : "Remove"}
+                            </Button>
+                          </td>
+                        )}
+                      </Tr>
+                    );
+                  })}
+                  {users.length === 0 && !usersLoad.loading && (
+                    <Tr animate={false}>
+                      <td colSpan={canRemove ? 5 : 4} className={activeOrg ? undefined : "empty"}>
+                        {activeOrg ? (
+                          <EmptyState
+                            title="No users yet"
+                            description="A user is a member of this org with a role — owner, admin or member — and their own agu- token for calling the gateway."
+                            action={
+                              // Inviting requires user.invite; omit the
+                              // control for roles that can't act on it rather
+                              // than show a button that would 403.
+                              canInvite ? (
+                                <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>
+                                  Invite user
+                                </Button>
+                              ) : undefined
+                            }
+                          />
+                        ) : (
+                          "Select an org to list its users."
+                        )}
+                      </td>
                     </Tr>
-                  );
-                })}
-                {users.length === 0 && !usersLoad.loading && (
-                  <Tr animate={false}>
-                    <td colSpan={canRemove ? 5 : 4} className="empty">
-                      {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
-                    </td>
-                  </Tr>
-                )}
-              </Tbody>
-            </Table>
+                  )}
+                </Tbody>
+              </Table>
+            )}
           </Panel>
         </>
       )}

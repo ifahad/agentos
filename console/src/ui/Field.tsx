@@ -10,8 +10,12 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: ReactNode;
 }
 
-export function Input({ label, id, className = "", ...rest }: InputProps) {
-  const input = <input id={id} className={className} {...rest} />;
+export function Input({ label, id, className = "", type = "text", ...rest }: InputProps) {
+  // type defaults to "text" because styles.css keys form styling on
+  // input[type="text"], input[type="number"], … — a bare <input> matches none
+  // of it and falls back to user-agent styling. Since color-scheme is bound to
+  // the theme, that meant UA dark fields with a 2.43:1 placeholder.
+  const input = <input id={id} className={className} type={type} {...rest} />;
   if (label == null) return input;
   return (
     <label className="field" htmlFor={id}>

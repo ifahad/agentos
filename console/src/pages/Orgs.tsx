@@ -9,8 +9,21 @@ import { downloadBlob, toCSV, toJSON } from "../lib/export";
 import type { Column } from "../lib/export";
 import { budgetFraction, formatRpm, formatUSD } from "../lib/format";
 import { can } from "../lib/rbac";
+import { orgsSummary } from "../lib/summaries";
 import type { Org } from "../lib/types";
-import { Button, Input, Panel, PanelHead, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
+import {
+  Button,
+  Disclosure,
+  EmptyState,
+  Input,
+  Panel,
+  PanelHead,
+  Skeleton,
+  Table,
+  Tbody,
+  Tr,
+  useToast,
+} from "../ui";
 
 // Hoisted to module scope so useTableView's memo dependency is stable.
 const SEARCH_FIELDS = ["name", "id"] as const;
@@ -31,7 +44,7 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
     () =>
       adminKey && allowed
         ? apiFetch<Org[]>(gatewayAdminRequest("/admin/orgs", adminKey))
-        : Promise.resolve<Org[]>([]),
+        : Promise.resolve<Org[] | null>(null),
     [adminKey, allowed],
   );
 
@@ -39,6 +52,7 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
   const [budget, setBudget] = useState("500");
   const [rpm, setRpm] = useState("0");
   const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   // Per-row rate-limit edits (org id -> draft string) and the id being saved.
   const [rpmEdits, setRpmEdits] = useState<Record<string, string>>({});
@@ -69,6 +83,7 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
       setName("");
       setRpm("0");
       toast.success(`Org "${name.trim()}" created.`);
+      setCreateOpen(false);
       reload();
     } catch (err) {
       toast.error(errorMessage(err));
@@ -104,6 +119,15 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
   };
 
   const orgs = data ?? [];
+  // BOTH conjuncts are needed, and neither is sufficient alone. The guard alone
+  // never establishes that a request came back, so a 401 with a key set would
+  // still read "0 orgs" under a red error notice; `data != null` alone does not
+  // establish we were allowed to ask. The "not allowed" branch of the loader
+  // above resolves to NULL rather than `[]` so that the second conjunct means
+  // what it says — `useLoad` keeps whatever `data` it last held across a dep
+  // change and across a rejection, and a placeholder `[]` would silently
+  // satisfy it forever. `orgs = data ?? []` keeps the rendering identical.
+  const orgsMeasured = Boolean(adminKey) && allowed && data != null;
   const showSkeleton = loading && orgs.length === 0;
   const t = useTableView(orgs, { searchFields: SEARCH_FIELDS, initialSort: { key: "name", dir: "asc" } });
 
@@ -125,142 +149,183 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
       {adminKey && !allowed && <ForbiddenNotice message="Orgs are visible to the root admin only." />}
       <ErrorNotice error={error} />
 
-      {adminKey && allowed && (
+      {(!adminKey || allowed) && (
         <>
-          {canCreate && (
-            <Panel>
-              <PanelHead title="Create org" />
-              <div className="panel-body">
-                <div className="form-row">
-                  <Input
-                    label="Name"
-                    type="text"
-                    value={name}
-                    placeholder="acme-corp"
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                  <Input
-                    label="Monthly budget (USD)"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={budget}
-                    onChange={(e) => setBudget(e.target.value)}
-                  />
-                  <Input
-                    label="Rate limit (rpm, 0 = unlimited)"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={rpm}
-                    onChange={(e) => setRpm(e.target.value)}
-                  />
-                </div>
-                <Button variant="primary" onClick={() => void create()} disabled={creating}>
-                  {creating ? "Creating…" : "Create org"}
-                </Button>
-              </div>
-            </Panel>
-          )}
-
           <Panel>
             <PanelHead
               title="Organizations"
-              actions={<TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />}
+              summary={orgsMeasured ? orgsSummary(orgs) : undefined}
+              actions={
+                <span className="head-group">
+                  <TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />
+                  {canCreate && (
+                    <Button
+                      variant="primary"
+                      icon="plus"
+                      aria-expanded={createOpen}
+                      aria-controls="orgs-create"
+                      onClick={() => setCreateOpen((v) => !v)}
+                    >
+                      Create org
+                    </Button>
+                  )}
+                </span>
+              }
             />
-            <Table>
-              <thead>
-                <tr>
-                  <SortableTh<Org>
-                    label="Name"
-                    sortKey="name"
-                    active={t.sort?.key === "name"}
-                    dir={t.sort?.dir ?? "asc"}
-                    onSort={t.toggleSort}
-                  />
-                  <th>Id</th>
-                  <th className="num">Monthly budget</th>
-                  <SortableTh<Org>
-                    className="num"
-                    label="Aggregate spend"
-                    sortKey="spend_usd"
-                    active={t.sort?.key === "spend_usd"}
-                    dir={t.sort?.dir ?? "asc"}
-                    numeric
-                    onSort={t.toggleSort}
-                  />
-                  <th>Budget used</th>
-                  <th>Rate limit (rpm)</th>
-                </tr>
-              </thead>
-              <Tbody staggerKey={`${t.view.rows.length}-${t.sort ? `${String(t.sort.key)}:${t.sort.dir}` : "none"}`}>
-                {showSkeleton &&
-                  Array.from({ length: 3 }, (_, i) => (
-                    <Tr key={`skel-${i}`} animate={false}>
-                      <td><Skeleton width={120} /></td>
-                      <td><Skeleton width={140} /></td>
-                      <td className="num"><Skeleton width={64} /></td>
-                      <td className="num"><Skeleton width={64} /></td>
-                      <td><Skeleton width={140} /></td>
-                      <td><Skeleton width={160} /></td>
-                    </Tr>
-                  ))}
-                {t.view.rows.map((o) => {
-                  const frac = budgetFraction(o.spend_usd, o.monthly_budget_usd);
-                  const draft = rpmEdits[o.id] ?? String(o.rate_limit_rpm);
-                  const dirty = draft !== String(o.rate_limit_rpm);
-                  return (
-                    <Tr key={o.id}>
-                      <td>{o.name}</td>
-                      <td className="mono dim">{o.id}</td>
-                      <td className="num">{formatUSD(o.monthly_budget_usd)}</td>
-                      <td className="num">{formatUSD(o.spend_usd)}</td>
-                      <td>
-                        <span className={`meter${frac >= 0.9 ? " hot" : ""}`}>
-                          <div style={{ width: `${Math.round(frac * 100)}%` }} />
-                        </span>{" "}
-                        <span className="dim muted">{Math.round(frac * 100)}%</span>
-                      </td>
-                      <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="1"
-                            className="rpm-input"
-                            aria-label={`Rate limit for ${o.name}`}
-                            value={draft}
-                            onChange={(e) =>
-                              setRpmEdits((edits) => ({ ...edits, [o.id]: e.target.value }))
+            {canCreate && (
+              <Disclosure open={createOpen} onOpenChange={setCreateOpen} id="orgs-create">
+                <div className="panel-body">
+                  <div className="form-row">
+                    <Input
+                      label="Name"
+                      type="text"
+                      value={name}
+                      placeholder="acme-corp"
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                    <Input
+                      label="Monthly budget (USD)"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={budget}
+                      onChange={(e) => setBudget(e.target.value)}
+                    />
+                    <Input
+                      label="Rate limit (rpm, 0 = unlimited)"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={rpm}
+                      onChange={(e) => setRpm(e.target.value)}
+                    />
+                  </div>
+                  <Button variant="primary" onClick={() => void create()} disabled={creating}>
+                    {creating ? "Creating…" : "Create org"}
+                  </Button>
+                </div>
+              </Disclosure>
+            )}
+            {!adminKey ? (
+              <EmptyState
+                title="No admin key configured"
+                description="Tenants of the gateway — their budgets, spend and rate limits — appear here once the console can reach the admin API."
+                action={
+                  <Button variant="primary" onClick={openSettings}>
+                    Open settings
+                  </Button>
+                }
+              />
+            ) : (
+              <Table>
+                <thead>
+                  <tr>
+                    <SortableTh<Org>
+                      label="Name"
+                      sortKey="name"
+                      active={t.sort?.key === "name"}
+                      dir={t.sort?.dir ?? "asc"}
+                      onSort={t.toggleSort}
+                    />
+                    <th>Id</th>
+                    <th className="num">Monthly budget</th>
+                    <SortableTh<Org>
+                      className="num"
+                      label="Aggregate spend"
+                      sortKey="spend_usd"
+                      active={t.sort?.key === "spend_usd"}
+                      dir={t.sort?.dir ?? "asc"}
+                      numeric
+                      onSort={t.toggleSort}
+                    />
+                    <th>Budget used</th>
+                    <th>Rate limit (rpm)</th>
+                  </tr>
+                </thead>
+                <Tbody staggerKey={`${t.view.rows.length}-${t.sort ? `${String(t.sort.key)}:${t.sort.dir}` : "none"}`}>
+                  {showSkeleton &&
+                    Array.from({ length: 3 }, (_, i) => (
+                      <Tr key={`skel-${i}`} animate={false}>
+                        <td><Skeleton width={120} /></td>
+                        <td><Skeleton width={140} /></td>
+                        <td className="num"><Skeleton width={64} /></td>
+                        <td className="num"><Skeleton width={64} /></td>
+                        <td><Skeleton width={140} /></td>
+                        <td><Skeleton width={160} /></td>
+                      </Tr>
+                    ))}
+                  {t.view.rows.map((o) => {
+                    const frac = budgetFraction(o.spend_usd, o.monthly_budget_usd);
+                    const draft = rpmEdits[o.id] ?? String(o.rate_limit_rpm);
+                    const dirty = draft !== String(o.rate_limit_rpm);
+                    return (
+                      <Tr key={o.id}>
+                        <td>{o.name}</td>
+                        <td className="mono dim">{o.id}</td>
+                        <td className="num">{formatUSD(o.monthly_budget_usd)}</td>
+                        <td className="num">{formatUSD(o.spend_usd)}</td>
+                        <td>
+                          <span className={`meter${frac >= 0.9 ? " hot" : ""}`}>
+                            <div style={{ width: `${Math.round(frac * 100)}%` }} />
+                          </span>{" "}
+                          <span className="dim muted">{Math.round(frac * 100)}%</span>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="1"
+                              className="rpm-input"
+                              aria-label={`Rate limit for ${o.name}`}
+                              value={draft}
+                              onChange={(e) =>
+                                setRpmEdits((edits) => ({ ...edits, [o.id]: e.target.value }))
+                              }
+                            />
+                            <span className="dim muted">{formatRpm(o.rate_limit_rpm)}</span>
+                            {dirty && (
+                              <Button
+                                small
+                                variant="primary"
+                                onClick={() => void saveRpm(o)}
+                                disabled={savingRpm === o.id}
+                              >
+                                {savingRpm === o.id ? "Saving…" : "Save"}
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </Tr>
+                    );
+                  })}
+                  {t.view.rows.length === 0 && !loading && (
+                    <Tr animate={false}>
+                      <td colSpan={6} className={orgs.length === 0 ? undefined : "empty"}>
+                        {orgs.length === 0 ? (
+                          <EmptyState
+                            title="No orgs yet"
+                            description="An org is a tenant of the gateway — it caps the combined spend of its keys, sets a per-tenant request rate, and owns the users who belong to it."
+                            action={
+                              // Creating an org requires org.create; omit the
+                              // control for roles that can't act on it rather
+                              // than show a button that would 403.
+                              canCreate ? (
+                                <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>
+                                  Create org
+                                </Button>
+                              ) : undefined
                             }
                           />
-                          <span className="dim muted">{formatRpm(o.rate_limit_rpm)}</span>
-                          {dirty && (
-                            <Button
-                              small
-                              variant="primary"
-                              onClick={() => void saveRpm(o)}
-                              disabled={savingRpm === o.id}
-                            >
-                              {savingRpm === o.id ? "Saving…" : "Save"}
-                            </Button>
-                          )}
-                        </div>
+                        ) : (
+                          "No orgs match your search."
+                        )}
                       </td>
                     </Tr>
-                  );
-                })}
-                {t.view.rows.length === 0 && !loading && (
-                  <Tr animate={false}>
-                    <td colSpan={6} className="empty">
-                      {orgs.length === 0
-                        ? `No orgs yet${canCreate ? " — create one above." : "."}`
-                        : "No orgs match your search."}
-                    </td>
-                  </Tr>
-                )}
-              </Tbody>
-            </Table>
+                  )}
+                </Tbody>
+              </Table>
+            )}
           </Panel>
         </>
       )}
