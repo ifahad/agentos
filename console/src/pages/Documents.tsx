@@ -87,6 +87,10 @@ export function Documents(_props: PageProps) {
   };
 
   const docs = data ?? [];
+  // Runtime-backed, not admin-key gated: the only proof this page has that it
+  // counted anything is the fetch resolving. `data` stays null while the load
+  // errors, so an "Unauthorized" banner can no longer sit above "0 documents".
+  const docsMeasured = data != null;
 
   return (
     <>
@@ -104,7 +108,7 @@ export function Documents(_props: PageProps) {
       >
         <PanelHead
           title="Ingested documents"
-          summary={documentsSummary(docs)}
+          summary={docsMeasured ? documentsSummary(docs) : undefined}
           actions={
             <Button
               variant="primary"

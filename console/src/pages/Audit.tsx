@@ -54,6 +54,12 @@ export function Audit({ adminKey, openSettings }: PageProps) {
     setRowsAt(res.updatedAt);
   }, [res.data, res.updatedAt, paused]);
 
+  // `rows` starts empty and only ever grows from a resolved fetch, so an
+  // unconditional summary reads "0 events" when the console never reached the
+  // audit API — a claim that the gateway recorded nothing and blocked nothing.
+  // Gate on the resource having produced data for the current key.
+  const eventsMeasured = res.data != null;
+
   // Search/filter/sort/paginate over the live feed — sort null preserves the
   // merge's newest-first order; picking a sort intentionally overrides it.
   const t = useTableView(rows, { searchFields: SEARCH_FIELDS, pageSize: 25 });
@@ -94,7 +100,7 @@ export function Audit({ adminKey, openSettings }: PageProps) {
       <Panel>
         <PanelHead
           title="Events"
-          summary={auditEventsSummary(rows)}
+          summary={eventsMeasured ? auditEventsSummary(rows) : undefined}
           actions={
             <span className="head-group">
               <TableToolbar

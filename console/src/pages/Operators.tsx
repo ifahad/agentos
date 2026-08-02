@@ -81,6 +81,11 @@ export function Operators(_props: PageProps) {
   const disabled = operators.data === DISABLED;
   const list = operators.data !== DISABLED ? (operators.data?.operators ?? []) : [];
   const operatorsLoading = operators.status === "loading";
+  // Runtime-backed and always enabled, so the fetch resolving is the only
+  // proof there is: `list` is `?? []` and would otherwise read "0 operators"
+  // whether the runtime said "none" or never answered. (The panel itself is
+  // already behind `!disabled`, which covers the 503 "not configured" case.)
+  const operatorsMeasured = operators.data != null;
   const now = useNowTick(1000);
 
   async function act(run: () => Promise<void>, ok: string) {
@@ -152,7 +157,7 @@ export function Operators(_props: PageProps) {
             <Panel>
               <PanelHead
                 title="Operators"
-                summary={operatorsSummary(list)}
+                summary={operatorsMeasured ? operatorsSummary(list) : undefined}
                 actions={
                   <Button
                     variant="primary"

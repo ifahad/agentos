@@ -47,6 +47,11 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
   );
 
   const orgs = orgsLoad.data ?? [];
+  // NOT `data != null` on either load: both loaders resolve to a literal `[]`
+  // when they are not allowed to fetch, so `data` is non-null with no admin
+  // key. Mirror each loader's own guard instead — that is what makes the
+  // array a reading rather than a placeholder.
+  const orgsMeasured = Boolean(adminKey) && allowed && isRoot;
   const [chosen, setChosen] = useState("");
   const activeOrg = isRoot ? chosen || orgs[0]?.id || "" : orgId;
 
@@ -114,6 +119,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
   };
 
   const users = usersLoad.data ?? [];
+  const usersMeasured = Boolean(adminKey) && allowed && Boolean(activeOrg);
   const showSkeleton = usersLoad.loading && users.length === 0 && !!activeOrg;
 
   return (
@@ -135,7 +141,9 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
               <>
                 <span>Org</span>
                 <Select value={activeOrg} onChange={(e) => setChosen(e.target.value)} aria-label="Org">
-                  {orgs.length === 0 && <option value="">no orgs</option>}
+                  {orgs.length === 0 && (
+                    <option value="">{orgsMeasured ? "no orgs" : "no admin key"}</option>
+                  )}
                   {orgs.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.name} ({o.id})
@@ -169,7 +177,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
           <Panel>
             <PanelHead
               title="Members"
-              summary={usersSummary(users)}
+              summary={usersMeasured ? usersSummary(users) : undefined}
               actions={
                 canInvite && (
                   <Button

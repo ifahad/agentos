@@ -55,6 +55,12 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
   );
   const keysLoading = status === "loading";
   const keys = data ?? [];
+  // `keys` is `data ?? []`, so a summary computed unconditionally would read
+  // "0 keys" when the console never reached the admin API — a reading it
+  // cannot prove. `data` is null until a fetch resolves (the resource is
+  // disabled outright without an admin key, and the registry never nulls a
+  // value it has once held), so this is exactly "we have a measurement".
+  const keysMeasured = data != null;
   const t = useTableView(keys, { searchFields: SEARCH_FIELDS, initialSort: { key: "name", dir: "asc" } });
 
   const [name, setName] = useState("");
@@ -130,7 +136,7 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
       <Panel>
         <PanelHead
           title="Existing keys"
-          summary={keysSummary(keys)}
+          summary={keysMeasured ? keysSummary(keys) : undefined}
           actions={
             <span className="head-group">
               <TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />

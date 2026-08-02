@@ -119,6 +119,11 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
   };
 
   const orgs = data ?? [];
+  // NOT `data != null`: the loader above resolves to a literal `[]` when it is
+  // not allowed to fetch, so `data` is non-null even with no admin key. The
+  // honest condition is the loader's own guard — only then is `orgs` a reading
+  // rather than a placeholder.
+  const orgsMeasured = Boolean(adminKey) && allowed;
   const showSkeleton = loading && orgs.length === 0;
   const t = useTableView(orgs, { searchFields: SEARCH_FIELDS, initialSort: { key: "name", dir: "asc" } });
 
@@ -145,7 +150,7 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
           <Panel>
             <PanelHead
               title="Organizations"
-              summary={orgsSummary(orgs)}
+              summary={orgsMeasured ? orgsSummary(orgs) : undefined}
               actions={
                 <span className="head-group">
                   <TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />

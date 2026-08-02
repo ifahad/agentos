@@ -25,6 +25,10 @@ export function Provisioning({ adminKey, role, openSettings }: PageProps) {
   );
 
   const orgs = orgsLoad.data ?? [];
+  // The loader resolves to a literal `[]` when it may not fetch, so an empty
+  // `orgs` does not mean "no orgs exist" — mirror the loader's guard before
+  // saying so out loud in the selector.
+  const orgsMeasured = Boolean(adminKey) && allowed;
   const [chosen, setChosen] = useState("");
   const activeOrg = chosen || orgs[0]?.id || "";
 
@@ -73,7 +77,9 @@ export function Provisioning({ adminKey, role, openSettings }: PageProps) {
           <div className="thread-line">
             <span>Org</span>
             <Select value={activeOrg} onChange={(e) => setChosen(e.target.value)} aria-label="Org">
-              {orgs.length === 0 && <option value="">no orgs</option>}
+              {orgs.length === 0 && (
+                <option value="">{orgsMeasured ? "no orgs" : "no admin key"}</option>
+              )}
               {orgs.map((o) => (
                 <option key={o.id} value={o.id}>
                   {o.name} ({o.id})

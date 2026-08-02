@@ -112,6 +112,11 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
   const anyLive = feed.some((e) => isInflight(e, now));
 
   const meters = budgetMeters(keysRes.data ?? []);
+  // Same rule the four stat tiles above already follow via `unavailable`: with
+  // no admin key the keys resource is disabled and `data` stays null, so the
+  // panel says nothing rather than asserting "0 budgets" on a page whose
+  // tiles are simultaneously showing "—".
+  const budgetsMeasured = keysRes.data != null;
 
   return (
     <>
@@ -237,7 +242,10 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
         </Panel>
 
         <Panel>
-          <PanelHead title="Budgets" summary={budgetsSummary(meters)} />
+          <PanelHead
+            title="Budgets"
+            summary={budgetsMeasured ? budgetsSummary(meters) : undefined}
+          />
           {!adminKey ? (
             <EmptyState
               title="No admin key configured"

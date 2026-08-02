@@ -115,6 +115,16 @@ export function Multiverse({ adminKey }: PageProps) {
   // members panel's `members.loading && !members.data` gate, so the "No
   // objectives yet" empty state can't render before we actually know.
   const objectivesLoading = objectives.status === "loading" && objectives.data == null;
+  // The summary reads both arrays — objectives for the count, proposals for
+  // "with pending writes" — so neither half is provable until both resources
+  // have answered. `data` is null while the council resources are disabled or
+  // failing, and DISABLED means the runtime has no council at all; in either
+  // case "0 objectives" would be a reading the console never took.
+  const objectivesMeasured =
+    objectives.data != null &&
+    objectives.data !== DISABLED &&
+    proposals.data != null &&
+    proposals.data !== DISABLED;
 
   return (
     <>
@@ -193,7 +203,9 @@ export function Multiverse({ adminKey }: PageProps) {
             <Panel>
               <PanelHead
                 title="Objectives"
-                summary={objectivesSummary(objectiveList, proposalList)}
+                summary={
+                  objectivesMeasured ? objectivesSummary(objectiveList, proposalList) : undefined
+                }
                 actions={
                   <span className="head-group">
                     <Freshness updatedAt={objectives.updatedAt} />
