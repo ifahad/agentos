@@ -44,7 +44,7 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
     () =>
       adminKey && allowed
         ? apiFetch<Org[]>(gatewayAdminRequest("/admin/orgs", adminKey))
-        : Promise.resolve<Org[]>([]),
+        : Promise.resolve<Org[] | null>(null),
     [adminKey, allowed],
   );
 
@@ -119,11 +119,15 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
   };
 
   const orgs = data ?? [];
-  // NOT `data != null`: the loader above resolves to a literal `[]` when it is
-  // not allowed to fetch, so `data` is non-null even with no admin key. The
-  // honest condition is the loader's own guard — only then is `orgs` a reading
-  // rather than a placeholder.
-  const orgsMeasured = Boolean(adminKey) && allowed;
+  // BOTH conjuncts are needed, and neither is sufficient alone. The guard alone
+  // never establishes that a request came back, so a 401 with a key set would
+  // still read "0 orgs" under a red error notice; `data != null` alone does not
+  // establish we were allowed to ask. The "not allowed" branch of the loader
+  // above resolves to NULL rather than `[]` so that the second conjunct means
+  // what it says — `useLoad` keeps whatever `data` it last held across a dep
+  // change and across a rejection, and a placeholder `[]` would silently
+  // satisfy it forever. `orgs = data ?? []` keeps the rendering identical.
+  const orgsMeasured = Boolean(adminKey) && allowed && data != null;
   const showSkeleton = loading && orgs.length === 0;
   const t = useTableView(orgs, { searchFields: SEARCH_FIELDS, initialSort: { key: "name", dir: "asc" } });
 

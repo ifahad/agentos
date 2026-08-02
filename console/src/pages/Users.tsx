@@ -42,16 +42,20 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
     () =>
       adminKey && allowed && isRoot
         ? apiFetch<Org[]>(gatewayAdminRequest("/admin/orgs", adminKey))
-        : Promise.resolve<Org[]>([]),
+        : Promise.resolve<Org[] | null>(null),
     [adminKey, allowed, isRoot],
   );
 
   const orgs = orgsLoad.data ?? [];
-  // NOT `data != null` on either load: both loaders resolve to a literal `[]`
-  // when they are not allowed to fetch, so `data` is non-null with no admin
-  // key. Mirror each loader's own guard instead — that is what makes the
-  // array a reading rather than a placeholder.
-  const orgsMeasured = Boolean(adminKey) && allowed && isRoot;
+  // Each load needs BOTH its own guard AND a resolved fetch, and the "not
+  // allowed to fetch" branch must resolve to NULL rather than `[]` for the
+  // second half to mean anything. `useLoad` does not clear `data` when its deps
+  // change, so a placeholder `[]` written on the first render survives into the
+  // real request and makes `data != null` true even after that request fails —
+  // which is exactly how "0 members" survived a 500 (usersLoad's deps include
+  // `activeOrg`, empty until the org list lands, so its placeholder always ran
+  // first). `?? []` below keeps the rendering identical either way.
+  const orgsMeasured = Boolean(adminKey) && allowed && isRoot && orgsLoad.data != null;
   const [chosen, setChosen] = useState("");
   const activeOrg = isRoot ? chosen || orgs[0]?.id || "" : orgId;
 
@@ -59,7 +63,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
     () =>
       adminKey && allowed && activeOrg
         ? apiFetch<User[]>(gatewayAdminRequest(`/admin/orgs/${activeOrg}/users`, adminKey))
-        : Promise.resolve<User[]>([]),
+        : Promise.resolve<User[] | null>(null),
     [adminKey, allowed, activeOrg],
   );
 
@@ -119,7 +123,8 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
   };
 
   const users = usersLoad.data ?? [];
-  const usersMeasured = Boolean(adminKey) && allowed && Boolean(activeOrg);
+  const usersMeasured =
+    Boolean(adminKey) && allowed && Boolean(activeOrg) && usersLoad.data != null;
   const showSkeleton = usersLoad.loading && users.length === 0 && !!activeOrg;
 
   return (

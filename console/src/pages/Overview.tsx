@@ -62,12 +62,19 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
   const usage = usageRes.data ?? [];
   const usageLoading = usageRes.status === "loading";
 
-  // Keys/budgets — degrade to empty on a role that can't list keys.
-  const keysRes = useLiveResource<KeyInfo[]>(
+  // Keys/budgets — degrade to empty on a role that can't list keys. The catch
+  // resolves to NULL, not `[]`: swallowing the rejection into an empty array
+  // made "the request failed" indistinguishable from "there are no keys", so
+  // `data != null` was true even on a 401 and the Budgets summary below could
+  // still assert a zero it never measured. `budgetMeters(data ?? [])` keeps the
+  // degrade-to-empty rendering exactly as it was; only the null-vs-empty
+  // distinction is restored, which is what makes `data != null` mean "a fetch
+  // resolved".
+  const keysRes = useLiveResource<KeyInfo[] | null>(
     `admin/keys#${adminKey}#ov`,
     () =>
       apiFetch<KeyInfo[]>(gatewayAdminRequest("/admin/keys", adminKey)).catch(
-        () => [] as KeyInfo[],
+        () => null,
       ),
     { enabled: Boolean(adminKey), cadence: 5000 },
   );
@@ -112,10 +119,11 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
   const anyLive = feed.some((e) => isInflight(e, now));
 
   const meters = budgetMeters(keysRes.data ?? []);
-  // Same rule the four stat tiles above already follow via `unavailable`: with
-  // no admin key the keys resource is disabled and `data` stays null, so the
-  // panel says nothing rather than asserting "0 budgets" on a page whose
-  // tiles are simultaneously showing "—".
+  // Same rule the four stat tiles above already follow via `unavailable`: the
+  // keys resource is disabled with no admin key and (see its catch) resolves to
+  // null on any failure, so `data != null` means a fetch actually came back —
+  // not merely that a key is set. The panel says nothing rather than asserting
+  // "0 budgets" on a page whose tiles show "—" or under a red error notice.
   const budgetsMeasured = keysRes.data != null;
 
   return (

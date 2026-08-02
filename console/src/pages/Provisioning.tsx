@@ -20,15 +20,18 @@ export function Provisioning({ adminKey, role, openSettings }: PageProps) {
     () =>
       adminKey && allowed
         ? apiFetch<Org[]>(gatewayAdminRequest("/admin/orgs", adminKey))
-        : Promise.resolve<Org[]>([]),
+        : Promise.resolve<Org[] | null>(null),
     [adminKey, allowed],
   );
 
   const orgs = orgsLoad.data ?? [];
-  // The loader resolves to a literal `[]` when it may not fetch, so an empty
-  // `orgs` does not mean "no orgs exist" — mirror the loader's guard before
-  // saying so out loud in the selector.
-  const orgsMeasured = Boolean(adminKey) && allowed;
+  // Both conjuncts, for the same reason as Orgs.tsx: the guard alone never
+  // establishes that a request came back (so a 401 with a key set would still
+  // say "no orgs"), and `data != null` alone does not establish we were allowed
+  // to ask. The loader's "not allowed" branch resolves to NULL rather than `[]`
+  // so the second conjunct cannot be satisfied by a placeholder `useLoad` is
+  // still holding. `orgs = data ?? []` keeps the rendering identical.
+  const orgsMeasured = Boolean(adminKey) && allowed && orgsLoad.data != null;
   const [chosen, setChosen] = useState("");
   const activeOrg = chosen || orgs[0]?.id || "";
 
