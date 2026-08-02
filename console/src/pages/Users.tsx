@@ -280,8 +280,25 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
                   })}
                   {users.length === 0 && !usersLoad.loading && (
                     <Tr animate={false}>
-                      <td colSpan={canRemove ? 5 : 4} className="empty">
-                        {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
+                      <td colSpan={canRemove ? 5 : 4} className={activeOrg ? undefined : "empty"}>
+                        {activeOrg ? (
+                          <EmptyState
+                            title="No users yet"
+                            description="A user is a member of this org with a role — owner, admin or member — and their own agu- token for calling the gateway."
+                            action={
+                              // Inviting requires user.invite; omit the
+                              // control for roles that can't act on it rather
+                              // than show a button that would 403.
+                              canInvite ? (
+                                <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>
+                                  Invite user
+                                </Button>
+                              ) : undefined
+                            }
+                          />
+                        ) : (
+                          "Select an org to list its users."
+                        )}
                       </td>
                     </Tr>
                   )}

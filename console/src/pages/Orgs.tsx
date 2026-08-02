@@ -292,10 +292,25 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
                   })}
                   {t.view.rows.length === 0 && !loading && (
                     <Tr animate={false}>
-                      <td colSpan={6} className="empty">
-                        {orgs.length === 0
-                          ? `No orgs yet${canCreate ? " — create one above." : "."}`
-                          : "No orgs match your search."}
+                      <td colSpan={6} className={orgs.length === 0 ? undefined : "empty"}>
+                        {orgs.length === 0 ? (
+                          <EmptyState
+                            title="No orgs yet"
+                            description="An org is a tenant of the gateway — it caps the combined spend of its keys, sets a per-tenant request rate, and owns the users who belong to it."
+                            action={
+                              // Creating an org requires org.create; omit the
+                              // control for roles that can't act on it rather
+                              // than show a button that would 403.
+                              canCreate ? (
+                                <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>
+                                  Create org
+                                </Button>
+                              ) : undefined
+                            }
+                          />
+                        ) : (
+                          "No orgs match your search."
+                        )}
                       </td>
                     </Tr>
                   )}

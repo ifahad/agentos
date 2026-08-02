@@ -256,8 +256,25 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
               })}
               {t.view.rows.length === 0 && !keysLoading && (
                 <Tr animate={false}>
-                  <td colSpan={4} className="empty">
-                    {keys.length === 0 ? "No keys yet — create one above." : "No keys match your search."}
+                  <td colSpan={4} className={keys.length === 0 ? undefined : "empty"}>
+                    {keys.length === 0 ? (
+                      <EmptyState
+                        title="No keys yet"
+                        description="A key is a gateway credential with its own monthly budget — issue one per team or workload so spend and access stay separated."
+                        action={
+                          // Creating a key requires key.create; omit the
+                          // control for roles that can't act on it rather
+                          // than show a button that would 403.
+                          canCreate ? (
+                            <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>
+                              New key
+                            </Button>
+                          ) : undefined
+                        }
+                      />
+                    ) : (
+                      "No keys match your search."
+                    )}
                   </td>
                 </Tr>
               )}

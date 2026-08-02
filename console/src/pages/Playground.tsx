@@ -234,6 +234,8 @@ export function Playground(_props: PageProps) {
 
       <div className="timeline pg-stream">
         {entries.length === 0 && !busy ? (
+          // No action: starting a run requires typed input in the run bar
+          // below — there's no single control to trigger from here.
           <EmptyState
             title="No run yet"
             description="Ask the governed agent below — tool calls and answers stream in here as a live step stream."

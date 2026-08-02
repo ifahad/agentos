@@ -176,7 +176,12 @@ export function Documents(_props: PageProps) {
                   <td colSpan={2}>
                     <EmptyState
                       title="No documents ingested yet"
-                      description="Ingest a document above to give the agent searchable knowledge."
+                      description="A document is chunked, embedded through the gateway and stored in pgvector — once ingested, the agent's search_knowledge tool can retrieve it."
+                      action={
+                        <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>
+                          Add document
+                        </Button>
+                      }
                     />
                   </td>
                 </Tr>

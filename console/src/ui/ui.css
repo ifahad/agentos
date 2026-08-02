@@ -153,6 +153,9 @@
   padding: 40px 18px;
   text-align: center;
   color: var(--text-dim);
+  /* Empty states nest inside table cells (a td defaults to nowrap), which
+     would otherwise clip a multi-word description instead of wrapping it. */
+  white-space: normal;
 }
 
 .ui-empty-title {

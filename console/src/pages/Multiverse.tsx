@@ -221,7 +221,15 @@ export function Multiverse({ adminKey }: PageProps) {
                 </div>
               </Disclosure>
               {objectiveList.length === 0 ? (
-                <EmptyState title="No objectives yet" description="Queue one above to begin." />
+                <EmptyState
+                  title="No objectives yet"
+                  description="An objective is a goal you hand to the council; each one runs as cycles you can inspect and approve."
+                  action={
+                    <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>
+                      New objective
+                    </Button>
+                  }
+                />
               ) : (
                 <Table>
                   <thead>
@@ -257,9 +265,11 @@ export function Multiverse({ adminKey }: PageProps) {
             <Panel>
               <PanelHead title={selected ? "Verdict" : "Select an objective"} />
               {!selected ? (
+                // No action: selecting an objective happens by clicking a
+                // row in the list panel to the left, not from a control here.
                 <EmptyState
                   title="No objective selected"
-                  description="Pick an objective to see its cycles and dissent."
+                  description="Pick an objective from the list to see its cycles, the council's verdict and any dissent."
                 />
               ) : detail.loading && !detail.data ? (
                 <div className="mv-pad">
@@ -283,7 +293,13 @@ export function Multiverse({ adminKey }: PageProps) {
                     )}
                   </div>
                   {detail.data.cycles.length === 0 ? (
-                    <EmptyState title="No cycles yet" description="The council has not run yet." />
+                    // No action: cycles run automatically as the council
+                    // works an objective — there's no manual "run a cycle"
+                    // control.
+                    <EmptyState
+                      title="No cycles yet"
+                      description="A cycle is one round of the council's deliberation — each model's answer, the judge's verdict and any dissent. The council has not run one yet."
+                    />
                   ) : (
                     detail.data.cycles.map((c) => (
                       <div key={c.id} className="mv-cycle">

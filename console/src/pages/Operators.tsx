@@ -214,7 +214,15 @@ export function Operators(_props: PageProps) {
                   <Skeleton lines={3} height={14} />
                 </div>
               ) : list.length === 0 ? (
-                <EmptyState title="No operators" description="Create one above to begin." />
+                <EmptyState
+                  title="No operators"
+                  description="An operator is a standing objective the runtime pursues on its own — on an interval, a cron schedule, or an inbound webhook — until you pause or delete it."
+                  action={
+                    <Button variant="primary" icon="plus" onClick={() => setCreateOpen(true)}>
+                      New operator
+                    </Button>
+                  }
+                />
               ) : (
                 <Table>
                   <thead>
@@ -287,9 +295,11 @@ export function Operators(_props: PageProps) {
             <Panel>
               <PanelHead title={selected ? "Runs" : "Select an operator"} />
               {!selected ? (
+                // No action: selecting an operator happens by clicking a row
+                // in the list panel to the left, not from a control here.
                 <EmptyState
                   title="No operator selected"
-                  description="Pick an operator to see its run history."
+                  description="Pick an operator from the list to see its recent runs — status, cycle count and any output or error."
                 />
               ) : detail.loading && !detail.data ? (
                 <div className="op-pad">
@@ -313,7 +323,23 @@ export function Operators(_props: PageProps) {
                     </Button>
                   </div>
                   {detail.data.recent_runs.length === 0 ? (
-                    <EmptyState title="No runs yet" description="Run it now, or wait for its trigger." />
+                    <EmptyState
+                      title="No runs yet"
+                      description="A run captures the operator's cycles, its output and any error each time it fires — manually or on its trigger."
+                      action={
+                        <Button
+                          variant="primary"
+                          icon="run"
+                          // detail.data is narrowed truthy by the enclosing
+                          // ternary, but that narrowing doesn't survive into
+                          // this closure — assert it explicitly.
+                          onClick={() => runNow(detail.data!.operator)}
+                          disabled={runningIds.has(detail.data.operator.id)}
+                        >
+                          Run now
+                        </Button>
+                      }
+                    />
                   ) : (
                     detail.data.recent_runs.map((r) => (
                       <div key={r.id} className="op-run">

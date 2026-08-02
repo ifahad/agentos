@@ -198,6 +198,9 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
               <Skeleton lines={5} height={13} />
             </div>
           ) : feed.length === 0 && !auditRes.error ? (
+            // No action: activity is driven by traffic through the gateway
+            // (e.g. via Playground or an external caller) — there's no
+            // control here that generates it.
             <EmptyState
               title="No recent activity"
               description="Agent runs and guardrail verdicts will stream in here as they happen."
@@ -252,7 +255,7 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
           ) : meters.length === 0 ? (
             <EmptyState
               title="No budgets set"
-              description="Monthly budgets are set per key on the Keys page."
+              description="A budget caps how much a key can spend per month; meters here fill toward that cap and turn red once a key goes over."
               action={
                 <Button small onClick={() => navigate("/keys")}>
                   Open Keys
@@ -310,9 +313,11 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
             }
           />
         ) : usage.length === 0 && !usageLoading ? (
+          // No action: usage accrues from requests made through the gateway
+          // — there's no control here that generates traffic.
           <EmptyState
             title="No usage recorded yet"
-            description="Requests made through the gateway will appear here, grouped by key."
+            description="Requests made through the gateway will appear here, grouped by key — useful for spotting which key is driving cost."
           />
         ) : (
           <Table>
