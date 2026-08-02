@@ -11,6 +11,7 @@ import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import { downloadBlob, toCSV, toJSON } from "../lib/export";
 import type { Column } from "../lib/export";
 import { formatInt, formatLatency, formatTimestamp, formatUSD } from "../lib/format";
+import { auditEventsSummary } from "../lib/summaries";
 import type { AuditEntry } from "../lib/types";
 import { Badge, Button, EmptyState, Panel, PanelHead, Table, Tbody, Tr } from "../ui";
 import { feedEntryId, mergeFeedEntries } from "./overviewFeed";
@@ -93,6 +94,7 @@ export function Audit({ adminKey, openSettings }: PageProps) {
       <Panel>
         <PanelHead
           title="Events"
+          summary={auditEventsSummary(rows)}
           actions={
             <span className="head-group">
               <TableToolbar

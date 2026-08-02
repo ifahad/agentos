@@ -16,13 +16,27 @@ import {
   pauseRequest,
 } from "../lib/council";
 import { formatTimestamp } from "../lib/format";
+import { objectivesSummary } from "../lib/summaries";
 import type {
   CouncilCycle,
   CouncilMember,
   CouncilObjective,
   CouncilProposal,
 } from "../lib/types";
-import { Badge, Button, EmptyState, Input, Panel, PanelHead, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
+import {
+  Badge,
+  Button,
+  Disclosure,
+  EmptyState,
+  Input,
+  Panel,
+  PanelHead,
+  Skeleton,
+  Table,
+  Tbody,
+  Tr,
+  useToast,
+} from "../ui";
 import type { BadgeVariant } from "../ui";
 import { Icon } from "../ui/icons";
 import "./Multiverse.css";
@@ -46,6 +60,7 @@ export function Multiverse({ adminKey }: PageProps) {
   const [input, setInput] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [busy, setBusy] = useState(0);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const members = useLoad(
     () => orDisabled(apiFetch<{ members: CouncilMember[] }>(listMembersRequest())),
@@ -89,6 +104,7 @@ export function Multiverse({ adminKey }: PageProps) {
     act(async () => {
       await apiFetchRaw(createObjectiveRequest(input.trim()));
       setInput("");
+      setCreateOpen(false);
     }, "Objective queued");
 
   const memberList = members.data !== DISABLED ? (members.data?.members ?? []) : [];
@@ -169,29 +185,41 @@ export function Multiverse({ adminKey }: PageProps) {
             )}
           </Panel>
 
-          <Panel>
-            <PanelHead title="New objective" />
-            <div className="mv-launch">
-              <Input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask the council a question…"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && input.trim()) launch();
-                }}
-              />
-              <Button onClick={launch} disabled={!input.trim()}>
-                Queue
-              </Button>
-            </div>
-          </Panel>
-
           <div className="mv-split">
             <Panel>
               <PanelHead
                 title="Objectives"
-                actions={<Freshness updatedAt={objectives.updatedAt} />}
+                summary={objectivesSummary(objectiveList, proposalList)}
+                actions={
+                  <span className="head-group">
+                    <Freshness updatedAt={objectives.updatedAt} />
+                    <Button
+                      variant="primary"
+                      icon="plus"
+                      aria-expanded={createOpen}
+                      aria-controls="multiverse-create"
+                      onClick={() => setCreateOpen((v) => !v)}
+                    >
+                      New objective
+                    </Button>
+                  </span>
+                }
               />
+              <Disclosure open={createOpen} onOpenChange={setCreateOpen} id="multiverse-create">
+                <div className="mv-launch">
+                  <Input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    placeholder="Ask the council a question…"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && input.trim()) launch();
+                    }}
+                  />
+                  <Button onClick={launch} disabled={!input.trim()}>
+                    Queue
+                  </Button>
+                </div>
+              </Disclosure>
               {objectiveList.length === 0 ? (
                 <EmptyState title="No objectives yet" description="Queue one above to begin." />
               ) : (

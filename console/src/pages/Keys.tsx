@@ -12,9 +12,11 @@ import { downloadBlob, toCSV, toJSON } from "../lib/export";
 import type { Column } from "../lib/export";
 import { budgetFraction, formatUSD } from "../lib/format";
 import { can } from "../lib/rbac";
+import { keysSummary } from "../lib/summaries";
 import type { CreatedKey, KeyInfo } from "../lib/types";
 import {
   Button,
+  Disclosure,
   EmptyState,
   Input,
   Panel,
@@ -59,6 +61,7 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
   const [budget, setBudget] = useState("25");
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState<CreatedKey | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const create = async () => {
     const budgetNum = Number(budget);
@@ -77,6 +80,7 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
       setCreated(res);
       setName("");
       reload();
+      setCreateOpen(false);
       toast.success(`Key "${res.name}" created — store the secret now.`);
     } catch (err) {
       toast.error(errorMessage(err));
@@ -123,44 +127,54 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
         </motion.div>
       )}
 
-      {canCreate && (
-        <Panel>
-          <PanelHead title="Create key" />
-          <div className="panel-body">
-            <div className="form-row">
-              <Input
-                label="Name"
-                type="text"
-                value={name}
-                placeholder="team-analytics"
-                onChange={(e) => setName(e.target.value)}
-              />
-              <Input
-                label="Monthly budget (USD)"
-                type="number"
-                min="0"
-                step="1"
-                value={budget}
-                onChange={(e) => setBudget(e.target.value)}
-              />
-            </div>
-            <Button variant="primary" icon="plus" onClick={() => void create()} disabled={creating}>
-              {creating ? "Creating…" : "Create key"}
-            </Button>
-          </div>
-        </Panel>
-      )}
-
       <Panel>
         <PanelHead
           title="Existing keys"
+          summary={keysSummary(keys)}
           actions={
             <span className="head-group">
               <TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />
               <Freshness updatedAt={updatedAt} />
+              {canCreate && (
+                <Button
+                  variant="primary"
+                  icon="plus"
+                  aria-expanded={createOpen}
+                  aria-controls="keys-create"
+                  onClick={() => setCreateOpen((v) => !v)}
+                >
+                  New key
+                </Button>
+              )}
             </span>
           }
         />
+        {canCreate && (
+          <Disclosure open={createOpen} onOpenChange={setCreateOpen} id="keys-create">
+            <div className="panel-body">
+              <div className="form-row">
+                <Input
+                  label="Name"
+                  type="text"
+                  value={name}
+                  placeholder="team-analytics"
+                  onChange={(e) => setName(e.target.value)}
+                />
+                <Input
+                  label="Monthly budget (USD)"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={budget}
+                  onChange={(e) => setBudget(e.target.value)}
+                />
+              </div>
+              <Button variant="primary" icon="plus" onClick={() => void create()} disabled={creating}>
+                {creating ? "Creating…" : "Create key"}
+              </Button>
+            </div>
+          </Disclosure>
+        )}
         {!adminKey ? (
           <EmptyState
             title="No admin key configured"

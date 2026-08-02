@@ -9,8 +9,21 @@ import { downloadBlob, toCSV, toJSON } from "../lib/export";
 import type { Column } from "../lib/export";
 import { budgetFraction, formatRpm, formatUSD } from "../lib/format";
 import { can } from "../lib/rbac";
+import { orgsSummary } from "../lib/summaries";
 import type { Org } from "../lib/types";
-import { Button, EmptyState, Input, Panel, PanelHead, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
+import {
+  Button,
+  Disclosure,
+  EmptyState,
+  Input,
+  Panel,
+  PanelHead,
+  Skeleton,
+  Table,
+  Tbody,
+  Tr,
+  useToast,
+} from "../ui";
 
 // Hoisted to module scope so useTableView's memo dependency is stable.
 const SEARCH_FIELDS = ["name", "id"] as const;
@@ -39,6 +52,7 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
   const [budget, setBudget] = useState("500");
   const [rpm, setRpm] = useState("0");
   const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   // Per-row rate-limit edits (org id -> draft string) and the id being saved.
   const [rpmEdits, setRpmEdits] = useState<Record<string, string>>({});
@@ -69,6 +83,7 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
       setName("");
       setRpm("0");
       toast.success(`Org "${name.trim()}" created.`);
+      setCreateOpen(false);
       reload();
     } catch (err) {
       toast.error(errorMessage(err));
@@ -127,47 +142,61 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
 
       {(!adminKey || allowed) && (
         <>
-          {canCreate && (
-            <Panel>
-              <PanelHead title="Create org" />
-              <div className="panel-body">
-                <div className="form-row">
-                  <Input
-                    label="Name"
-                    type="text"
-                    value={name}
-                    placeholder="acme-corp"
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                  <Input
-                    label="Monthly budget (USD)"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={budget}
-                    onChange={(e) => setBudget(e.target.value)}
-                  />
-                  <Input
-                    label="Rate limit (rpm, 0 = unlimited)"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={rpm}
-                    onChange={(e) => setRpm(e.target.value)}
-                  />
-                </div>
-                <Button variant="primary" onClick={() => void create()} disabled={creating}>
-                  {creating ? "Creating…" : "Create org"}
-                </Button>
-              </div>
-            </Panel>
-          )}
-
           <Panel>
             <PanelHead
               title="Organizations"
-              actions={<TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />}
+              summary={orgsSummary(orgs)}
+              actions={
+                <span className="head-group">
+                  <TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />
+                  {canCreate && (
+                    <Button
+                      variant="primary"
+                      icon="plus"
+                      aria-expanded={createOpen}
+                      aria-controls="orgs-create"
+                      onClick={() => setCreateOpen((v) => !v)}
+                    >
+                      Create org
+                    </Button>
+                  )}
+                </span>
+              }
             />
+            {canCreate && (
+              <Disclosure open={createOpen} onOpenChange={setCreateOpen} id="orgs-create">
+                <div className="panel-body">
+                  <div className="form-row">
+                    <Input
+                      label="Name"
+                      type="text"
+                      value={name}
+                      placeholder="acme-corp"
+                      onChange={(e) => setName(e.target.value)}
+                    />
+                    <Input
+                      label="Monthly budget (USD)"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={budget}
+                      onChange={(e) => setBudget(e.target.value)}
+                    />
+                    <Input
+                      label="Rate limit (rpm, 0 = unlimited)"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={rpm}
+                      onChange={(e) => setRpm(e.target.value)}
+                    />
+                  </div>
+                  <Button variant="primary" onClick={() => void create()} disabled={creating}>
+                    {creating ? "Creating…" : "Create org"}
+                  </Button>
+                </div>
+              </Disclosure>
+            )}
             {!adminKey ? (
               <EmptyState
                 title="No admin key configured"

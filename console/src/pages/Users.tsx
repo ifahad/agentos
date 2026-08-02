@@ -13,10 +13,12 @@ import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import { formatTimestamp } from "../lib/format";
 import { activeBadge } from "../lib/provisioning";
 import { ROLES, can, roleLabel } from "../lib/rbac";
+import { usersSummary } from "../lib/summaries";
 import type { CreatedUser, Org, Role, User } from "../lib/types";
 import {
   Badge,
   Button,
+  Disclosure,
   EmptyState,
   Input,
   Panel,
@@ -61,6 +63,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
   const [inviting, setInviting] = useState(false);
   const [created, setCreated] = useState<CreatedUser | null>(null);
   const [removing, setRemoving] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const canInvite = can(role, "user.invite");
   const canRemove = can(role, "user.remove");
@@ -81,6 +84,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
       setCreated(res);
       setEmail("");
       toast.success(`Invited ${res.email} as ${res.role}.`);
+      setCreateOpen(false);
       usersLoad.reload();
     } catch (err) {
       toast.error(errorMessage(err));
@@ -162,44 +166,58 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
             </div>
           )}
 
-          {canInvite && (
-            <Panel>
-              <PanelHead title="Invite user" />
-              <div className="panel-body">
-                <div className="form-row">
-                  <Input
-                    label="Email"
-                    type="text"
-                    value={email}
-                    placeholder="person@acme.com"
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                  <Select
-                    label="Role"
-                    value={inviteRole}
-                    onChange={(e) => setInviteRole(e.target.value as Role)}
-                  >
-                    {ROLES.map((r) => (
-                      <option key={r} value={r}>
-                        {roleLabel(r)}
-                      </option>
-                    ))}
-                  </Select>
-                </div>
-                <Button
-                  variant="primary"
-                  icon="plus"
-                  onClick={() => void invite()}
-                  disabled={inviting || !activeOrg}
-                >
-                  {inviting ? "Inviting…" : "Invite user"}
-                </Button>
-              </div>
-            </Panel>
-          )}
-
           <Panel>
-            <PanelHead title="Members" />
+            <PanelHead
+              title="Members"
+              summary={usersSummary(users)}
+              actions={
+                canInvite && (
+                  <Button
+                    variant="primary"
+                    icon="plus"
+                    aria-expanded={createOpen}
+                    aria-controls="users-create"
+                    onClick={() => setCreateOpen((v) => !v)}
+                  >
+                    Invite user
+                  </Button>
+                )
+              }
+            />
+            {canInvite && (
+              <Disclosure open={createOpen} onOpenChange={setCreateOpen} id="users-create">
+                <div className="panel-body">
+                  <div className="form-row">
+                    <Input
+                      label="Email"
+                      type="text"
+                      value={email}
+                      placeholder="person@acme.com"
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                    <Select
+                      label="Role"
+                      value={inviteRole}
+                      onChange={(e) => setInviteRole(e.target.value as Role)}
+                    >
+                      {ROLES.map((r) => (
+                        <option key={r} value={r}>
+                          {roleLabel(r)}
+                        </option>
+                      ))}
+                    </Select>
+                  </div>
+                  <Button
+                    variant="primary"
+                    icon="plus"
+                    onClick={() => void invite()}
+                    disabled={inviting || !activeOrg}
+                  >
+                    {inviting ? "Inviting…" : "Invite user"}
+                  </Button>
+                </div>
+              </Disclosure>
+            )}
             <ErrorNotice error={usersLoad.error} />
             {!adminKey ? (
               <EmptyState

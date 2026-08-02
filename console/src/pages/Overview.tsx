@@ -7,6 +7,7 @@ import { LiveList } from "../components/LiveList";
 import { useLiveResource } from "../hooks/useLiveResource";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import { formatInt, formatTimestamp, formatUSD } from "../lib/format";
+import { budgetsSummary } from "../lib/summaries";
 import type { AuditEntry, KeyInfo, KeyUsage } from "../lib/types";
 import {
   Badge,
@@ -233,7 +234,7 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
         </Panel>
 
         <Panel>
-          <PanelHead title="Budgets" />
+          <PanelHead title="Budgets" summary={budgetsSummary(meters)} />
           {!adminKey ? (
             <EmptyState
               title="No admin key configured"

@@ -3,9 +3,11 @@ import type { PageProps } from "../App";
 import { ErrorNotice, PageHead, errorMessage, useLoad } from "../components/common";
 import { apiFetch, runtimeRequest } from "../lib/api";
 import { formatInt } from "../lib/format";
+import { documentsSummary } from "../lib/summaries";
 import type { DocumentInfo } from "../lib/types";
 import {
   Button,
+  Disclosure,
   EmptyState,
   Input,
   Panel,
@@ -32,6 +34,7 @@ export function Documents(_props: PageProps) {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const add = async () => {
     if (!name.trim() || !text.trim()) {
@@ -49,6 +52,7 @@ export function Documents(_props: PageProps) {
       );
       setName("");
       setText("");
+      setCreateOpen(false);
       reload();
     } catch (err) {
       const msg = errorMessage(err);
@@ -75,6 +79,7 @@ export function Documents(_props: PageProps) {
       toast.error("Only plain-text files (.txt, .md) can be dropped here.");
       return;
     }
+    setCreateOpen(true);
     void file.text().then((content) => {
       setText(content);
       setName((n) => n || file.name.replace(/\.[^.]+$/, ""));
@@ -97,35 +102,47 @@ export function Documents(_props: PageProps) {
         onDragLeave={onDragLeave}
         onDrop={onDrop}
       >
-        <PanelHead title="Add document" />
-        <div className="panel-body">
-          <ErrorNotice error={addError} />
-          <Input
-            label="Name"
-            type="text"
-            value={name}
-            placeholder="q3-runbook"
-            onChange={(e) => setName(e.target.value)}
-          />
-          <Textarea
-            label="Text"
-            rows={8}
-            value={text}
-            placeholder="Paste the document text to ingest…"
-            onChange={(e) => setText(e.target.value)}
-          />
-          <p className="doc-hint">
-            You can also drop a .txt or .md file anywhere on this panel to fill the form.
-          </p>
-          <Button variant="primary" icon="plus" onClick={() => void add()} disabled={adding}>
-            {adding ? "Ingesting…" : "Ingest document"}
-          </Button>
-          {adding && <div className="doc-progress" aria-hidden />}
-        </div>
-      </Panel>
-
-      <Panel>
-        <PanelHead title="Ingested documents" />
+        <PanelHead
+          title="Ingested documents"
+          summary={documentsSummary(docs)}
+          actions={
+            <Button
+              variant="primary"
+              icon="plus"
+              aria-expanded={createOpen}
+              aria-controls="documents-create"
+              onClick={() => setCreateOpen((v) => !v)}
+            >
+              Add document
+            </Button>
+          }
+        />
+        <Disclosure open={createOpen} onOpenChange={setCreateOpen} id="documents-create">
+          <div className="panel-body">
+            <ErrorNotice error={addError} />
+            <Input
+              label="Name"
+              type="text"
+              value={name}
+              placeholder="q3-runbook"
+              onChange={(e) => setName(e.target.value)}
+            />
+            <Textarea
+              label="Text"
+              rows={8}
+              value={text}
+              placeholder="Paste the document text to ingest…"
+              onChange={(e) => setText(e.target.value)}
+            />
+            <p className="doc-hint">
+              You can also drop a .txt or .md file anywhere on this panel to fill the form.
+            </p>
+            <Button variant="primary" icon="plus" onClick={() => void add()} disabled={adding}>
+              {adding ? "Ingesting…" : "Ingest document"}
+            </Button>
+            {adding && <div className="doc-progress" aria-hidden />}
+          </div>
+        </Disclosure>
         <Table>
           <thead>
             <tr>
