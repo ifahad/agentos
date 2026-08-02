@@ -103,7 +103,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
     <>
       <PageHead
         title="Users"
-        subtitle="Members of an org and their roles. Inviting a user issues a one-time agu- token; removing one revokes it."
+        subtitle="Members of an org and their roles. Inviting a user issues a one-time token prefixed agu-; removing one revokes it."
       />
       {!adminKey && <NeedsKey openSettings={openSettings} />}
       {adminKey && !allowed && (
