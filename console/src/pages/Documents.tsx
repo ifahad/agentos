@@ -137,7 +137,12 @@ export function Documents(_props: PageProps) {
             <p className="doc-hint">
               You can also drop a .txt or .md file anywhere on this panel to fill the form.
             </p>
-            <Button variant="primary" icon="plus" onClick={() => void add()} disabled={adding}>
+            <Button
+              variant="primary"
+              icon="plus"
+              onClick={() => void add()}
+              disabled={adding || !name.trim() || !text.trim()}
+            >
               {adding ? "Ingesting…" : "Ingest document"}
             </Button>
             {adding && <div className="doc-progress" aria-hidden />}
