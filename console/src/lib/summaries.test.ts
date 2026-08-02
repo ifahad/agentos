@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { BudgetMeter } from "../pages/overviewFeed";
-import type { AuditEntry, CouncilObjective, DocumentInfo, KeyInfo, Operator, Org, User } from "./types";
+import type {
+  AuditEntry,
+  CouncilObjective,
+  CouncilProposal,
+  DocumentInfo,
+  KeyInfo,
+  Operator,
+  Org,
+  User,
+} from "./types";
 import {
   auditEventsSummary,
   budgetsSummary,
@@ -126,6 +135,19 @@ function meter(overrides: Partial<BudgetMeter> = {}): BudgetMeter {
   return { id: "m1", name: "k", spend: 0, budget: 100, fraction: 0, ...overrides };
 }
 
+function proposal(overrides: Partial<CouncilProposal> = {}): CouncilProposal {
+  return {
+    id: "p1",
+    objective_id: "obj1",
+    member_id: "m1",
+    tool: "write_file",
+    arguments: {},
+    status: "pending",
+    created_at: "2026-01-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
 describe("keysSummary", () => {
   it("counts zero keys", () => {
     expect(keysSummary([])).toBe("0 keys");
@@ -190,6 +212,10 @@ describe("orgsSummary", () => {
     expect(orgsSummary([org({ monthly_budget_usd: 50, spend_usd: 75 })])).toBe("1 org · 1 over budget");
   });
 
+  it("flags an org exactly at its budget as over — the >= boundary", () => {
+    expect(orgsSummary([org({ monthly_budget_usd: 100, spend_usd: 100 })])).toBe("1 org · 1 over budget");
+  });
+
   it("counts many orgs and only those over budget", () => {
     const orgs = [
       org({ monthly_budget_usd: 100, spend_usd: 50 }),
@@ -219,18 +245,53 @@ describe("usersSummary", () => {
 });
 
 describe("objectivesSummary", () => {
-  it("is a plain count for no objectives — CouncilObjective has no held-action field", () => {
-    expect(objectivesSummary([])).toBe("0 objectives");
+  it("counts zero objectives with no proposals", () => {
+    expect(objectivesSummary([], [])).toBe("0 objectives");
   });
 
-  it("singularises one objective", () => {
-    expect(objectivesSummary([objective()])).toBe("1 objective");
+  it("has no attention clause when there are no pending proposals", () => {
+    expect(objectivesSummary([objective({ id: "obj1" })], [])).toBe("1 objective");
   });
 
-  it("stays a plain count for many objectives, no attention clause", () => {
-    expect(objectivesSummary([objective(), objective({ status: "needs_review" }), objective()])).toBe(
-      "3 objectives",
+  it("singularises one objective with one pending proposal against it", () => {
+    expect(
+      objectivesSummary([objective({ id: "obj1" })], [proposal({ objective_id: "obj1", status: "pending" })]),
+    ).toBe("1 objective · 1 with pending writes");
+  });
+
+  it("counts an objective once even with several pending proposals against it", () => {
+    // This is the case most likely to be wrong: counting by proposal instead
+    // of by distinct objective would report 3, not 1.
+    const proposals = [
+      proposal({ id: "p1", objective_id: "obj1", status: "pending" }),
+      proposal({ id: "p2", objective_id: "obj1", status: "pending" }),
+      proposal({ id: "p3", objective_id: "obj1", status: "pending" }),
+    ];
+    expect(objectivesSummary([objective({ id: "obj1" })], proposals)).toBe(
+      "1 objective · 1 with pending writes",
     );
+  });
+
+  it("does not count a pending proposal against an objective not in the list", () => {
+    const proposals = [proposal({ objective_id: "ghost-objective", status: "pending" })];
+    expect(objectivesSummary([objective({ id: "obj1" })], proposals)).toBe("1 objective");
+  });
+
+  it("does not count approved or denied proposals as pending", () => {
+    const proposals = [
+      proposal({ objective_id: "obj1", status: "approved" }),
+      proposal({ objective_id: "obj1", status: "denied" }),
+    ];
+    expect(objectivesSummary([objective({ id: "obj1" })], proposals)).toBe("1 objective");
+  });
+
+  it("counts many objectives and only those with a pending proposal", () => {
+    const objectives = [objective({ id: "obj1" }), objective({ id: "obj2" }), objective({ id: "obj3" })];
+    const proposals = [
+      proposal({ objective_id: "obj1", status: "pending" }),
+      proposal({ objective_id: "obj2", status: "approved" }),
+    ];
+    expect(objectivesSummary(objectives, proposals)).toBe("3 objectives · 1 with pending writes");
   });
 });
 
@@ -265,12 +326,18 @@ describe("budgetsSummary", () => {
     expect(budgetsSummary([meter({ spend: 120, budget: 100 })])).toBe("1 budget · 1 over limit");
   });
 
-  it("counts many budgets and only those over limit", () => {
+  it("flags a budget exactly at its limit as over — the >= boundary", () => {
+    // Same boundary as keysSummary and orgsSummary: a key sitting exactly at
+    // its budget must not be flagged on the Keys page and silent here.
+    expect(budgetsSummary([meter({ spend: 100, budget: 100 })])).toBe("1 budget · 1 over limit");
+  });
+
+  it("counts many budgets and only those at or over limit", () => {
     const meters = [
       meter({ spend: 10, budget: 100 }),
       meter({ spend: 100, budget: 100 }),
       meter({ spend: 150, budget: 100 }),
     ];
-    expect(budgetsSummary(meters)).toBe("3 budgets · 1 over limit");
+    expect(budgetsSummary(meters)).toBe("3 budgets · 2 over limit");
   });
 });

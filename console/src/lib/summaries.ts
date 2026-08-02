@@ -8,7 +8,16 @@
  * it is not.
  */
 
-import type { AuditEntry, CouncilObjective, DocumentInfo, KeyInfo, Operator, Org, User } from "./types";
+import type {
+  AuditEntry,
+  CouncilObjective,
+  CouncilProposal,
+  DocumentInfo,
+  KeyInfo,
+  Operator,
+  Org,
+  User,
+} from "./types";
 
 /**
  * "12 keys · 2 inactive".
@@ -58,12 +67,16 @@ export function operatorsSummary(operators: readonly Operator[]): string {
 }
 
 /**
- * "5 orgs · 1 over budget" — an org is over budget once aggregate spend
- * exceeds its monthly budget. A budget of 0 means unlimited (the same
- * convention budgetFraction uses in lib/format.ts), so it is excluded.
+ * "5 orgs · 1 over budget" — an org is over budget once aggregate spend is
+ * at or above its monthly budget: the same `committed + estimate > budget`
+ * shape the gateway checks before admitting the org's next request (see
+ * gateway/internal/store/memory.go), so an org sitting exactly at budget
+ * has its next non-free request rejected too. A budget of 0 means unlimited
+ * (same convention as keysSummary and budgetFraction in lib/format.ts), so
+ * it is excluded.
  */
 export function orgsSummary(orgs: readonly Org[]): string {
-  const over = orgs.filter((o) => o.monthly_budget_usd > 0 && o.spend_usd > o.monthly_budget_usd).length;
+  const over = orgs.filter((o) => o.monthly_budget_usd > 0 && o.spend_usd >= o.monthly_budget_usd).length;
   return countLine(orgs.length, "org", { count: over, label: "over budget" });
 }
 
@@ -77,12 +90,28 @@ export function usersSummary(users: readonly User[]): string {
 }
 
 /**
- * "2 objectives" — CouncilObjective (GET /council/objectives) has no field
- * naming held write actions; that lives on CouncilProposal, a separate array
- * this wrapper does not receive. Plain count, no invented field.
+ * "6 objectives · 2 with pending writes".
+ *
+ * A pending proposal is a write the council wants to make and a human has
+ * not yet approved — the one thing on this page that is actually waiting on
+ * the operator. `objectives` and `proposals` are the two sibling arrays
+ * Multiverse.tsx already fetches at page top level (neither gated on the
+ * selected objective, unlike the per-objective cycle detail), so this needs
+ * no new fetch. "Pending" is the literal `CouncilProposal.status` value the
+ * page itself checks before showing an Approve button (Multiverse.tsx:314,
+ * `p.status === "pending"`), not a signal invented here. Counted by distinct
+ * objective, not by proposal: three pending writes against one objective is
+ * one objective needing attention.
  */
-export function objectivesSummary(objectives: readonly CouncilObjective[]): string {
-  return countLine(objectives.length, "objective");
+export function objectivesSummary(
+  objectives: readonly CouncilObjective[],
+  proposals: readonly CouncilProposal[],
+): string {
+  const pendingObjectiveIds = new Set(
+    proposals.filter((p) => p.status === "pending").map((p) => p.objective_id),
+  );
+  const withPending = objectives.filter((o) => pendingObjectiveIds.has(o.id)).length;
+  return countLine(objectives.length, "objective", { count: withPending, label: "with pending writes" });
 }
 
 /**
@@ -109,11 +138,15 @@ interface BudgetLike {
 
 /**
  * "6 budgets · 1 over limit" — the array the Overview "Budgets" panel
- * already holds (per-key budget rows built by budgetMeters()). "Over"
- * compares the raw spend/budget numbers directly rather than trusting the
- * clamped fraction, which saturates at 1 and can't tell "at" from "over."
+ * already holds (per-key budget rows built by budgetMeters() from the same
+ * KeyInfo records keysSummary reads). "Over" is at-or-above the limit, the
+ * same boundary keysSummary and orgsSummary use, so a key sitting exactly
+ * at its budget reads as over on every panel that shows it rather than
+ * flagged on one and silent on another. Compares the raw spend/budget
+ * numbers directly rather than trusting the clamped fraction, which
+ * saturates at 1 and can't tell "at" from "over."
  */
 export function budgetsSummary(meters: readonly BudgetLike[]): string {
-  const over = meters.filter((m) => m.spend > m.budget).length;
+  const over = meters.filter((m) => m.spend >= m.budget).length;
   return countLine(meters.length, "budget", { count: over, label: "over limit" });
 }
