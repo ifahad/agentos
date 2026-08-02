@@ -8,7 +8,6 @@
  * it is not.
  */
 
-import type { BudgetMeter } from "../pages/overviewFeed";
 import type { AuditEntry, CouncilObjective, DocumentInfo, KeyInfo, Operator, Org, User } from "./types";
 
 /**
@@ -30,12 +29,18 @@ export function countLine(
 }
 
 /**
- * "12 keys" — KeyInfo (GET /admin/keys) carries only name/monthly_budget_usd
- * /spend_usd, no active/inactive flag. Rather than invent one, this is a
- * plain count with no attention clause.
+ * "12 keys · 2 over budget".
+ *
+ * A key with no budget set (0) is unlimited, not overspent, so it is
+ * excluded — confirmed against the gateway's own store semantics (see
+ * gateway/internal/store/memory.go and store.go: "A budget of 0 means
+ * unlimited, matching the rest of the gateway"). Budget exhaustion is what
+ * an operator needs to see on this page: it is the state that makes a key
+ * start refusing traffic.
  */
 export function keysSummary(keys: readonly KeyInfo[]): string {
-  return countLine(keys.length, "key");
+  const over = keys.filter((k) => k.monthly_budget_usd > 0 && k.spend_usd >= k.monthly_budget_usd).length;
+  return countLine(keys.length, "key", { count: over, label: "over budget" });
 }
 
 /** "3 documents" — DocumentInfo (name + chunk count) has no signal worth surfacing. */
@@ -91,13 +96,24 @@ export function auditEventsSummary(events: readonly AuditEntry[]): string {
 }
 
 /**
- * "6 budgets · 1 over limit" — BudgetMeter (Overview's per-key budget rows,
- * built by budgetMeters() in pages/overviewFeed.ts) is the array the
- * Overview "Budgets" panel already holds. It keeps spend/budget unclamped
- * alongside the [0,1]-clamped `fraction`, so "over" compares the raw
- * numbers directly rather than trusting a value that saturates at 1.
+ * The slice of a budget row this summary needs — just the raw spend/budget
+ * numbers, not the [0,1]-clamped fraction. Declared structurally so lib/
+ * never has to import from pages/: Overview's `BudgetMeter` (pages/
+ * overviewFeed.ts) satisfies this shape as-is, so its call site needs no
+ * change and no cast.
  */
-export function budgetsSummary(meters: readonly BudgetMeter[]): string {
+interface BudgetLike {
+  spend: number;
+  budget: number;
+}
+
+/**
+ * "6 budgets · 1 over limit" — the array the Overview "Budgets" panel
+ * already holds (per-key budget rows built by budgetMeters()). "Over"
+ * compares the raw spend/budget numbers directly rather than trusting the
+ * clamped fraction, which saturates at 1 and can't tell "at" from "over."
+ */
+export function budgetsSummary(meters: readonly BudgetLike[]): string {
   const over = meters.filter((m) => m.spend > m.budget).length;
   return countLine(meters.length, "budget", { count: over, label: "over limit" });
 }

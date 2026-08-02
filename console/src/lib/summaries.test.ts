@@ -127,16 +127,29 @@ function meter(overrides: Partial<BudgetMeter> = {}): BudgetMeter {
 }
 
 describe("keysSummary", () => {
-  it("is a plain count for no keys — KeyInfo has no active flag", () => {
+  it("counts zero keys", () => {
     expect(keysSummary([])).toBe("0 keys");
   });
 
-  it("singularises one key", () => {
-    expect(keysSummary([key({ name: "solo" })])).toBe("1 key");
+  it("singularises one key under budget, no attention clause", () => {
+    expect(keysSummary([key({ name: "solo", monthly_budget_usd: 25, spend_usd: 5 })])).toBe("1 key");
   });
 
-  it("stays a plain count for many keys, no attention clause", () => {
-    expect(keysSummary([key(), key(), key()])).toBe("3 keys");
+  it("flags a key exactly at its budget as over — the >= boundary", () => {
+    expect(keysSummary([key({ monthly_budget_usd: 25, spend_usd: 25 })])).toBe("1 key · 1 over budget");
+  });
+
+  it("counts many keys and only those over budget", () => {
+    const keys = [
+      key({ monthly_budget_usd: 25, spend_usd: 5 }),
+      key({ monthly_budget_usd: 25, spend_usd: 25 }),
+      key({ monthly_budget_usd: 25, spend_usd: 30 }),
+    ];
+    expect(keysSummary(keys)).toBe("3 keys · 2 over budget");
+  });
+
+  it("treats a zero budget as unlimited, not over", () => {
+    expect(keysSummary([key({ monthly_budget_usd: 0, spend_usd: 500 })])).toBe("1 key");
   });
 });
 
