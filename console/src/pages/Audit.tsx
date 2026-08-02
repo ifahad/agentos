@@ -215,10 +215,19 @@ export function Audit({ adminKey, openSettings }: PageProps) {
                     </td>
                   </Tr>
                 ))}
-                {t.view.rows.length === 0 && (
+                {t.view.rows.length === 0 && res.status !== "loading" && (
                   <Tr animate={false}>
-                    <td colSpan={8} className="empty">
-                      {rows.length === 0 ? "No audit events yet." : "No events match your search."}
+                    <td colSpan={8} className={rows.length === 0 ? undefined : "empty"}>
+                      {rows.length === 0 ? (
+                        // No action: this is a read-only feed of gateway
+                        // traffic — there's no control here that generates it.
+                        <EmptyState
+                          title="No audit events yet"
+                          description="Every chat and embedding call through the gateway lands here, newest first, along with any guardrail verdict — a quiet feed means no traffic has hit the gateway yet, not that anything is being hidden."
+                        />
+                      ) : (
+                        "No events match your search."
+                      )}
                     </td>
                   </Tr>
                 )}

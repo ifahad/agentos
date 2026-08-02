@@ -111,6 +111,10 @@ export function Multiverse({ adminKey }: PageProps) {
   const objectiveList = objectives.data !== DISABLED ? (objectives.data?.objectives ?? []) : [];
   const proposalList = proposals.data !== DISABLED ? (proposals.data?.proposals ?? []) : [];
   const enabledCount = memberList.filter((m) => m.enabled).length;
+  // True only before the first successful fetch resolves — mirrors the
+  // members panel's `members.loading && !members.data` gate, so the "No
+  // objectives yet" empty state can't render before we actually know.
+  const objectivesLoading = objectives.status === "loading" && objectives.data == null;
 
   return (
     <>
@@ -220,7 +224,11 @@ export function Multiverse({ adminKey }: PageProps) {
                   </Button>
                 </div>
               </Disclosure>
-              {objectiveList.length === 0 ? (
+              {objectivesLoading ? (
+                <div className="mv-pad">
+                  <Skeleton lines={3} height={14} />
+                </div>
+              ) : objectiveList.length === 0 ? (
                 <EmptyState
                   title="No objectives yet"
                   description="An objective is a goal you hand to the council; each one runs as cycles you can inspect and approve."

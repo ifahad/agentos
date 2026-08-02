@@ -122,8 +122,21 @@ export function Secrets({ adminKey, role, openSettings }: PageProps) {
                 ))}
                 {secrets.length === 0 && !loading && (
                   <Tr animate={false}>
-                    <td colSpan={3} className="empty">
-                      No secrets reported.
+                    <td colSpan={3}>
+                      <EmptyState
+                        title="No secrets reported"
+                        description="A secret is a provider credential (an API key, say) the gateway resolved at startup — its name, whether it's present, and which backend supplied it, never the value itself."
+                        action={
+                          <Button
+                            small
+                            icon="refresh"
+                            onClick={() => void reloadSecrets()}
+                            disabled={reloading}
+                          >
+                            {reloading ? "Reloading…" : "Reload secrets"}
+                          </Button>
+                        }
+                      />
                     </td>
                   </Tr>
                 )}

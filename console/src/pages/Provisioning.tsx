@@ -135,8 +135,22 @@ export function Provisioning({ adminKey, role, openSettings }: PageProps) {
                   })}
                   {users.length === 0 && !usersLoad.loading && (
                     <Tr animate={false}>
-                      <td colSpan={5} className="empty">
-                        {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
+                      <td colSpan={5}>
+                        {/* No action either way: this page is a read-only
+                            mirror of the identity provider's roster — "there
+                            is nothing to create or delete here" (see the intro
+                            panel above). */}
+                        {activeOrg ? (
+                          <EmptyState
+                            title="No users in this org yet"
+                            description="A provisioned user is synced from your identity provider over SCIM — their role, active status and whether they're IdP-managed. None have synced into this org so far."
+                          />
+                        ) : (
+                          <EmptyState
+                            title="No org selected"
+                            description="Pick an org above to see the roster your identity provider has synced into it."
+                          />
+                        )}
                       </td>
                     </Tr>
                   )}
