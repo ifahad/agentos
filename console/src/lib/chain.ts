@@ -255,6 +255,18 @@ export function latestChainState(entries: readonly ChainEvidence[]): ChainState 
 }
 
 /**
+ * How many entries in this feed describe a `/v1` request.
+ *
+ * The chain lights from the filtered feed, so anything watching the feed for
+ * *new traffic* has to filter identically. Counting raw rows would announce a
+ * request whenever an operator clicks Reload on the Secrets page — traffic the
+ * chain itself, correctly, refuses to place.
+ */
+export function chainFeedCount(entries: readonly ChainEvidence[]): number {
+  return entries.filter((entry) => !ADMIN_PLANE_KINDS.has(entry.kind)).length;
+}
+
+/**
  * Per-stage render state, in chain order.
  *
  * "cleared" stages are drawn in ink, the halting stage takes the outcome

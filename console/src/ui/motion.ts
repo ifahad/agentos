@@ -9,9 +9,19 @@
  */
 import type { Variants, Transition } from "framer-motion";
 
-/** Seconds — matches --dur-fast: 120ms. Hovers, presses, focus. */
+/**
+ * Seconds. Hovers, presses, focus.
+ * NOTE: does not match CSS --dur-fast (110ms, styles.css) — the JS and CSS
+ * motion tokens drifted out of sync when they were written. Not corrected
+ * here: this is a refactor (route call sites through the shared presets),
+ * and reconciling the two is a design decision, not a consolidation.
+ */
 export const DUR_FAST = 0.12;
-/** Seconds — matches --dur-med: 200ms. Entrances, transitions. */
+/**
+ * Seconds. Entrances, transitions.
+ * NOTE: does not match CSS --dur-med (180ms, styles.css) — same pre-existing
+ * drift as DUR_FAST above.
+ */
 export const DUR_MED = 0.2;
 /** Page transition duration (spec: 160ms fade + 6px rise). */
 export const DUR_PAGE = 0.16;

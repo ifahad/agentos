@@ -3,8 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import { useLiveResource } from "../hooks/useLiveResource";
 import { apiFetch, gatewayAdminRequest } from "../lib/api";
 import type { ChainStage, ChainState } from "../lib/chain";
-import { CHAIN_STAGES, IDLE_CHAIN, latestChainState, stageRenders } from "../lib/chain";
+import { CHAIN_STAGES, IDLE_CHAIN, chainFeedCount, latestChainState, stageRenders } from "../lib/chain";
 import type { AuditEntry } from "../lib/types";
+import { EASE } from "../ui";
 import { StateIcon } from "../ui/icons";
 import "./Chain.css";
 
@@ -89,11 +90,13 @@ export function Chain({ adminKey }: ChainProps) {
     // denial.
     if (!entries) return;
     // Growth in the feed means new traffic since the last poll; that is the
-    // only thing that lights the chain.
-    if (seenCount.current !== null && entries.length > seenCount.current) {
+    // only thing that lights the chain. Count the same filtered set the chain
+    // draws from — an admin-plane row is not traffic.
+    const count = chainFeedCount(entries);
+    if (seenCount.current !== null && count > seenCount.current) {
       activeUntil.current = Date.now() + LINGER_MS;
     }
-    seenCount.current = entries.length;
+    seenCount.current = count;
     setState(latestChainState(entries));
     setActive(Date.now() < activeUntil.current);
   }, [adminKey, audit.data]);
@@ -114,7 +117,10 @@ export function Chain({ adminKey }: ChainProps) {
             className="chain-fill"
             initial={false}
             animate={{ scaleX: progress }}
-            transition={{ duration: 0.55, ease: [0.2, 0.8, 0.2, 1] }}
+            /* Not transitionFast/transition: this is the chain filling to reflect
+               real cleared-stage progress, deliberately slower (550ms) than any
+               UI-chrome preset so the ink read as tracking evidence, not a blip. */
+            transition={{ duration: 0.55, ease: EASE }}
           />
         )}
       </div>

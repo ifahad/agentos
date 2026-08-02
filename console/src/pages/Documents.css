@@ -13,10 +13,10 @@
 
 @keyframes doc-drop-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0.25);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 25%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 10px rgba(90, 209, 196, 0);
+    box-shadow: 0 0 0 10px color-mix(in srgb, var(--live) 0%, transparent);
   }
 }
 
@@ -51,7 +51,7 @@
 .doc-hint {
   margin: 8px 0 12px;
   font-size: 12px;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 @media (prefers-reduced-motion: reduce) {

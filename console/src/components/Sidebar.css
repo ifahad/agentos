@@ -18,13 +18,13 @@
 
 @keyframes live-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0.4);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 40%, transparent);
   }
   70% {
-    box-shadow: 0 0 0 6px rgba(90, 209, 196, 0);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--live) 0%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 0%, transparent);
   }
 }
 
@@ -42,14 +42,15 @@
   background: transparent;
 }
 
-/* Selection is a machined edge, not a colored tab: a raised panel with a hard
-   rule down its leading edge. Colour would compete with the status signals. */
+/* Selection is the interface speaking about itself, so the active marker
+   carries the violet accent, not a state hue — a teal marker would read as
+   "in flight". */
 .nav-pill {
   position: absolute;
   inset: 0;
   border-radius: var(--radius-sm);
-  background: var(--raised-2);
-  box-shadow: inset 2px 0 0 0 var(--text-dim);
+  background: color-mix(in srgb, var(--v) 12%, var(--raised-2));
+  box-shadow: inset 2px 0 0 0 var(--v);
 }
 
 .nav-item-label,
@@ -69,10 +70,17 @@
   color: var(--text);
 }
 
-/* Waiting on a credential is a held state, drawn with the same amber the
-   platform uses for a tool call awaiting approval. */
+.nav-item.active .nav-item-label,
+.nav-item.active .nav-icon {
+  color: var(--v2);
+}
+
+/* Waiting on a credential is a held state, same meaning as a tool call
+   awaiting approval — but --hold as text cannot clear 4.5:1 on any light
+   surface (3.16:1 on --inset), so the sidebar note takes full ink instead.
+   The held semantic still reads from the words themselves ("no key"). */
 .nav-note-hold {
-  color: var(--hold);
+  color: var(--text);
 }
 
 @media (prefers-reduced-motion: reduce) {

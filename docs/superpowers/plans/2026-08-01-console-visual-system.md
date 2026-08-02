@@ -50,7 +50,7 @@ Every task's requirements implicitly include this section.
 | `console/src/components/Chain.tsx` | Pulse counts the filtered feed |
 | `console/src/lib/chain.ts` | New `chainFeedCount` helper |
 | `console/src/components/SettingsModal.tsx` | Theme control |
-| 11 animating files | Motion consolidation onto `ui/motion` presets |
+| 3 animating files (Sidebar, Chain, GovernanceChainVisual) | Motion consolidation onto `ui/motion` presets |
 
 ## Conversion Inventory
 
@@ -505,14 +505,14 @@ describe("chroma partition", () => {
   });
 
   it("keeps violet off instrument surfaces", () => {
+    const offenders: string[] = [];
     for (const [path, css] of cssFiles()) {
       if (!INSTRUMENT_FILES.includes(path)) continue;
-      const offenders = css
-        .split("\n")
-        .map((line, i) => [i + 1, line] as const)
-        .filter(([, line]) => VIOLET.test(line));
-      expect(offenders, `${path} depicts machine state; violet is banned there`).toEqual([]);
+      css.split("\n").forEach((line, i) => {
+        if (VIOLET.test(line)) offenders.push(`${path}:${i + 1} ${line.trim()}`);
+      });
     }
+    expect(offenders, "these files depict machine state; violet is banned there").toEqual([]);
   });
 
   it("keeps violet out of badge rules", () => {
@@ -529,13 +529,13 @@ describe("chroma partition", () => {
   it("never uses --v as a text colour", () => {
     // --v is 4.43:1 on --bg, below the 4.5:1 floor. It is a fill.
     const COLOR_DECL = /(?<![-\w])color\s*:\s*[^;{}]*var\(\s*--v\s*\)/;
+    const offenders: string[] = [];
     for (const [path, css] of cssFiles()) {
-      const offenders = css
-        .split("\n")
-        .map((line, i) => `${path}:${i + 1}` as const)
-        .filter((_, i) => COLOR_DECL.test(css.split("\n")[i]));
-      expect(offenders, "--v is fill-only; use --v2 for text").toEqual([]);
+      css.split("\n").forEach((line, i) => {
+        if (COLOR_DECL.test(line)) offenders.push(`${path}:${i + 1} ${line.trim()}`);
+      });
     }
+    expect(offenders, "--v is fill-only; use --v2 for text").toEqual([]);
   });
 });
 ```
@@ -672,13 +672,25 @@ Apply the same substitution everywhere, preserving each site's own percentage an
 
 - [ ] **Step 5: Verify no literals remain**
 
+Two checks, because `styles.css` legitimately contains literals (they are the token *definitions*) and no other file does.
+
 ```bash
-cd /home/iofahd/code/agentos/console/src && \
-  grep -nE '#[0-9a-fA-F]{3,8}\b|rgba?\(' $(find . -name '*.css') \
-  | grep -v 'styles.css:[1-9][0-9]\?:' | grep -v 'fonts.css'
+# 1. No CSS file except styles.css may contain any colour literal.
+cd <worktree>/console/src && \
+  grep -nE '#[0-9a-fA-F]{3,8}\b|rgba?\(' \
+  $(find . -name '*.css' ! -name 'styles.css' ! -name 'fonts.css')
 ```
 
-Expected: only matches inside the `:root`, `[data-theme]` and `@media (prefers-color-scheme)` blocks of `styles.css`, which are token *definitions*. Any other hit is unconverted.
+Expected: **no output at all** (grep exits 1).
+
+```bash
+# 2. In styles.css, every literal must sit inside a token-definition block.
+cd <worktree>/console/src && \
+  awk '/^:root|^\[data-theme|^@media|^\}/ { blk = $0 } \
+       /#[0-9a-fA-F]{3,8}|rgba?\(/ { print NR": "blk" | "$0 }' styles.css
+```
+
+Expected: every line reports a `blk` of `:root`, `:root[data-theme="light"]` or `@media (prefers-color-scheme: light)`. **One deliberate exception:** `.btn.primary { color: #ffffff }` from Task 4, which is a literal on purpose — `--text` follows the theme and would turn near-black on the light ground, where the violet fill stays dark. If Task 4 has not run yet, that line will not be present.
 
 - [ ] **Step 6: Run the suite and commit**
 
@@ -725,7 +737,12 @@ In `console/src/styles.css`, replace the `.btn.primary` block:
 
 ```css
 .btn:hover {
-  border-color: color-mix(in srgb, var(--v) 55%, var(--border-strong));
+  /* Solid, not a mix into --border-strong: that token is translucent, so
+     mixing into it lets the button's own ground bleed through and drops the
+     edge to 2.55:1 — below the 3:1 non-text floor, on the only hover cue
+     plain buttons have. --v is opaque and clears the floor on every surface
+     a button sits on: 4.21-4.51:1 dark, 4.17-5.00:1 light. */
+  border-color: var(--v);
 }
 ```
 
@@ -798,7 +815,7 @@ git commit -m "feat(console): re-skin primitives onto the violet accent"
 
 ### Task 5: Motion consolidation
 
-`ui/motion.ts` already exports `DUR_FAST`, `DUR_MED`, `DUR_PAGE`, `EASE`, `STAGGER`, `STAGGER_MAX_ITEMS`, `transition`, `transitionFast`, `fadeRise`, `fadeRiseReduced`, `fade`, `staggerContainer`, `staggerItem`, `staggerItemReduced`, `modalBackdrop`, `modalPanel`, `modalPanelReduced`, `toastItem`, `toastItemReduced`, `pageTransition` — all re-exported from `ui/index.ts`. Only `ui/Toast.tsx` and `ui/Tabs.tsx` use them.
+`ui/motion.ts` already exports `DUR_FAST`, `DUR_MED`, `DUR_PAGE`, `EASE`, `STAGGER`, `STAGGER_MAX_ITEMS`, `transition`, `transitionFast`, `fadeRise`, `fadeRiseReduced`, `fade`, `staggerContainer`, `staggerItem`, `staggerItemReduced`, `modalBackdrop`, `modalPanel`, `modalPanelReduced`, `toastItem`, `toastItemReduced`, `pageTransition` — all re-exported from `ui/index.ts`. Eight files already use them via the barrel (App, CommandPalette, LiveList, Docs, Improve, Keys, Overview, Playground); three hand-roll their own (Sidebar, Chain, GovernanceChainVisual).
 
 **Files:**
 - Modify: `App.tsx`, `pages/Overview.tsx`, `pages/Keys.tsx`, `pages/Docs.tsx`, `pages/Improve.tsx`, `pages/Playground.tsx`, `components/Sidebar.tsx`, `components/Chain.tsx`, `components/LiveList.tsx`, `components/CommandPalette.tsx`, `pages/docs/visuals/GovernanceChainVisual.tsx`
@@ -865,8 +882,8 @@ cd /home/iofahd/code/agentos/console && npm run build && npx vitest run
 git add console/src
 git commit -m "refactor(console): route animation through the shared presets
 
-ui/motion.ts had two consumers while eleven files hand-rolled variants
-around it. No new animation is authored."
+Eight files already used ui/motion via the ../ui barrel; three hand-roll
+variants (Sidebar, Chain, GovernanceChainVisual). No new animation is authored."
 ```
 
 ---

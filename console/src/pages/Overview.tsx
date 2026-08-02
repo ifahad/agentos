@@ -242,6 +242,10 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
                           className={`ov-meter-fill ${meterTone(m.fraction)}`.trim()}
                           initial={reduced ? false : { width: 0 }}
                           animate={{ width: `${m.fraction * 100}%` }}
+                          /* Not a preset: a one-time budget-meter draw-in, slower
+                             (600ms) than any entrance preset and staggered by
+                             row index rather than STAGGER, so each bar reads
+                             as filling to its own measured fraction. */
                           transition={{ duration: 0.6, ease: EASE, delay: 0.1 + i * 0.06 }}
                         />
                       </div>

@@ -53,7 +53,7 @@
   min-width: 0;
 }
 
-/* Equal stages keep the fill fraction (cleared / 5) landing exactly on a
+/* Equal stages keep the fill fraction (cleared / 6) landing exactly on a
    boundary, so the rule can never imply a stage half-ran. */
 .chain-stage {
   flex: 1;
@@ -83,7 +83,11 @@
   font-weight: 500;
   letter-spacing: var(--eyebrow-track);
   text-transform: uppercase;
-  color: var(--text-faint);
+  /* --text-faint fails 4.5:1 on the light ground at this size (2.65:1 on
+     --bg); --text-dim clears it and matches what the cleared-stage rule
+     below already promotes to, so a pending label no longer differs from a
+     cleared one only in whether it's readable. */
+  color: var(--text-dim);
   white-space: nowrap;
   transition: color var(--dur-med) var(--ease);
 }
@@ -102,7 +106,7 @@
   background: var(--deny);
   box-shadow:
     inset 0 0 0 1px var(--deny),
-    0 0 0 3px rgba(226, 104, 95, 0.16);
+    0 0 0 3px color-mix(in srgb, var(--deny) 16%, transparent);
 }
 
 .chain-stage[data-render="stopped"] .chain-label {
@@ -113,7 +117,7 @@
   background: var(--hold);
   box-shadow:
     inset 0 0 0 1px var(--hold),
-    0 0 0 3px rgba(227, 168, 81, 0.16);
+    0 0 0 3px color-mix(in srgb, var(--hold) 16%, transparent);
 }
 
 .chain-outcome {

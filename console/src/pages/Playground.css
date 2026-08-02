@@ -32,25 +32,25 @@
 
 @keyframes pg-live-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0.45);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 45%, transparent);
   }
   70% {
-    box-shadow: 0 0 0 7px rgba(90, 209, 196, 0);
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--live) 0%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 0%, transparent);
   }
 }
 
 @keyframes pg-live-pulse-amber {
   0% {
-    box-shadow: 0 0 0 0 rgba(227, 168, 81, 0.4);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--hold) 40%, transparent);
   }
   70% {
-    box-shadow: 0 0 0 7px rgba(227, 168, 81, 0);
+    box-shadow: 0 0 0 7px color-mix(in srgb, var(--hold) 0%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(227, 168, 81, 0);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--hold) 0%, transparent);
   }
 }
 
@@ -64,7 +64,12 @@
   height: 13px;
   border-radius: 4px;
   margin-top: 4px;
-  background: linear-gradient(90deg, var(--inset) 25%, #1a1f27 50%, var(--inset) 75%);
+  background: linear-gradient(
+    90deg,
+    var(--inset) 25%,
+    color-mix(in srgb, var(--text) 8%, var(--inset)) 50%,
+    var(--inset) 75%
+  );
   background-size: 200% 100%;
   animation: pg-shimmer 1.4s linear infinite;
 }
@@ -131,7 +136,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--text-faint);
+  color: var(--text-dim);
   min-width: 0;
 }
 

@@ -7,7 +7,7 @@
 }
 
 .chart-grid {
-  stroke: var(--border, rgba(255, 255, 255, 0.06));
+  stroke: var(--border);
   stroke-width: 1;
 }
 
@@ -15,7 +15,7 @@
   font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
   font-variant-numeric: tabular-nums;
   font-size: 10px;
-  fill: var(--text-faint, #5c636e);
+  fill: var(--text-faint);
 }
 
 .chart-line {
@@ -27,7 +27,7 @@
 }
 
 .chart-area {
-  fill: rgba(255, 255, 255, 0.05);
+  fill: color-mix(in srgb, var(--text) 5%, transparent);
   stroke: none;
 }
 
@@ -74,7 +74,7 @@
 
 .breakdown-label {
   font-size: 12px;
-  color: var(--text-dim, #8b929d);
+  color: var(--text-dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -82,7 +82,7 @@
 
 .breakdown-track {
   height: 6px;
-  background: var(--inset, #0c0e12);
+  background: var(--inset);
   border-radius: 3px;
   overflow: hidden;
 }
@@ -100,13 +100,13 @@
   font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
   font-variant-numeric: tabular-nums;
   font-size: 12px;
-  color: var(--text-dim, #8b929d);
+  color: var(--text-dim);
   text-align: right;
 }
 
 .breakdown-empty {
   font-size: 12px;
-  color: var(--text-faint, #5c636e);
+  color: var(--text-dim);
 }
 
 @keyframes chart-bar {

@@ -88,13 +88,13 @@
 
 .op-run-cycles {
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .op-run-time {
   margin-left: auto;
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 .op-run-output {
@@ -134,13 +134,13 @@
 
 @keyframes op-live-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0.35);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 35%, transparent);
   }
   70% {
-    box-shadow: 0 0 0 6px rgba(90, 209, 196, 0);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--live) 0%, transparent);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 0%, transparent);
   }
 }
 

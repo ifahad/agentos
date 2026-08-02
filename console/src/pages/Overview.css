@@ -62,15 +62,15 @@
 
 @keyframes ov-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0.35);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 35%, transparent);
     opacity: 1;
   }
   70% {
-    box-shadow: 0 0 0 6px rgba(90, 209, 196, 0);
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--live) 0%, transparent);
     opacity: 0.65;
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(90, 209, 196, 0);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 0%, transparent);
     opacity: 1;
   }
 }
@@ -98,7 +98,7 @@
 
 .ov-feed-sub {
   font-size: 11.5px;
-  color: var(--text-faint);
+  color: var(--text-dim);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -123,7 +123,7 @@
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: var(--text-faint);
+  color: var(--text-dim);
 }
 
 /* ---- Budget meters ---- */
@@ -162,7 +162,7 @@
   font-family: var(--mono);
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
-  color: var(--text-faint);
+  color: var(--text-dim);
   flex-shrink: 0;
 }
 

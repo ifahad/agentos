@@ -3,18 +3,37 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
-    <!-- Paint graphite before any CSS arrives: a dark instrument must never
-         flash white while it loads. Mirrors --bg in src/styles.css. -->
+    <meta name="color-scheme" content="light dark" />
+    <!-- Paint the ground before any CSS arrives: an instrument must never
+         flash the wrong colour while it loads. Mirrors --bg in src/styles.css
+         for both grounds. -->
     <style>
       html {
-        background: #121517;
+        background: #07080b;
+      }
+      @media (prefers-color-scheme: light) {
+        html:not([data-theme]) {
+          background: #eceae4;
+        }
+      }
+      html[data-theme="light"] {
+        background: #eceae4;
       }
     </style>
+    <script>
+      // Applied before first paint so a stored choice never flashes the other
+      // ground. Wrapped because localStorage throws in some privacy modes.
+      try {
+        var t = localStorage.getItem("agentos-theme");
+        if (t === "light" || t === "dark") {
+          document.documentElement.setAttribute("data-theme", t);
+        }
+      } catch (e) {}
+    </script>
     <!-- The chain node: a square seated on the rule. -->
     <link
       rel="icon"
-      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23121517'/%3E%3Cpath d='M2 8h12' stroke='%237e878e' stroke-width='1'/%3E%3Crect x='6' y='6' width='4' height='4' fill='%23e6e9eb'/%3E%3C/svg%3E"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%2307080b'/%3E%3Cpath d='M2 8h12' stroke='%237e878e' stroke-width='1'/%3E%3Crect x='6' y='6' width='4' height='4' fill='%23e6e9eb'/%3E%3C/svg%3E"
     />
     <title>AgentOS Console</title>
   </head>
