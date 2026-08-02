@@ -136,6 +136,7 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
               label="Requests"
               value={totals.requests}
               delay={0}
+              unavailable={!adminKey}
               spark={
                 sparkValues.length > 0 ? (
                   <Sparkline
@@ -145,9 +146,21 @@ export function Overview({ adminKey, openSettings, navigate }: PageProps) {
                 ) : undefined
               }
             />
-            <Stat label="Tokens" value={totals.tokens} delay={60} />
-            <Stat label="Spend" value={totals.spend} decimals={2} prefix="$" delay={120} />
-            <Stat label="Active keys" value={usage.length} delay={180} />
+            <Stat label="Tokens" value={totals.tokens} delay={60} unavailable={!adminKey} />
+            <Stat
+              label="Spend"
+              value={totals.spend}
+              decimals={2}
+              prefix="$"
+              delay={120}
+              unavailable={!adminKey}
+            />
+            <Stat
+              label="Active keys"
+              value={usage.length}
+              delay={180}
+              unavailable={!adminKey}
+            />
           </>
         )}
       </div>
