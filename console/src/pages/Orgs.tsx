@@ -10,7 +10,7 @@ import type { Column } from "../lib/export";
 import { budgetFraction, formatRpm, formatUSD } from "../lib/format";
 import { can } from "../lib/rbac";
 import type { Org } from "../lib/types";
-import { Button, Input, Panel, PanelHead, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
+import { Button, EmptyState, Input, Panel, PanelHead, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
 
 // Hoisted to module scope so useTableView's memo dependency is stable.
 const SEARCH_FIELDS = ["name", "id"] as const;
@@ -125,7 +125,7 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
       {adminKey && !allowed && <ForbiddenNotice message="Orgs are visible to the root admin only." />}
       <ErrorNotice error={error} />
 
-      {adminKey && allowed && (
+      {(!adminKey || allowed) && (
         <>
           {canCreate && (
             <Panel>
@@ -168,99 +168,111 @@ export function Orgs({ adminKey, role, openSettings }: PageProps) {
               title="Organizations"
               actions={<TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />}
             />
-            <Table>
-              <thead>
-                <tr>
-                  <SortableTh<Org>
-                    label="Name"
-                    sortKey="name"
-                    active={t.sort?.key === "name"}
-                    dir={t.sort?.dir ?? "asc"}
-                    onSort={t.toggleSort}
-                  />
-                  <th>Id</th>
-                  <th className="num">Monthly budget</th>
-                  <SortableTh<Org>
-                    className="num"
-                    label="Aggregate spend"
-                    sortKey="spend_usd"
-                    active={t.sort?.key === "spend_usd"}
-                    dir={t.sort?.dir ?? "asc"}
-                    numeric
-                    onSort={t.toggleSort}
-                  />
-                  <th>Budget used</th>
-                  <th>Rate limit (rpm)</th>
-                </tr>
-              </thead>
-              <Tbody staggerKey={`${t.view.rows.length}-${t.sort ? `${String(t.sort.key)}:${t.sort.dir}` : "none"}`}>
-                {showSkeleton &&
-                  Array.from({ length: 3 }, (_, i) => (
-                    <Tr key={`skel-${i}`} animate={false}>
-                      <td><Skeleton width={120} /></td>
-                      <td><Skeleton width={140} /></td>
-                      <td className="num"><Skeleton width={64} /></td>
-                      <td className="num"><Skeleton width={64} /></td>
-                      <td><Skeleton width={140} /></td>
-                      <td><Skeleton width={160} /></td>
-                    </Tr>
-                  ))}
-                {t.view.rows.map((o) => {
-                  const frac = budgetFraction(o.spend_usd, o.monthly_budget_usd);
-                  const draft = rpmEdits[o.id] ?? String(o.rate_limit_rpm);
-                  const dirty = draft !== String(o.rate_limit_rpm);
-                  return (
-                    <Tr key={o.id}>
-                      <td>{o.name}</td>
-                      <td className="mono dim">{o.id}</td>
-                      <td className="num">{formatUSD(o.monthly_budget_usd)}</td>
-                      <td className="num">{formatUSD(o.spend_usd)}</td>
-                      <td>
-                        <span className={`meter${frac >= 0.9 ? " hot" : ""}`}>
-                          <div style={{ width: `${Math.round(frac * 100)}%` }} />
-                        </span>{" "}
-                        <span className="dim muted">{Math.round(frac * 100)}%</span>
+            {!adminKey ? (
+              <EmptyState
+                title="No admin key configured"
+                description="Tenants of the gateway — their budgets, spend and rate limits — appear here once the console can reach the admin API."
+                action={
+                  <Button variant="primary" onClick={openSettings}>
+                    Open settings
+                  </Button>
+                }
+              />
+            ) : (
+              <Table>
+                <thead>
+                  <tr>
+                    <SortableTh<Org>
+                      label="Name"
+                      sortKey="name"
+                      active={t.sort?.key === "name"}
+                      dir={t.sort?.dir ?? "asc"}
+                      onSort={t.toggleSort}
+                    />
+                    <th>Id</th>
+                    <th className="num">Monthly budget</th>
+                    <SortableTh<Org>
+                      className="num"
+                      label="Aggregate spend"
+                      sortKey="spend_usd"
+                      active={t.sort?.key === "spend_usd"}
+                      dir={t.sort?.dir ?? "asc"}
+                      numeric
+                      onSort={t.toggleSort}
+                    />
+                    <th>Budget used</th>
+                    <th>Rate limit (rpm)</th>
+                  </tr>
+                </thead>
+                <Tbody staggerKey={`${t.view.rows.length}-${t.sort ? `${String(t.sort.key)}:${t.sort.dir}` : "none"}`}>
+                  {showSkeleton &&
+                    Array.from({ length: 3 }, (_, i) => (
+                      <Tr key={`skel-${i}`} animate={false}>
+                        <td><Skeleton width={120} /></td>
+                        <td><Skeleton width={140} /></td>
+                        <td className="num"><Skeleton width={64} /></td>
+                        <td className="num"><Skeleton width={64} /></td>
+                        <td><Skeleton width={140} /></td>
+                        <td><Skeleton width={160} /></td>
+                      </Tr>
+                    ))}
+                  {t.view.rows.map((o) => {
+                    const frac = budgetFraction(o.spend_usd, o.monthly_budget_usd);
+                    const draft = rpmEdits[o.id] ?? String(o.rate_limit_rpm);
+                    const dirty = draft !== String(o.rate_limit_rpm);
+                    return (
+                      <Tr key={o.id}>
+                        <td>{o.name}</td>
+                        <td className="mono dim">{o.id}</td>
+                        <td className="num">{formatUSD(o.monthly_budget_usd)}</td>
+                        <td className="num">{formatUSD(o.spend_usd)}</td>
+                        <td>
+                          <span className={`meter${frac >= 0.9 ? " hot" : ""}`}>
+                            <div style={{ width: `${Math.round(frac * 100)}%` }} />
+                          </span>{" "}
+                          <span className="dim muted">{Math.round(frac * 100)}%</span>
+                        </td>
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <Input
+                              type="number"
+                              min="0"
+                              step="1"
+                              className="rpm-input"
+                              aria-label={`Rate limit for ${o.name}`}
+                              value={draft}
+                              onChange={(e) =>
+                                setRpmEdits((edits) => ({ ...edits, [o.id]: e.target.value }))
+                              }
+                            />
+                            <span className="dim muted">{formatRpm(o.rate_limit_rpm)}</span>
+                            {dirty && (
+                              <Button
+                                small
+                                variant="primary"
+                                onClick={() => void saveRpm(o)}
+                                disabled={savingRpm === o.id}
+                              >
+                                {savingRpm === o.id ? "Saving…" : "Save"}
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </Tr>
+                    );
+                  })}
+                  {t.view.rows.length === 0 && !loading && (
+                    <Tr animate={false}>
+                      <td colSpan={6} className="empty">
+                        {orgs.length === 0
+                          ? `No orgs yet${canCreate ? " — create one above." : "."}`
+                          : "No orgs match your search."}
                       </td>
-                      <td>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <Input
-                            type="number"
-                            min="0"
-                            step="1"
-                            className="rpm-input"
-                            aria-label={`Rate limit for ${o.name}`}
-                            value={draft}
-                            onChange={(e) =>
-                              setRpmEdits((edits) => ({ ...edits, [o.id]: e.target.value }))
-                            }
-                          />
-                          <span className="dim muted">{formatRpm(o.rate_limit_rpm)}</span>
-                          {dirty && (
-                            <Button
-                              small
-                              variant="primary"
-                              onClick={() => void saveRpm(o)}
-                              disabled={savingRpm === o.id}
-                            >
-                              {savingRpm === o.id ? "Saving…" : "Save"}
-                            </Button>
-                          )}
-                        </div>
-                      </td>
                     </Tr>
-                  );
-                })}
-                {t.view.rows.length === 0 && !loading && (
-                  <Tr animate={false}>
-                    <td colSpan={6} className="empty">
-                      {orgs.length === 0
-                        ? `No orgs yet${canCreate ? " — create one above." : "."}`
-                        : "No orgs match your search."}
-                    </td>
-                  </Tr>
-                )}
-              </Tbody>
-            </Table>
+                  )}
+                </Tbody>
+              </Table>
+            )}
           </Panel>
         </>
       )}

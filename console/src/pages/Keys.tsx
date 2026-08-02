@@ -15,6 +15,7 @@ import { can } from "../lib/rbac";
 import type { CreatedKey, KeyInfo } from "../lib/types";
 import {
   Button,
+  EmptyState,
   Input,
   Panel,
   PanelHead,
@@ -122,126 +123,134 @@ export function Keys({ adminKey, role, openSettings }: PageProps) {
         </motion.div>
       )}
 
-      {adminKey && (
-        <>
-          {canCreate && (
-            <Panel>
-              <PanelHead title="Create key" />
-              <div className="panel-body">
-                <div className="form-row">
-                  <Input
-                    label="Name"
-                    type="text"
-                    value={name}
-                    placeholder="team-analytics"
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                  <Input
-                    label="Monthly budget (USD)"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={budget}
-                    onChange={(e) => setBudget(e.target.value)}
-                  />
-                </div>
-                <Button variant="primary" icon="plus" onClick={() => void create()} disabled={creating}>
-                  {creating ? "Creating…" : "Create key"}
-                </Button>
-              </div>
-            </Panel>
-          )}
+      {canCreate && (
+        <Panel>
+          <PanelHead title="Create key" />
+          <div className="panel-body">
+            <div className="form-row">
+              <Input
+                label="Name"
+                type="text"
+                value={name}
+                placeholder="team-analytics"
+                onChange={(e) => setName(e.target.value)}
+              />
+              <Input
+                label="Monthly budget (USD)"
+                type="number"
+                min="0"
+                step="1"
+                value={budget}
+                onChange={(e) => setBudget(e.target.value)}
+              />
+            </div>
+            <Button variant="primary" icon="plus" onClick={() => void create()} disabled={creating}>
+              {creating ? "Creating…" : "Create key"}
+            </Button>
+          </div>
+        </Panel>
+      )}
 
-          <Panel>
-            <PanelHead
-              title="Existing keys"
-              actions={
-                <span className="head-group">
-                  <TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />
-                  <Freshness updatedAt={updatedAt} />
-                </span>
-              }
-            />
-            <Table>
-              <thead>
-                <tr>
-                  <SortableTh<KeyInfo>
-                    label="Name"
-                    sortKey="name"
-                    active={t.sort?.key === "name"}
-                    dir={t.sort?.dir ?? "asc"}
-                    onSort={t.toggleSort}
-                  />
-                  <SortableTh<KeyInfo>
-                    className="num"
-                    label="Monthly budget"
-                    sortKey="monthly_budget_usd"
-                    active={t.sort?.key === "monthly_budget_usd"}
-                    dir={t.sort?.dir ?? "asc"}
-                    numeric
-                    onSort={t.toggleSort}
-                  />
-                  <SortableTh<KeyInfo>
-                    className="num"
-                    label="Spend"
-                    sortKey="spend_usd"
-                    active={t.sort?.key === "spend_usd"}
-                    dir={t.sort?.dir ?? "asc"}
-                    numeric
-                    onSort={t.toggleSort}
-                  />
-                  <th>Budget used</th>
-                </tr>
-              </thead>
-              <Tbody staggerKey={`${t.view.rows.length}-${t.sort ? `${String(t.sort.key)}:${t.sort.dir}` : "none"}`}>
-                {keysLoading && keys.length === 0 &&
-                  [0, 1, 2].map((i) => (
-                    <Tr animate={false} key={`skeleton-${i}`}>
-                      <td>
-                        <Skeleton width={140} />
-                      </td>
-                      <td className="num">
-                        <Skeleton width={56} style={{ marginLeft: "auto", display: "block" }} />
-                      </td>
-                      <td className="num">
-                        <Skeleton width={56} style={{ marginLeft: "auto", display: "block" }} />
-                      </td>
-                      <td>
-                        <Skeleton width={120} height={4} />
-                      </td>
-                    </Tr>
-                  ))}
-                {/* Key names are not unique and the gateway exposes no id, so
-                    rows are identified by name plus position. */}
-                {t.view.rows.map((k, i) => {
-                  const frac = budgetFraction(k.spend_usd, k.monthly_budget_usd);
-                  const pct = Math.round(frac * 100);
-                  return (
-                    <Tr key={`${k.name}#${i}`}>
-                      <td className="mono">{k.name}</td>
-                      <td className="num">{formatUSD(k.monthly_budget_usd)}</td>
-                      <td className="num">{formatUSD(k.spend_usd)}</td>
-                      <td>
-                        <span className={`meter keys-meter${frac >= 0.9 ? " hot" : ""}`}>
-                          <div style={{ "--w": `${pct}%` } as CSSProperties} />
-                        </span>{" "}
-                        <span className="dim muted">{pct}%</span>
-                      </td>
-                    </Tr>
-                  );
-                })}
-                {t.view.rows.length === 0 && !keysLoading && (
-                  <Tr animate={false}>
-                    <td colSpan={4} className="empty">
-                      {keys.length === 0 ? "No keys yet — create one above." : "No keys match your search."}
+      <Panel>
+        <PanelHead
+          title="Existing keys"
+          actions={
+            <span className="head-group">
+              <TableToolbar query={t.query} onQuery={t.setQuery} onExport={onExport} />
+              <Freshness updatedAt={updatedAt} />
+            </span>
+          }
+        />
+        {!adminKey ? (
+          <EmptyState
+            title="No admin key configured"
+            description="Gateway keys and their monthly budgets appear here once the console can reach the admin API."
+            action={
+              <Button variant="primary" onClick={openSettings}>
+                Open settings
+              </Button>
+            }
+          />
+        ) : (
+          <Table>
+            <thead>
+              <tr>
+                <SortableTh<KeyInfo>
+                  label="Name"
+                  sortKey="name"
+                  active={t.sort?.key === "name"}
+                  dir={t.sort?.dir ?? "asc"}
+                  onSort={t.toggleSort}
+                />
+                <SortableTh<KeyInfo>
+                  className="num"
+                  label="Monthly budget"
+                  sortKey="monthly_budget_usd"
+                  active={t.sort?.key === "monthly_budget_usd"}
+                  dir={t.sort?.dir ?? "asc"}
+                  numeric
+                  onSort={t.toggleSort}
+                />
+                <SortableTh<KeyInfo>
+                  className="num"
+                  label="Spend"
+                  sortKey="spend_usd"
+                  active={t.sort?.key === "spend_usd"}
+                  dir={t.sort?.dir ?? "asc"}
+                  numeric
+                  onSort={t.toggleSort}
+                />
+                <th>Budget used</th>
+              </tr>
+            </thead>
+            <Tbody staggerKey={`${t.view.rows.length}-${t.sort ? `${String(t.sort.key)}:${t.sort.dir}` : "none"}`}>
+              {keysLoading && keys.length === 0 &&
+                [0, 1, 2].map((i) => (
+                  <Tr animate={false} key={`skeleton-${i}`}>
+                    <td>
+                      <Skeleton width={140} />
+                    </td>
+                    <td className="num">
+                      <Skeleton width={56} style={{ marginLeft: "auto", display: "block" }} />
+                    </td>
+                    <td className="num">
+                      <Skeleton width={56} style={{ marginLeft: "auto", display: "block" }} />
+                    </td>
+                    <td>
+                      <Skeleton width={120} height={4} />
                     </td>
                   </Tr>
-                )}
-              </Tbody>
-            </Table>
-          </Panel>
-        </>
-      )}
+                ))}
+              {/* Key names are not unique and the gateway exposes no id, so
+                  rows are identified by name plus position. */}
+              {t.view.rows.map((k, i) => {
+                const frac = budgetFraction(k.spend_usd, k.monthly_budget_usd);
+                const pct = Math.round(frac * 100);
+                return (
+                  <Tr key={`${k.name}#${i}`}>
+                    <td className="mono">{k.name}</td>
+                    <td className="num">{formatUSD(k.monthly_budget_usd)}</td>
+                    <td className="num">{formatUSD(k.spend_usd)}</td>
+                    <td>
+                      <span className={`meter keys-meter${frac >= 0.9 ? " hot" : ""}`}>
+                        <div style={{ "--w": `${pct}%` } as CSSProperties} />
+                      </span>{" "}
+                      <span className="dim muted">{pct}%</span>
+                    </td>
+                  </Tr>
+                );
+              })}
+              {t.view.rows.length === 0 && !keysLoading && (
+                <Tr animate={false}>
+                  <td colSpan={4} className="empty">
+                    {keys.length === 0 ? "No keys yet — create one above." : "No keys match your search."}
+                  </td>
+                </Tr>
+              )}
+            </Tbody>
+          </Table>
+        )}
+      </Panel>
     </>
   );
 }

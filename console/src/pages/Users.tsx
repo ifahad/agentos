@@ -14,7 +14,20 @@ import { formatTimestamp } from "../lib/format";
 import { activeBadge } from "../lib/provisioning";
 import { ROLES, can, roleLabel } from "../lib/rbac";
 import type { CreatedUser, Org, Role, User } from "../lib/types";
-import { Badge, Button, Input, Panel, PanelHead, Select, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
+import {
+  Badge,
+  Button,
+  EmptyState,
+  Input,
+  Panel,
+  PanelHead,
+  Select,
+  Skeleton,
+  Table,
+  Tbody,
+  Tr,
+  useToast,
+} from "../ui";
 
 export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
   const allowed = can(role, "user.view");
@@ -111,7 +124,7 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
       )}
       <ErrorNotice error={orgsLoad.error} />
 
-      {adminKey && allowed && (
+      {(!adminKey || allowed) && (
         <>
           <div className="thread-line">
             {isRoot ? (
@@ -188,63 +201,75 @@ export function Users({ adminKey, role, orgId, openSettings }: PageProps) {
           <Panel>
             <PanelHead title="Members" />
             <ErrorNotice error={usersLoad.error} />
-            <Table>
-              <thead>
-                <tr>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Created</th>
-                  {canRemove && <th></th>}
-                </tr>
-              </thead>
-              <Tbody staggerKey={`${activeOrg}:${users.length}`}>
-                {showSkeleton &&
-                  Array.from({ length: 3 }, (_, i) => (
-                    <Tr key={`skel-${i}`} animate={false}>
-                      <td><Skeleton width={180} /></td>
-                      <td><Skeleton width={56} /></td>
-                      <td><Skeleton width={56} /></td>
-                      <td><Skeleton width={120} /></td>
-                      {canRemove && <td className="num"><Skeleton width={64} /></td>}
-                    </Tr>
-                  ))}
-                {users.map((u) => {
-                  const b = activeBadge(u.active);
-                  return (
-                    <Tr key={u.id}>
-                      <td>{u.email}</td>
-                      <td>
-                        <Badge>{u.role}</Badge>
-                      </td>
-                      <td>
-                        <Badge variant={u.active ? "pass" : "inactive"}>{b.label}</Badge>
-                      </td>
-                      <td className="dim mono">{formatTimestamp(u.created_at)}</td>
-                      {canRemove && (
-                        <td className="num">
-                          <Button
-                            small
-                            variant="danger"
-                            onClick={() => void remove(u)}
-                            disabled={removing === u.id}
-                          >
-                            {removing === u.id ? "Removing…" : "Remove"}
-                          </Button>
+            {!adminKey ? (
+              <EmptyState
+                title="No admin key configured"
+                description="Members of an org and their roles appear here once the console can reach the admin API."
+                action={
+                  <Button variant="primary" onClick={openSettings}>
+                    Open settings
+                  </Button>
+                }
+              />
+            ) : (
+              <Table>
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    {canRemove && <th></th>}
+                  </tr>
+                </thead>
+                <Tbody staggerKey={`${activeOrg}:${users.length}`}>
+                  {showSkeleton &&
+                    Array.from({ length: 3 }, (_, i) => (
+                      <Tr key={`skel-${i}`} animate={false}>
+                        <td><Skeleton width={180} /></td>
+                        <td><Skeleton width={56} /></td>
+                        <td><Skeleton width={56} /></td>
+                        <td><Skeleton width={120} /></td>
+                        {canRemove && <td className="num"><Skeleton width={64} /></td>}
+                      </Tr>
+                    ))}
+                  {users.map((u) => {
+                    const b = activeBadge(u.active);
+                    return (
+                      <Tr key={u.id}>
+                        <td>{u.email}</td>
+                        <td>
+                          <Badge>{u.role}</Badge>
                         </td>
-                      )}
+                        <td>
+                          <Badge variant={u.active ? "pass" : "inactive"}>{b.label}</Badge>
+                        </td>
+                        <td className="dim mono">{formatTimestamp(u.created_at)}</td>
+                        {canRemove && (
+                          <td className="num">
+                            <Button
+                              small
+                              variant="danger"
+                              onClick={() => void remove(u)}
+                              disabled={removing === u.id}
+                            >
+                              {removing === u.id ? "Removing…" : "Remove"}
+                            </Button>
+                          </td>
+                        )}
+                      </Tr>
+                    );
+                  })}
+                  {users.length === 0 && !usersLoad.loading && (
+                    <Tr animate={false}>
+                      <td colSpan={canRemove ? 5 : 4} className="empty">
+                        {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
+                      </td>
                     </Tr>
-                  );
-                })}
-                {users.length === 0 && !usersLoad.loading && (
-                  <Tr animate={false}>
-                    <td colSpan={canRemove ? 5 : 4} className="empty">
-                      {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
-                    </td>
-                  </Tr>
-                )}
-              </Tbody>
-            </Table>
+                  )}
+                </Tbody>
+              </Table>
+            )}
           </Panel>
         </>
       )}

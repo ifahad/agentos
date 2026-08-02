@@ -4,7 +4,7 @@ import { ErrorNotice, ForbiddenNotice, NeedsKey, PageHead, errorMessage, useLoad
 import { ApiError, apiFetch, gatewayAdminRequest, reloadSecretsRequest } from "../lib/api";
 import { can } from "../lib/rbac";
 import type { SecretStatus } from "../lib/types";
-import { Badge, Button, Panel, PanelHead, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
+import { Badge, Button, EmptyState, Panel, PanelHead, Skeleton, Table, Tbody, Tr, useToast } from "../ui";
 
 export function Secrets({ adminKey, role, openSettings }: PageProps) {
   const allowed = can(role, "secret.view");
@@ -52,7 +52,7 @@ export function Secrets({ adminKey, role, openSettings }: PageProps) {
       {adminKey && !allowed && <ForbiddenNotice message="Secret status is visible to the root admin only." />}
       <ErrorNotice error={error} />
 
-      {adminKey && allowed && (
+      {(!adminKey || allowed) && (
         <Panel>
           <PanelHead
             title="Secret status"
@@ -73,51 +73,63 @@ export function Secrets({ adminKey, role, openSettings }: PageProps) {
             }
           />
           {forbidden && <ForbiddenNotice message="Reloading secrets is available to the root admin only." />}
-          <Table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Present</th>
-                <th>Source</th>
-              </tr>
-            </thead>
-            <Tbody staggerKey={secrets.length}>
-              {loading && secrets.length === 0 &&
-                [0, 1, 2].map((i) => (
-                  <Tr animate={false} key={`skeleton-${i}`}>
+          {!adminKey ? (
+            <EmptyState
+              title="No admin key configured"
+              description="Provider secrets resolved by the gateway — presence and backend only — appear here once the console can reach the admin API."
+              action={
+                <Button variant="primary" onClick={openSettings}>
+                  Open settings
+                </Button>
+              }
+            />
+          ) : (
+            <Table>
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Present</th>
+                  <th>Source</th>
+                </tr>
+              </thead>
+              <Tbody staggerKey={secrets.length}>
+                {loading && secrets.length === 0 &&
+                  [0, 1, 2].map((i) => (
+                    <Tr animate={false} key={`skeleton-${i}`}>
+                      <td>
+                        <Skeleton width={200} />
+                      </td>
+                      <td>
+                        <Skeleton width={64} height={18} style={{ borderRadius: 999 }} />
+                      </td>
+                      <td>
+                        <Skeleton width={72} height={18} style={{ borderRadius: 999 }} />
+                      </td>
+                    </Tr>
+                  ))}
+                {secrets.map((s) => (
+                  <Tr key={s.name}>
+                    <td className="mono">{s.name}</td>
                     <td>
-                      <Skeleton width={200} />
+                      <Badge variant={s.present ? "pass" : "fail"}>
+                        {s.present ? "present" : "missing"}
+                      </Badge>
                     </td>
                     <td>
-                      <Skeleton width={64} height={18} style={{ borderRadius: 999 }} />
-                    </td>
-                    <td>
-                      <Skeleton width={72} height={18} style={{ borderRadius: 999 }} />
+                      <Badge>{s.source}</Badge>
                     </td>
                   </Tr>
                 ))}
-              {secrets.map((s) => (
-                <Tr key={s.name}>
-                  <td className="mono">{s.name}</td>
-                  <td>
-                    <Badge variant={s.present ? "pass" : "fail"}>
-                      {s.present ? "present" : "missing"}
-                    </Badge>
-                  </td>
-                  <td>
-                    <Badge>{s.source}</Badge>
-                  </td>
-                </Tr>
-              ))}
-              {secrets.length === 0 && !loading && (
-                <Tr animate={false}>
-                  <td colSpan={3} className="empty">
-                    No secrets reported.
-                  </td>
-                </Tr>
-              )}
-            </Tbody>
-          </Table>
+                {secrets.length === 0 && !loading && (
+                  <Tr animate={false}>
+                    <td colSpan={3} className="empty">
+                      No secrets reported.
+                    </td>
+                  </Tr>
+                )}
+              </Tbody>
+            </Table>
+          )}
         </Panel>
       )}
     </>

@@ -12,7 +12,7 @@ import { downloadBlob, toCSV, toJSON } from "../lib/export";
 import type { Column } from "../lib/export";
 import { formatInt, formatLatency, formatTimestamp, formatUSD } from "../lib/format";
 import type { AuditEntry } from "../lib/types";
-import { Badge, Button, Panel, PanelHead, Table, Tbody, Tr } from "../ui";
+import { Badge, Button, EmptyState, Panel, PanelHead, Table, Tbody, Tr } from "../ui";
 import { feedEntryId, mergeFeedEntries } from "./overviewFeed";
 import "./Audit.css";
 
@@ -79,48 +79,58 @@ export function Audit({ adminKey, openSettings }: PageProps) {
       />
       {!adminKey && <NeedsKey openSettings={openSettings} />}
       <ErrorNotice error={res.error} />
-      {adminKey && (
-        <>
-          {rows.length > 0 && (
-            <Panel>
-              <PanelHead title="Spend" />
-              <UsageChart
-                values={series.map((p) => p.value)}
-                label="Spend per day"
-                xLabels={series.map((p) => new Date(p.t).toISOString().slice(5, 10))}
-                formatValue={formatUSD}
+      {rows.length > 0 && (
+        <Panel>
+          <PanelHead title="Spend" />
+          <UsageChart
+            values={series.map((p) => p.value)}
+            label="Spend per day"
+            xLabels={series.map((p) => new Date(p.t).toISOString().slice(5, 10))}
+            formatValue={formatUSD}
+          />
+        </Panel>
+      )}
+      <Panel>
+        <PanelHead
+          title="Events"
+          actions={
+            <span className="head-group">
+              <TableToolbar
+                query={t.query}
+                onQuery={t.setQuery}
+                facets={[
+                  {
+                    key: "kind",
+                    label: "Kind",
+                    options: KIND_OPTIONS,
+                    value: t.facets.kind ?? "",
+                    onChange: (v) => t.setFacet("kind", v),
+                  },
+                ]}
+                onExport={onExport}
               />
-            </Panel>
-          )}
-          <Panel>
-            <PanelHead
-              title="Events"
-              actions={
-                <span className="head-group">
-                  <TableToolbar
-                    query={t.query}
-                    onQuery={t.setQuery}
-                    facets={[
-                      {
-                        key: "kind",
-                        label: "Kind",
-                        options: KIND_OPTIONS,
-                        value: t.facets.kind ?? "",
-                        onChange: (v) => t.setFacet("kind", v),
-                      },
-                    ]}
-                    onExport={onExport}
-                  />
-                  <Button small onClick={() => setPaused((p) => !p)}>
-                    {paused ? "Paused" : "Live"}
-                  </Button>
-                  <Freshness updatedAt={rowsAt} />
-                  <Button small icon="refresh" onClick={res.reload}>
-                    Refresh
-                  </Button>
-                </span>
-              }
-            />
+              <Button small onClick={() => setPaused((p) => !p)}>
+                {paused ? "Paused" : "Live"}
+              </Button>
+              <Freshness updatedAt={rowsAt} />
+              <Button small icon="refresh" onClick={res.reload}>
+                Refresh
+              </Button>
+            </span>
+          }
+        />
+        {!adminKey ? (
+          <EmptyState
+            title="No admin key configured"
+            description="Gateway events — chat and embedding calls plus guardrail verdicts — appear here once the console can reach the admin API."
+            action={
+              <Button variant="primary" onClick={openSettings}>
+                Open settings
+              </Button>
+            }
+          />
+        ) : (
+          <>
             <Table>
               <thead>
                 <tr>
@@ -229,9 +239,9 @@ export function Audit({ adminKey, openSettings }: PageProps) {
                 </Button>
               </div>
             )}
-          </Panel>
-        </>
-      )}
+          </>
+        )}
+      </Panel>
     </>
   );
 }

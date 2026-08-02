@@ -6,7 +6,7 @@ import { formatTimestamp } from "../lib/format";
 import { activeBadge, formatExternalId } from "../lib/provisioning";
 import { can } from "../lib/rbac";
 import type { Org, User } from "../lib/types";
-import { Badge, Panel, PanelHead, Select, Skeleton, Table, Tbody, Tr } from "../ui";
+import { Badge, Button, EmptyState, Panel, PanelHead, Select, Skeleton, Table, Tbody, Tr } from "../ui";
 
 // SCIM 2.0 provisioning view. There is no dedicated status endpoint that
 // reports whether SCIM is enabled — that is an IdP-side concern — so this page
@@ -51,7 +51,7 @@ export function Provisioning({ adminKey, role, openSettings }: PageProps) {
       )}
       <ErrorNotice error={orgsLoad.error} />
 
-      {adminKey && allowed && (
+      {(!adminKey || allowed) && (
         <>
           <Panel>
             <PanelHead title="How provisioning works" />
@@ -85,52 +85,64 @@ export function Provisioning({ adminKey, role, openSettings }: PageProps) {
           <Panel>
             <PanelHead title="Provisioned users" />
             <ErrorNotice error={usersLoad.error} />
-            <Table>
-              <thead>
-                <tr>
-                  <th>Email</th>
-                  <th>Role</th>
-                  <th>Status</th>
-                  <th>Source</th>
-                  <th>Created</th>
-                </tr>
-              </thead>
-              <Tbody staggerKey={`${activeOrg}:${users.length}`}>
-                {showSkeleton &&
-                  Array.from({ length: 3 }, (_, i) => (
-                    <Tr key={`skel-${i}`} animate={false}>
-                      <td><Skeleton width={180} /></td>
-                      <td><Skeleton width={56} /></td>
-                      <td><Skeleton width={56} /></td>
-                      <td><Skeleton width={80} /></td>
-                      <td><Skeleton width={120} /></td>
-                    </Tr>
-                  ))}
-                {users.map((u) => {
-                  const b = activeBadge(u.active);
-                  return (
-                    <Tr key={u.id}>
-                      <td>{u.email}</td>
-                      <td>
-                        <Badge>{u.role}</Badge>
+            {!adminKey ? (
+              <EmptyState
+                title="No admin key configured"
+                description="The roster your identity provider has synced over SCIM appears here once the console can reach the admin API."
+                action={
+                  <Button variant="primary" onClick={openSettings}>
+                    Open settings
+                  </Button>
+                }
+              />
+            ) : (
+              <Table>
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Source</th>
+                    <th>Created</th>
+                  </tr>
+                </thead>
+                <Tbody staggerKey={`${activeOrg}:${users.length}`}>
+                  {showSkeleton &&
+                    Array.from({ length: 3 }, (_, i) => (
+                      <Tr key={`skel-${i}`} animate={false}>
+                        <td><Skeleton width={180} /></td>
+                        <td><Skeleton width={56} /></td>
+                        <td><Skeleton width={56} /></td>
+                        <td><Skeleton width={80} /></td>
+                        <td><Skeleton width={120} /></td>
+                      </Tr>
+                    ))}
+                  {users.map((u) => {
+                    const b = activeBadge(u.active);
+                    return (
+                      <Tr key={u.id}>
+                        <td>{u.email}</td>
+                        <td>
+                          <Badge>{u.role}</Badge>
+                        </td>
+                        <td>
+                          <Badge variant={u.active ? "pass" : "inactive"}>{b.label}</Badge>
+                        </td>
+                        <td className="dim">{formatExternalId(u.external_id)}</td>
+                        <td className="dim mono">{formatTimestamp(u.created_at)}</td>
+                      </Tr>
+                    );
+                  })}
+                  {users.length === 0 && !usersLoad.loading && (
+                    <Tr animate={false}>
+                      <td colSpan={5} className="empty">
+                        {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
                       </td>
-                      <td>
-                        <Badge variant={u.active ? "pass" : "inactive"}>{b.label}</Badge>
-                      </td>
-                      <td className="dim">{formatExternalId(u.external_id)}</td>
-                      <td className="dim mono">{formatTimestamp(u.created_at)}</td>
                     </Tr>
-                  );
-                })}
-                {users.length === 0 && !usersLoad.loading && (
-                  <Tr animate={false}>
-                    <td colSpan={5} className="empty">
-                      {activeOrg ? "No users in this org yet." : "Select an org to list its users."}
-                    </td>
-                  </Tr>
-                )}
-              </Tbody>
-            </Table>
+                  )}
+                </Tbody>
+              </Table>
+            )}
           </Panel>
         </>
       )}
