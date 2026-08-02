@@ -14,6 +14,22 @@ ROUTES = ["/", "/keys", "/audit", "/playground", "/documents", "/improve",
           "/multiverse", "/operators", "/docs", "/orgs", "/users", "/secrets",
           "/provisioning"]
 
+# What each route must LEAD with — the text of its first .panel-head h2.
+# This is the assertion that makes "what does this page lead with" mechanical
+# rather than a matter of opinion. A page that gets reinverted (creation panel
+# moved back above the reading panel) fails here. Only the six routes that
+# this cycle inverted from create-first to read-first are asserted: the other
+# seven have no create/read inversion to protect, and pinning their headings
+# would fail the run on ordinary copy edits.
+EXPECTED_LEAD = {
+    "/keys": "Existing keys",
+    "/documents": "Ingested documents",
+    "/operators": "Operators",
+    "/orgs": "Organizations",
+    "/users": "Members",
+    "/multiverse": "Council",
+}
+
 # State badges only exist in the DOM once real gateway/audit data renders one
 # — every route in this sweep runs against an unconfigured gateway, so no
 # route ever puts a `.badge` on screen and 734 measured elements across 26
@@ -171,6 +187,18 @@ AUDIT_JS = AUDIT_JS.replace("MOUNT_SELECTOR_PLACEHOLDER", MOUNT_SELECTOR)
 # while hardening this, because that anomaly's count (11) cleared 10.
 MIN_MEASURED = 10
 
+# The text of the first .panel-head h2 on the page — what the route LEADS
+# with. Read in the same evaluate() call site as everything else in this
+# module reads DOM state atomically alongside its check (see the mounted
+# comment above): a separate, earlier query_selector could observe a heading
+# that a client-side remount has since replaced.
+LEAD_JS = """
+() => {
+  const h = document.querySelector('.panel-head h2');
+  return h ? h.textContent.trim() : null;
+}
+"""
+
 
 def is_valid(result):
     return result["measured"] >= MIN_MEASURED and result.get("mounted", True)
@@ -205,11 +233,13 @@ def render_and_audit(browser, base, outdir, theme, route):
                       f"({'OK' if badge_count == len(BADGE_VARIANTS) else 'EXPECTED ' + str(len(BADGE_VARIANTS)) + ' — CHECK INJECTION'})")
             name = (route.strip("/") or "overview").replace("/", "-")
             pg.screenshot(path=str(outdir / f"{theme}-{name}.png"), full_page=True)
-            return pg.evaluate(AUDIT_JS)
+            result = pg.evaluate(AUDIT_JS)
+            result["lead"] = pg.evaluate(LEAD_JS)
+            return result
         except Exception as e:
             print(f"WARN {theme}{route}: render/audit step raised {type(e).__name__}: "
                   f"{str(e).splitlines()[0]!r} — treating as an unmounted page")
-            return {"measured": 0, "failures": [], "mounted": False}
+            return {"measured": 0, "failures": [], "mounted": False, "lead": None}
     finally:
         pg.close()
 
@@ -219,6 +249,7 @@ def main():
     outdir.mkdir(parents=True, exist_ok=True)
     failures = 0
     harness_errors = 0
+    lead_failures = 0
     coverage = {}  # (theme, route) -> measured count actually used
     valid = {}     # (theme, route) -> is_valid(result), for the summary flag
     with sync_playwright() as p:
@@ -248,6 +279,16 @@ def main():
                     failures += 1
                     print(f"FAIL {theme}{route}: {bad['ratio']}:1 < {bad['floor']} "
                           f"{bad['tag']}.{bad['cls']} {bad['size']}px {bad['text']!r}")
+                # A route that didn't mount is already counted as a harness
+                # failure above; checking its lead too would just relabel the
+                # same defect under a second, less accurate category, so this
+                # only runs once the route is confirmed to have rendered.
+                if route in EXPECTED_LEAD and is_valid(result):
+                    expected = EXPECTED_LEAD[route]
+                    if result.get("lead") != expected:
+                        lead_failures += 1
+                        print(f"WRONG LEAD {theme}{route}: expected first .panel-head h2 "
+                              f"{expected!r}, got {result.get('lead')!r}")
         b.close()
 
     print("\n=== coverage summary (measured elements per route x theme) ===")
@@ -262,6 +303,7 @@ def main():
         print(f"\n{harness_errors} route(s) did not render (harness failure — the run below is "
               f"NOT a certified 0-contrast-failures result, regardless of the count)")
     print(f"{failures} contrast failures")
-    sys.exit(1 if (failures or harness_errors) else 0)
+    print(f"{lead_failures} wrong-lead failures")
+    sys.exit(1 if (failures or harness_errors or lead_failures) else 0)
 
 main()
