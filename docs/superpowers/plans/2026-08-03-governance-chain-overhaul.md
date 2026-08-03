@@ -516,18 +516,113 @@ git commit -m "feat(console): chain style selection, persisted and fail-safe"
 
 ---
 
-### Task 3: Renderer seam and palette
+### Task 3: Renderer seam, palette, and colour helper
 
 **Files:**
 - Create: `src/components/chain/renderers/types.ts`
 - Create: `src/components/chain/palette.ts`
+- Create: `src/components/chain/color.ts`
 - Test: `src/components/chain/palette.test.ts`
+- Test: `src/components/chain/color.test.ts`
 
 **Interfaces:**
 - Consumes: `ChainPacket` (Task 1), `ChainState`/`ChainStage` from `src/lib/chain.ts`.
-- Produces: `ChainPalette`, `PALETTE_TOKENS`, `paletteFrom(get)`, `readPalette(el)`, `ChainRenderer`, `RenderFrame`, `LivePacket`.
+- Produces: `ChainPalette`, `PALETTE_TOKENS`, `paletteFrom(get)`, `readPalette(el)`, `alpha(color, a)`, `ChainRenderer`, `RenderFrame`, `LivePacket`.
 
-- [ ] **Step 1: Write the failing test**
+**Note:** `alpha()` is shared by all three renderers. It parses whatever form a
+CSS custom property resolved to, so it is real logic with real edge cases and
+gets its own test — it is not boilerplate worth duplicating three times.
+
+- [ ] **Step 1a: Write the failing colour-helper test**
+
+Create `src/components/chain/color.test.ts`:
+
+```ts
+import { describe, expect, it } from "vitest";
+import { alpha } from "./color";
+
+describe("alpha", () => {
+  it("converts 6-digit hex", () => {
+    expect(alpha("#5ad1c4", 0.5)).toBe("rgba(90,209,196,0.5)");
+  });
+
+  it("expands 3-digit hex", () => {
+    expect(alpha("#abc", 1)).toBe("rgba(170,187,204,1)");
+  });
+
+  it("rewrites the alpha of an existing rgb()/rgba()", () => {
+    expect(alpha("rgb(10, 20, 30)", 0.25)).toBe("rgba(10,20,30,0.25)");
+    expect(alpha("rgba(10, 20, 30, 0.8)", 0.25)).toBe("rgba(10,20,30,0.25)");
+  });
+
+  it("trims the whitespace getComputedStyle leaves behind", () => {
+    expect(alpha("  #5ad1c4  ", 1)).toBe("rgba(90,209,196,1)");
+  });
+
+  it("returns the input unchanged when it cannot be parsed", () => {
+    // A named colour or an unsupported space must not become "rgba(NaN,...)".
+    expect(alpha("rebeccapurple", 0.5)).toBe("rebeccapurple");
+    expect(alpha("#zzz", 0.5)).toBe("#zzz");
+    expect(alpha("", 0.5)).toBe("");
+  });
+});
+```
+
+- [ ] **Step 1b: Run it to verify it fails**
+
+Run: `npm test -- --run src/components/chain/color.test.ts`
+Expected: FAIL — `Failed to resolve import "./color"`.
+
+- [ ] **Step 1c: Write the colour helper**
+
+Create `src/components/chain/color.ts`:
+
+```ts
+/**
+ * Alpha compositing for canvas colour.
+ *
+ * Renderers draw the same token at many opacities — a gate at 16% at rest and
+ * 71% mid-flare — but a CSS custom property resolves to whatever the theme
+ * declared: `#07080b`, `#abc`, or `rgba(255,255,255,0.13)`. This normalises
+ * all of them to an rgba() string at the requested alpha.
+ *
+ * Anything it cannot parse is returned unchanged rather than coerced. A named
+ * colour or an unsupported colour space must degrade to a visible wrong-alpha
+ * mark, never to `rgba(NaN,NaN,NaN,a)`, which paints nothing at all and would
+ * silently blank a stage the operator is relying on.
+ */
+export function alpha(color: string, a: number): string {
+  const c = color.trim();
+
+  if (c.startsWith("#")) {
+    const hex = c.slice(1);
+    if (!/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$/.test(hex)) return color.trim();
+    const full =
+      hex.length === 3
+        ? hex
+            .split("")
+            .map((ch) => ch + ch)
+            .join("")
+        : hex;
+    const n = parseInt(full, 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+
+  const nums = c.match(/[\d.]+/g);
+  if (c.startsWith("rgb") && nums && nums.length >= 3) {
+    return `rgba(${nums[0]},${nums[1]},${nums[2]},${a})`;
+  }
+
+  return c;
+}
+```
+
+- [ ] **Step 1d: Run it to verify it passes**
+
+Run: `npm test -- --run src/components/chain/color.test.ts`
+Expected: PASS.
+
+- [ ] **Step 1: Write the failing palette test**
 
 Create `src/components/chain/palette.test.ts`:
 
@@ -712,7 +807,9 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/components/chain/palette.ts src/components/chain/palette.test.ts src/components/chain/renderers/types.ts
+git add src/components/chain/palette.ts src/components/chain/palette.test.ts \
+        src/components/chain/color.ts src/components/chain/color.test.ts \
+        src/components/chain/renderers/types.ts
 git commit -m "feat(console): chain renderer seam and theme-aware canvas palette"
 ```
 
@@ -927,6 +1024,7 @@ Create `src/components/chain/renderers/phosphor.ts`:
  */
 
 import { CHAIN_STAGES, stageRenders } from "../../../lib/chain";
+import { alpha } from "../color";
 import type { ChainRenderer, RenderFrame } from "./types";
 
 const BURN_DECAY_MS = 2600;
@@ -937,29 +1035,6 @@ interface Burn {
   x: number;
   life: number; // 1 -> 0
   denied: boolean;
-}
-
-/** rgba() from a palette colour plus alpha. Handles #rgb, #rrggbb and rgb()/rgba(). */
-function alpha(color: string, a: number): string {
-  const c = color.trim();
-  if (c.startsWith("#")) {
-    const hex = c.slice(1);
-    const full =
-      hex.length === 3
-        ? hex
-            .split("")
-            .map((ch) => ch + ch)
-            .join("")
-        : hex.slice(0, 6);
-    const n = parseInt(full, 16);
-    if (Number.isNaN(n)) return c;
-    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-  }
-  const nums = c.match(/[\d.]+/g);
-  if (nums && nums.length >= 3) {
-    return `rgba(${nums[0]},${nums[1]},${nums[2]},${a})`;
-  }
-  return c;
 }
 
 export function createPhosphorRenderer(): ChainRenderer {
@@ -1203,6 +1278,7 @@ Create `src/components/chain/renderers/corridor.ts`:
  */
 
 import { CHAIN_STAGES, stageRenders } from "../../../lib/chain";
+import { alpha } from "../color";
 import type { ChainRenderer, RenderFrame } from "./types";
 
 const SPARKS_PER_DENIAL = 16;
@@ -1215,26 +1291,6 @@ interface Spark {
   vx: number;
   vy: number;
   life: number;
-}
-
-function alpha(color: string, a: number): string {
-  const c = color.trim();
-  if (c.startsWith("#")) {
-    const hex = c.slice(1);
-    const full =
-      hex.length === 3
-        ? hex
-            .split("")
-            .map((ch) => ch + ch)
-            .join("")
-        : hex.slice(0, 6);
-    const n = parseInt(full, 16);
-    if (Number.isNaN(n)) return c;
-    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-  }
-  const nums = c.match(/[\d.]+/g);
-  if (nums && nums.length >= 3) return `rgba(${nums[0]},${nums[1]},${nums[2]},${a})`;
-  return c;
 }
 
 export function createCorridorRenderer(): ChainRenderer {
@@ -1487,32 +1543,13 @@ Create `src/components/chain/renderers/flow.ts`:
  */
 
 import { CHAIN_STAGES, stageRenders } from "../../../lib/chain";
+import { alpha } from "../color";
 import type { ChainRenderer, RenderFrame } from "./types";
 
 interface Drift {
   y: number;
   vy: number;
   life: number;
-}
-
-function alpha(color: string, a: number): string {
-  const c = color.trim();
-  if (c.startsWith("#")) {
-    const hex = c.slice(1);
-    const full =
-      hex.length === 3
-        ? hex
-            .split("")
-            .map((ch) => ch + ch)
-            .join("")
-        : hex.slice(0, 6);
-    const n = parseInt(full, 16);
-    if (Number.isNaN(n)) return c;
-    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
-  }
-  const nums = c.match(/[\d.]+/g);
-  if (nums && nums.length >= 3) return `rgba(${nums[0]},${nums[1]},${nums[2]},${a})`;
-  return c;
 }
 
 /** Deterministic per-packet lane, so a particle does not jitter between frames. */
@@ -2588,4 +2625,8 @@ git commit -m "feat(console): governance chain style picker in settings, topbar 
 
 **Placeholder scan:** no TBD/TODO; every code step carries complete code. Tasks 10 and 11 ship without unit tests, stated explicitly with the reason (node environment has no DOM/rAF) rather than left implied.
 
-**Type consistency:** `ChainPacket` fields are identical across Tasks 1, 3, 4, 9, 10, 11. `LivePacket`/`RenderFrame` as defined in Task 3 are consumed unchanged in 4–7 and constructed in 10. `createRenderer` returns `ChainRenderer | null` in Task 8 and the null is branched on in Tasks 10 and 12. `progressLimitFor` is defined in Task 9 and used in Task 10. `alpha()` is duplicated across the three renderers deliberately — each renderer stays independently readable, and the helper is nine lines.
+**Type consistency:** `ChainPacket` fields are identical across Tasks 1, 3, 4, 9, 10, 11. `LivePacket`/`RenderFrame` as defined in Task 3 are consumed unchanged in 4–7 and constructed in 10. `createRenderer` returns `ChainRenderer | null` in Task 8 and the null is branched on in Tasks 10 and 12. `progressLimitFor` is defined in Task 9 and used in Task 10. `alpha()` lives once in `src/components/chain/color.ts` (Task 3) and is imported by all three renderers. It parses whatever a CSS custom property resolved to, so it carries real edge cases — unparseable input returns unchanged rather than becoming `rgba(NaN,…)`, which would silently blank a stage — and those are tested once, properly.
+
+**Amendments after the pre-flight scan** (both ruled by the human partner before Task 1):
+- `alpha()` extracted to a shared, tested module rather than duplicated three times.
+- Tasks 10 and 11 ship without unit tests, reason documented in each. Recorded as a known deferral for the final review to triage, not re-raised per task.
