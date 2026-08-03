@@ -128,8 +128,11 @@ export interface ChainEvidence {
  * sits at its head until the next `/v1` call. It describes no request, so it
  * must place none: reporting it as a denial would announce a refusal for a
  * request nobody made.
+ *
+ * Exported for use by audit-feed consumers (e.g., replay layer) that must
+ * filter the same kinds to maintain chain consistency.
  */
-const ADMIN_PLANE_KINDS: ReadonlySet<string> = new Set<string>(["secret_reload"]);
+export const ADMIN_PLANE_KINDS: ReadonlySet<string> = new Set<string>(["secret_reload"]);
 
 /**
  * Map one audit row onto the stage the request reached.

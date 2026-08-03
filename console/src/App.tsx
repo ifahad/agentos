@@ -22,6 +22,8 @@ import {
   saveStoredRole,
   whoamiRequest,
 } from "./lib/api";
+import { readChainStyle } from "./lib/chainStyle";
+import type { ChainStyle } from "./lib/chainStyle";
 import { defaultRegistry, installVisibilityPause } from "./lib/live/registry";
 import type { ConnectionState } from "./lib/live/status";
 import type { AuthRole } from "./lib/rbac";
@@ -144,6 +146,7 @@ export function App() {
   const [orgId, setOrgId] = useState(getStoredOrgId);
   const [email, setEmail] = useState(getStoredEmail);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [chainStyle, setChainStyle] = useState<ChainStyle>(() => readChainStyle());
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [ssoEnabled, setSsoEnabled] = useState(false);
   const [identityError, setIdentityError] = useState<string | null>(null);
@@ -280,7 +283,7 @@ export function App() {
                 <span className="eyebrow">{connGlyph.label}</span>
               </span>
             )}
-            <Chain adminKey={adminKey} />
+            <Chain adminKey={adminKey} style={chainStyle} />
           </header>
           {reducedMotion ? (
             <div className="page">{page}</div>
@@ -308,6 +311,8 @@ export function App() {
         email={email}
         ssoEnabled={ssoEnabled}
         identityError={identityError}
+        chainStyle={chainStyle}
+        onChainStyle={setChainStyle}
         onSave={(k) => {
           saveAdminKey(k);
           setAdminKey(k);
