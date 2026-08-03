@@ -27,7 +27,7 @@ describe("corridor renderer", () => {
     const r = createCorridorRenderer();
     for (let i = 0; i < 6; i++) {
       const p = livePacket({
-        packet: { ...livePacket().packet, stopIndex: i, outcome: "deny" },
+        packet: { ...livePacket().packet, id: `deny-${i}`, stopIndex: i, outcome: "deny" },
         progress: 1,
         progressLimit: (i + 1) / 6,
         deadFor: 0.1,
@@ -53,6 +53,93 @@ describe("corridor renderer", () => {
     r.draw(frame({ packets: [livePacket()] }));
     r.reset();
     expect(() => r.draw(frame())).not.toThrow();
+  });
+
+  it("deny tint decays and does not persist to later packets at the same gate", () => {
+    const r = createCorridorRenderer();
+    const { ctx, draws } = stubCtx();
+    const w = 900;
+    const pad = Math.min(26, w * 0.05);
+    const rateX = pad + (w - pad * 2) * ((1 + 0.5) / CHAIN_STAGES.length);
+
+    // Frame 1: register a denial at rate (index 1)
+    r.draw(
+      frame({
+        ctx,
+        w,
+        dt: 16,
+        packets: [
+          livePacket({
+            packet: { ...livePacket().packet, id: "denied-packet", stopIndex: 1, outcome: "deny" },
+            progress: (1 + 0.5) / CHAIN_STAGES.length,
+            progressLimit: (1 + 1) / CHAIN_STAGES.length,
+            deadFor: 0.1,
+          }),
+        ],
+      }),
+    );
+
+    // Frame 2: render with denial active (gates render after denial is registered)
+    draws.length = 0;
+    r.draw(frame({ ctx, w, dt: 16, packets: [] }));
+
+    // Capture deny-tinted flares in frame 2 (should exist with fix, missing/live without)
+    const denyFlares = draws.filter(
+      (d) =>
+        d.method === "fillRect" &&
+        d.args[2] === 2 &&
+        Math.abs((d.args[0] as number) + 1 - rateX) < 1.5,
+    );
+    // At least one flare should be in deny color (rgba(226, 104, 95, ...))
+    const denyColorInSecondFrame = denyFlares.some((f) => {
+      const style = String(f.fillStyle);
+      return style.includes("226") && style.includes("104") && style.includes("95");
+    });
+    expect(denyColorInSecondFrame).toBe(true);
+
+    // Frame 3: advance time so deny flare decays completely (FLARE_DECAY_MS = 260ms)
+    draws.length = 0;
+    r.draw(frame({ ctx, w, dt: 300, packets: [] }));
+
+    // Frame 4: different packet passes through rate with proof
+    draws.length = 0;
+    r.draw(
+      frame({
+        ctx,
+        w,
+        packets: [
+          livePacket({
+            packet: { ...livePacket().packet, id: "passing-packet", unproven: [], outcome: "pass" },
+            progress: 1,
+            progressLimit: 1,
+          }),
+        ],
+      }),
+    );
+
+    // Look for the flare mark at rate's position in frame 4
+    const liveFlares = draws.filter(
+      (d) =>
+        d.method === "fillRect" &&
+        d.args[2] === 2 &&
+        Math.abs((d.args[0] as number) + 1 - rateX) < 1.5,
+    );
+
+    // After decay, the flare mark should be in live color, not deny
+    expect(liveFlares.length).toBeGreaterThan(0);
+    const liveColorInFourthFrame = liveFlares.some((f) => {
+      const style = String(f.fillStyle);
+      // FALLBACK_PALETTE.live is "#5ad1c4" which converts to rgba(90, 209, 196, ...)
+      return style.includes("90") && style.includes("209") && style.includes("196");
+    });
+    expect(liveColorInFourthFrame).toBe(true);
+
+    // And it should NOT still be in deny color (the bug would make it permanently deny)
+    const stillDenyColored = liveFlares.some((f) => {
+      const style = String(f.fillStyle);
+      return style.includes("226") && style.includes("104") && style.includes("95");
+    });
+    expect(stillDenyColored).toBe(false);
   });
 
   // The two tests below are the point of the renderer. They must be written so

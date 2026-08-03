@@ -6,7 +6,10 @@
  * outline — the request was not stopped there, but nothing proves the check
  * ran, and a flare would assert exactly that.
  *
- * A denial slams its gate: the streak stops and shatters into sparks.
+ * A denial momentarily slams its gate with a deny tint and then shatters into
+ * sparks. Both the tint and sparks decay over FLARE_DECAY_MS and SPARK_LIFE_MS
+ * respectively, so a gate returns to its live colour once the denial has fully
+ * faded. A later packet passing the same gate is never rendered as denied.
  */
 
 import { CHAIN_STAGES, stageRenders } from "../../../lib/chain";
@@ -27,7 +30,7 @@ interface Spark {
 
 export function createCorridorRenderer(): ChainRenderer {
   let flare = new Array<number>(CHAIN_STAGES.length).fill(0);
-  let flareDenied = -1;
+  let denyFlare = new Array<number>(CHAIN_STAGES.length).fill(0);
   let sparks: Spark[] = [];
   let handled = new Set<string>();
 
@@ -38,7 +41,7 @@ export function createCorridorRenderer(): ChainRenderer {
   return {
     reset() {
       flare = new Array<number>(CHAIN_STAGES.length).fill(0);
-      flareDenied = -1;
+      denyFlare = new Array<number>(CHAIN_STAGES.length).fill(0);
       sparks = [];
       handled = new Set();
     },
@@ -71,9 +74,10 @@ export function createCorridorRenderer(): ChainRenderer {
       for (let i = 0; i < CHAIN_STAGES.length; i++) {
         const x = gateX(i, w, pad);
         const f = flare[i];
+        const d = denyFlare[i];
         flare[i] = Math.max(0, f - dt / FLARE_DECAY_MS);
-        const denied = flareDenied === i;
-        const col = denied ? palette.deny : palette.live;
+        denyFlare[i] = Math.max(0, d - dt / FLARE_DECAY_MS);
+        const col = d > 0 ? palette.deny : palette.live;
 
         // Gate body — a vertical slit that brightens with the flare.
         const grad = ctx.createLinearGradient(x, mid - gateHalf, x, mid + gateHalf);
@@ -111,7 +115,7 @@ export function createCorridorRenderer(): ChainRenderer {
         if (lp.deadFor > 0) {
           if (lp.packet.stopIndex >= 0 && !handled.has(lp.packet.id)) {
             handled.add(lp.packet.id);
-            flareDenied = lp.packet.stopIndex;
+            denyFlare[lp.packet.stopIndex] = 1;
             flare[lp.packet.stopIndex] = 1;
             const sx = gateX(lp.packet.stopIndex, w, pad);
             for (let k = 0; k < SPARKS_PER_DENIAL; k++) {
