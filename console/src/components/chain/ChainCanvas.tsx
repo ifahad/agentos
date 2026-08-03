@@ -95,7 +95,18 @@ export function ChainCanvas({ style, packets, state, height }: Props) {
     function stillFrame() {
       const stillLive: LivePacket[] = packetsRef.current.map((p) => {
         const limit = progressLimitFor(p);
-        return { packet: p, progress: limit, progressLimit: limit, deadFor: 0 };
+        // Cleared packets (stopIndex < 0) keep deadFor 0, so they render as
+        // an ordinary travelling pulse resting at the end of the trace.
+        // Stopped packets need a small POSITIVE deadFor: phosphor's burn
+        // mark and corridor's deny-flare/spark shower only fire on
+        // `deadFor > 0` (phosphor.ts:124, corridor.ts:110-119), and flow's
+        // fail-vs-deny colour override is gated the same way (flow.ts:110).
+        // 0.05s clears every one of those gates while staying far under
+        // flow's 0.9s full-decay window (`1 - deadFor / 0.9`), so opacity
+        // there is still ~94% — a denial reads as a denial, not as a faded
+        // live mark or an unflagged pulse indistinguishable from a pass.
+        const deadFor = p.stopIndex >= 0 ? 0.05 : 0;
+        return { packet: p, progress: limit, progressLimit: limit, deadFor };
       });
       renderer.draw({
         ctx,
@@ -155,11 +166,21 @@ export function ChainCanvas({ style, packets, state, height }: Props) {
       }
       // Step and retire.
       live = live.map((lp) => advance(lp, dt)).filter((lp) => lp.deadFor < RETIRE_AFTER_S);
-      // `seen` must not grow without bound across a long session. Packets
-      // are TTL-dropped from the `packets` prop well before this fires (see
-      // useChainPackets), so anything outside `live` here can never be
-      // re-adopted as "new" later — trimming to exactly `live`'s ids is safe.
-      if (seen.size > 512) seen = new Set(live.map((lp) => lp.packet.id));
+      // `seen` must not grow without bound across a long session, but the
+      // trim must not forget an id the adoption loop above could still see
+      // again. `live`'s retention window (MAX_TRAVEL_MS + RETIRE_AFTER_S,
+      // ~5.2s) is shorter than however long the caller may keep a packet in
+      // the `packets` prop, so a ChainPacket can outlive its LivePacket:
+      // trimming to `live`'s ids alone could drop one still present in
+      // `packetsRef.current`, and the next tick would re-adopt it with
+      // progress 0 — replaying an arrival that already happened. Keeping the
+      // union of both is airtight: an id can only be forgotten once it is in
+      // neither, at which point the adoption loop can never see it again either.
+      if (seen.size > 512) {
+        const keep = new Set(live.map((lp) => lp.packet.id));
+        for (const p of packetsRef.current) keep.add(p.id);
+        seen = keep;
+      }
 
       renderer.draw({
         ctx,
