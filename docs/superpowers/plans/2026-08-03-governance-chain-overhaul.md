@@ -1253,8 +1253,78 @@ describe("corridor renderer", () => {
     r.reset();
     expect(() => r.draw(frame())).not.toThrow();
   });
+
+  // The two tests below are the point of the renderer. They must be written so
+  // each would FAIL against a plausible wrong implementation, and they are a
+  // PAIR on purpose: without the second, a renderer that flares nothing at all
+  // would satisfy the first vacuously.
+
+  it("never flares a gate the evidence does not prove ran", () => {
+    const r = createCorridorRenderer();
+    const { ctx, draws } = stubCtx();
+    const w = 900;
+    const pad = Math.min(26, w * 0.05);
+    const guardrailX = pad + (w - pad * 2) * ((3 + 0.5) / CHAIN_STAGES.length);
+
+    r.draw(
+      frame({
+        ctx,
+        w,
+        packets: [
+          livePacket({
+            packet: { ...livePacket().packet, unproven: ["guardrail"] },
+            progress: 1,
+            progressLimit: 1,
+          }),
+        ],
+      }),
+    );
+
+    // The flare mark is a 2px-wide fillRect at x - 1. The gate BODY (3px at
+    // x - 1.5) is drawn every frame regardless and must not be counted, so
+    // match on width to tell the claim apart from the furniture.
+    const flares = draws.filter(
+      (d) =>
+        d.method === "fillRect" &&
+        d.args[2] === 2 &&
+        Math.abs((d.args[0] as number) + 1 - guardrailX) < 1.5,
+    );
+    expect(flares).toHaveLength(0);
+  });
+
+  it("flares a gate the evidence does prove ran", () => {
+    const r = createCorridorRenderer();
+    const { ctx, draws } = stubCtx();
+    const w = 900;
+    const pad = Math.min(26, w * 0.05);
+    const authX = pad + (w - pad * 2) * ((0 + 0.5) / CHAIN_STAGES.length);
+
+    r.draw(
+      frame({
+        ctx,
+        w,
+        packets: [
+          livePacket({
+            packet: { ...livePacket().packet, unproven: ["guardrail"] },
+            progress: 1,
+            progressLimit: 1,
+          }),
+        ],
+      }),
+    );
+
+    const flares = draws.filter(
+      (d) =>
+        d.method === "fillRect" &&
+        d.args[2] === 2 &&
+        Math.abs((d.args[0] as number) + 1 - authX) < 1.5,
+    );
+    expect(flares.length).toBeGreaterThan(0);
+  });
 });
 ```
+
+The test file's imports must include `CHAIN_STAGES` from `../../../lib/chain` and `stubCtx` from `./testHarness`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1350,6 +1420,17 @@ export function createCorridorRenderer(): ChainRenderer {
         grad.addColorStop(1, alpha(col, 0));
         ctx.fillStyle = grad;
         ctx.fillRect(x - 1.5, mid - gateHalf, 3, gateHalf * 2);
+
+        // The flare mark. Drawn ONLY while this gate is actually flaring, as a
+        // discrete rect rather than a gradient stop — a gradient's stops are
+        // invisible to the test harness's stub context, so a flare expressed
+        // only through `grad` could not be asserted, and the unproven rule
+        // would again be untestable. This is the corridor's per-stage claim:
+        // it appears exactly when the evidence proves the stage fired.
+        if (f > 0) {
+          ctx.fillStyle = alpha(col, 0.5 * f);
+          ctx.fillRect(x - 1, mid - gateHalf, 2, gateHalf * 2);
+        }
 
         const render = renders[i];
         ctx.fillStyle =
@@ -1517,8 +1598,69 @@ describe("flow renderer", () => {
     r.reset();
     expect(() => r.draw(frame())).not.toThrow();
   });
+
+  // The dash IS this renderer's unproven vocabulary — flow draws no per-gate
+  // crossing mark, so the column is the only thing that can over-claim. These
+  // two tests are a pair: the second stops the first passing vacuously against
+  // a renderer that dashes everything.
+
+  it("dashes a column an on-screen packet leaves unproven, even when the resting state proves it", () => {
+    const r = createFlowRenderer();
+    const { ctx, draws } = stubCtx();
+
+    r.draw(
+      frame({
+        ctx,
+        // Resting state proves everything — only the live packet says otherwise.
+        state: { cleared: 6, stoppedAt: null, outcome: "pass", unproven: [] },
+        packets: [
+          livePacket({
+            packet: { ...livePacket().packet, unproven: ["guardrail"] },
+            progress: 0.9,
+          }),
+        ],
+      }),
+    );
+
+    // setLineDash calls arrive in column order; a non-empty array is a dash.
+    const dashes = draws
+      .filter((d) => d.method === "setLineDash")
+      .map((d) => (d.args[0] as number[]).length > 0);
+    // Columns are drawn one per stage, each preceded by its own setLineDash,
+    // then reset to solid — so take every other entry, the "set" ones.
+    const perColumn = dashes.filter((_, i) => i % 2 === 0);
+    expect(perColumn[3], "guardrail column must be dashed").toBe(true);
+  });
+
+  it("draws a proven column solid", () => {
+    const r = createFlowRenderer();
+    const { ctx, draws } = stubCtx();
+
+    r.draw(
+      frame({
+        ctx,
+        state: { cleared: 6, stoppedAt: null, outcome: "pass", unproven: [] },
+        packets: [
+          livePacket({
+            packet: { ...livePacket().packet, unproven: ["guardrail"] },
+            progress: 0.9,
+          }),
+        ],
+      }),
+    );
+
+    const dashes = draws
+      .filter((d) => d.method === "setLineDash")
+      .map((d) => (d.args[0] as number[]).length > 0);
+    const perColumn = dashes.filter((_, i) => i % 2 === 0);
+    expect(perColumn[0], "auth column must be solid").toBe(false);
+  });
 });
 ```
+
+The test file's imports must include `stubCtx` from `./testHarness`.
+
+**Implementer note on the two dash tests:** they assume each column emits exactly two `setLineDash` calls — one to set the pattern, one to reset to solid — in stage order. If your implementation emits a different number, adjust the index arithmetic so the assertion still targets the guardrail and auth columns specifically. Do not weaken the assertion to make it pass; the point is to pin *which column* is dashed.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -1586,7 +1728,19 @@ export function createFlowRenderer(): ChainRenderer {
 
       for (let i = 0; i < CHAIN_STAGES.length; i++) {
         const x = gateX(i, w, pad);
-        const unproven = state.unproven.includes(CHAIN_STAGES[i]);
+        // Unproven if the resting reading says so, OR if any packet currently
+        // on screen carries it unproven.
+        //
+        // Reading `state` alone would be wrong here in a way that is easy to
+        // miss: `state` is the LATEST adjudicated row, while the particles
+        // being drawn belong to a window of earlier rows. A column drawn solid
+        // because the newest row happened to prove guardrail would assert that
+        // claim over particles for which it was never proven. The union is the
+        // only reading that never over-claims for anything actually on screen.
+        const stage = CHAIN_STAGES[i];
+        const unproven =
+          state.unproven.includes(stage) ||
+          packets.some((lp) => lp.packet.unproven.includes(stage));
         ctx.strokeStyle =
           renders[i] === "stopped"
             ? state.outcome === "fail"
