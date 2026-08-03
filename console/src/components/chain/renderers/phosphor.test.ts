@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { IDLE_CHAIN } from "../../../lib/chain";
+import { CHAIN_STAGES, IDLE_CHAIN } from "../../../lib/chain";
 import { createPhosphorRenderer } from "./phosphor";
 import { frame, livePacket, stubCtx } from "./testHarness";
 
@@ -55,5 +55,75 @@ describe("phosphor renderer", () => {
     r.draw(frame({ packets: [livePacket()] }));
     r.reset();
     expect(() => r.draw(frame())).not.toThrow();
+  });
+
+  it("deposits nothing at unproven stages (guardrail on a passing chat)", () => {
+    const r = createPhosphorRenderer();
+    const { ctx, draws } = stubCtx();
+    const w = 900;
+    const h = 76;
+    const pad = Math.min(26, w * 0.05);
+    const mid = h * 0.46;
+
+    // Packet travels all the way across with guardrail unproven
+    r.draw(
+      frame({
+        ctx,
+        w,
+        h,
+        packets: [
+          livePacket({
+            packet: { ...livePacket().packet, unproven: ["guardrail"] },
+            progress: 1,
+            progressLimit: 1,
+          }),
+        ],
+      })
+    );
+
+    // Calculate guardrail stage position (stage 3)
+    const guardRailIndex = 3;
+    const guardrailX = pad + (w - pad * 2) * ((guardRailIndex + 0.5) / CHAIN_STAGES.length);
+
+    // Look for fillRect calls at guardrail position — there should be none
+    const depositsAtGuardrail = draws.filter(
+      (d) => d.method === "fillRect" && Math.abs((d.args[0] as number) + 1 - guardrailX) < 1.5
+    );
+    expect(depositsAtGuardrail).toHaveLength(0);
+  });
+
+  it("deposits at proven stages when pulse crosses (auth is always proven)", () => {
+    const r = createPhosphorRenderer();
+    const { ctx, draws } = stubCtx();
+    const w = 900;
+    const h = 76;
+    const pad = Math.min(26, w * 0.05);
+    const mid = h * 0.46;
+
+    // Packet travels all the way across, auth is proven
+    r.draw(
+      frame({
+        ctx,
+        w,
+        h,
+        packets: [
+          livePacket({
+            packet: { ...livePacket().packet, unproven: ["guardrail"] },
+            progress: 1,
+            progressLimit: 1,
+          }),
+        ],
+      })
+    );
+
+    // Calculate auth stage position (stage 0)
+    const authIndex = 0;
+    const authX = pad + (w - pad * 2) * ((authIndex + 0.5) / CHAIN_STAGES.length);
+
+    // Look for fillRect calls at auth position — there should be at least one deposit
+    const depositsAtAuth = draws.filter(
+      (d) => d.method === "fillRect" && Math.abs((d.args[0] as number) + 1 - authX) < 1.5
+    );
+    expect(depositsAtAuth.length).toBeGreaterThan(0);
   });
 });

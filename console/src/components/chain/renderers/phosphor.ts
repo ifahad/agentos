@@ -6,10 +6,13 @@
  * what produces the afterglow. A denial clips hard and burns a mark that fades
  * over a couple of seconds.
  *
- * The unproven rule (see lib/chain.ts): a pulse crossing a stage the evidence
- * does not prove ran deposits NO phosphor at that tick. The pulse still passes
- * — the request was not stopped there — but the console must not draw a mark
- * implying a check fired when it may never have run.
+ * As the pulse's leading edge crosses each stage, it deposits a small mark at
+ * that tick if the evidence proves the stage ran. The unproven rule (see
+ * lib/chain.ts): a pulse crossing a stage the evidence does not prove ran
+ * deposits NOTHING at that tick. The pulse still passes — the request was not
+ * stopped there — but the console must not draw a mark implying a check fired
+ * when it may never have run. Deposits decay along with the canvas fade,
+ * producing the characteristic phosphor afterglow.
  */
 
 import { CHAIN_STAGES, stageRenders } from "../../../lib/chain";
@@ -19,6 +22,8 @@ import type { ChainRenderer, RenderFrame } from "./types";
 const BURN_DECAY_MS = 2600;
 const PULSE_HALF_WIDTH = 30;
 const PULSE_HEIGHT = 30;
+const DEPOSIT_HEIGHT = 6;
+const DEPOSIT_WIDTH = 2;
 
 interface Burn {
   x: number;
@@ -29,6 +34,7 @@ interface Burn {
 export function createPhosphorRenderer(): ChainRenderer {
   let burns: Burn[] = [];
   let seen = new Set<string>();
+  let deposited = new Map<string, Set<number>>();
 
   function stageX(i: number, w: number, pad: number): number {
     return pad + (w - pad * 2) * ((i + 0.5) / CHAIN_STAGES.length);
@@ -38,6 +44,7 @@ export function createPhosphorRenderer(): ChainRenderer {
     reset() {
       burns = [];
       seen = new Set();
+      deposited = new Map();
     },
 
     draw({ ctx, w, h, dt, packets, state, palette, still }: RenderFrame) {
@@ -108,7 +115,7 @@ export function createPhosphorRenderer(): ChainRenderer {
         ctx.fillRect(b.x - 1.5, mid - 22, 3, 44);
       }
 
-      // Pulses
+      // Pulses and deposits
       for (const lp of packets) {
         const { packet } = lp;
         const reach = Math.min(lp.progress, lp.progressLimit);
@@ -118,8 +125,37 @@ export function createPhosphorRenderer(): ChainRenderer {
           seen.add(packet.id);
           burns.push({ x, life: 1, denied: packet.outcome === "deny" });
         }
+
+        // Track deposits per packet: only deposit at stages the evidence proves ran
+        if (!deposited.has(packet.id)) {
+          deposited.set(packet.id, new Set());
+        }
+        const packetDeposits = deposited.get(packet.id)!;
+
+        if (lp.deadFor === 0) {
+          // Pulse is still travelling — check each stage to see if the pulse
+          // has crossed it, and deposit if evidence proves it ran
+          const maxStageIndex = packet.stopIndex >= 0 ? packet.stopIndex : CHAIN_STAGES.length - 1;
+          for (let i = 0; i <= maxStageIndex; i++) {
+            // A stage is crossed once the pulse has reached its far boundary
+            const stageBoundary = (i + 1) / CHAIN_STAGES.length;
+            const stageCrossed = reach >= stageBoundary;
+
+            if (stageCrossed && !packetDeposits.has(i)) {
+              // Only deposit if the stage is not in unproven
+              if (!packet.unproven.includes(CHAIN_STAGES[i])) {
+                const stageXPos = stageX(i, w, pad);
+                ctx.fillStyle = alpha(palette.live, 0.6);
+                ctx.fillRect(stageXPos - DEPOSIT_WIDTH / 2, mid - DEPOSIT_HEIGHT / 2, DEPOSIT_WIDTH, DEPOSIT_HEIGHT);
+                packetDeposits.add(i);
+              }
+            }
+          }
+        }
+
         if (lp.deadFor > 0) continue;
 
+        // Draw the pulse
         ctx.strokeStyle = alpha(palette.live, 0.95);
         ctx.lineWidth = 1.6;
         ctx.lineCap = "round";

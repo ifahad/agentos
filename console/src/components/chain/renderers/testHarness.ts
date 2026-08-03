@@ -11,27 +11,42 @@ import { IDLE_CHAIN } from "../../../lib/chain";
 import { FALLBACK_PALETTE } from "../palette";
 import type { LivePacket, RenderFrame } from "./types";
 
+export interface DrawCall {
+  method: string;
+  args: unknown[];
+  fillStyle: unknown;
+  strokeStyle: unknown;
+  globalAlpha: unknown;
+}
+
 export interface StubCtx {
   ctx: CanvasRenderingContext2D;
   calls: string[];
+  draws: DrawCall[];
 }
 
 export function stubCtx(): StubCtx {
   const calls: string[] = [];
+  const draws: DrawCall[] = [];
   const target: Record<string, unknown> = {
     canvas: { width: 900, height: 76 },
     createLinearGradient: () => ({ addColorStop: () => {} }),
     createRadialGradient: () => ({ addColorStop: () => {} }),
     measureText: () => ({ width: 24 }),
-    save: () => calls.push("save"),
-    restore: () => calls.push("restore"),
   };
   const ctx = new Proxy(target, {
     get(t, prop) {
       const key = String(prop);
       if (key in t) return t[key];
-      return (..._args: unknown[]) => {
+      return (...args: unknown[]) => {
         calls.push(key);
+        draws.push({
+          method: key,
+          args,
+          fillStyle: target.fillStyle,
+          strokeStyle: target.strokeStyle,
+          globalAlpha: target.globalAlpha,
+        });
       };
     },
     set(t, prop, value) {
@@ -39,7 +54,7 @@ export function stubCtx(): StubCtx {
       return true;
     },
   }) as unknown as CanvasRenderingContext2D;
-  return { ctx, calls };
+  return { ctx, calls, draws };
 }
 
 export function livePacket(over: Partial<LivePacket> = {}): LivePacket {
