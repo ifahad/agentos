@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { SSO_LOGIN_URL } from "../lib/api";
+import { CHAIN_STYLES, CHAIN_STYLE_LABELS, writeChainStyle } from "../lib/chainStyle";
+import type { ChainStyle } from "../lib/chainStyle";
 import type { AuthRole } from "../lib/rbac";
 import { roleLabel } from "../lib/rbac";
 import { Button, Input, Modal } from "../ui";
@@ -13,6 +15,8 @@ interface Props {
   email: string;
   ssoEnabled: boolean;
   identityError: string | null;
+  chainStyle: ChainStyle;
+  onChainStyle: (style: ChainStyle) => void;
   onSave: (key: string) => void;
   onClose: () => void;
 }
@@ -25,6 +29,8 @@ export function SettingsModal({
   email,
   ssoEnabled,
   identityError,
+  chainStyle,
+  onChainStyle,
   onSave,
   onClose,
 }: Props) {
@@ -131,6 +137,31 @@ export function SettingsModal({
             </button>
           ))}
         </div>
+      </div>
+
+      <div className="field">
+        <span className="eyebrow">Governance chain</span>
+        <select
+          className="chain-style-select"
+          value={chainStyle}
+          aria-label="Governance chain style"
+          onChange={(e) => {
+            const next = e.target.value as ChainStyle;
+            writeChainStyle(next);
+            onChainStyle(next);
+          }}
+        >
+          {CHAIN_STYLES.map((s) => (
+            <option key={s} value={s}>
+              {CHAIN_STYLE_LABELS[s]}
+            </option>
+          ))}
+        </select>
+        <p className="muted" style={{ fontSize: "12px", margin: "6px 0 0" }}>
+          How the chain above your content is drawn. Every style shows the same
+          evidence — only requests the audit log recorded ever appear. Choose{" "}
+          <strong>minimal</strong> for the plain rule with no animation.
+        </p>
       </div>
 
       <div className="mode-toggle">
