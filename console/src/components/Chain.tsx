@@ -1,18 +1,16 @@
-import { motion, useReducedMotion } from "framer-motion";
-import { useEffect, useRef, useState } from "react";
-import { useLiveResource } from "../hooks/useLiveResource";
-import { apiFetch, gatewayAdminRequest } from "../lib/api";
+import { useState } from "react";
 import type { ChainStage, ChainState } from "../lib/chain";
-import { CHAIN_STAGES, IDLE_CHAIN, chainFeedCount, latestChainState, stageRenders } from "../lib/chain";
-import type { AuditEntry } from "../lib/types";
-import { EASE } from "../ui";
+import { CHAIN_STAGES, stageRenders } from "../lib/chain";
+import type { ChainStyle } from "../lib/chainStyle";
 import { StateIcon } from "../ui/icons";
+import { ChainCanvas } from "./chain/ChainCanvas";
+import { useChainPackets } from "./chain/useChainPackets";
 import "./Chain.css";
 
-/** How long a newly observed request keeps the chain lit before it dims. */
-const LINGER_MS = 6000;
+/** Canvas height in the always-on topbar strip, and when expanded. */
+const STRIP_HEIGHT = 76;
+const EXPANDED_HEIGHT = 220;
 
-/** Human-readable stage names. Short enough to sit on one line at 1024px. */
 const STAGE_LABELS: Record<ChainStage, string> = {
   auth: "auth",
   rate: "rate",
@@ -22,7 +20,6 @@ const STAGE_LABELS: Record<ChainStage, string> = {
   audit: "audit",
 };
 
-/** What each stage actually checks — the tooltip for someone new to the gauntlet. */
 const STAGE_TITLES: Record<ChainStage, string> = {
   auth: "auth — the caller presented a valid virtual key",
   rate: "rate — the key's org is within its per-org rate limit",
@@ -32,7 +29,6 @@ const STAGE_TITLES: Record<ChainStage, string> = {
   audit: "audit — the outcome was recorded",
 };
 
-/** What the trailing status glyph should say about the last observed request. */
 function outcomeGlyph(state: ChainState, active: boolean) {
   if (active) return { state: "live" as const, label: "request in flight" };
   if (state.outcome === "deny") {
@@ -46,85 +42,63 @@ function outcomeGlyph(state: ChainState, active: boolean) {
 
 interface ChainProps {
   adminKey: string;
+  style: ChainStyle;
 }
 
 /**
  * The governance chain — the console's signature element.
  *
  * Every AgentOS request runs an ordered gauntlet before a provider is ever
- * called, and that ordering is the whole product. So the shell renders it
- * permanently: six stages, joined by a rule that fills as far as the most
- * recent request actually got.
+ * called, and that ordering is the whole product, so the shell renders it
+ * permanently.
  *
- * It is driven entirely by recorded audit evidence (see lib/chain.ts) rather
- * than by an animation timer, so a lit chain is evidence rather than decoration.
- * With no key, or no traffic, it sits unlit — deliberately, because "quiet" and
- * "healthy" must not look the same as "unknown".
+ * The visible treatment is now one of four styles (see lib/chainStyle.ts), but
+ * what any of them may draw is unchanged: it is driven by recorded audit
+ * evidence (lib/chain.ts), never by an animation timer. A lit stage is
+ * evidence. With no key, or no traffic, the chain rests — deliberately,
+ * because "quiet" and "healthy" must not look the same as "unknown".
+ *
+ * The DOM stage list below is the accessible representation and is rendered
+ * for every style, including the canvas ones, where it is visually hidden but
+ * still read. The canvas is decoration over it, never a replacement.
  */
-export function Chain({ adminKey }: ChainProps) {
-  const reduced = useReducedMotion();
-  // Same audit resource Overview subscribes to (identical key + cadence), so
-  // the registry dedupes the two onto a single shared poll.
-  const audit = useLiveResource<AuditEntry[]>(
-    `admin/audit?limit=100#${adminKey}`,
-    () => apiFetch<AuditEntry[]>(gatewayAdminRequest("/admin/audit?limit=100", adminKey)),
-    { enabled: Boolean(adminKey), cadence: 5000 },
-  );
-
-  const [state, setState] = useState<ChainState>(IDLE_CHAIN);
-  const [active, setActive] = useState(false);
-  const seenCount = useRef<number | null>(null);
-  const activeUntil = useRef(0);
-
-  useEffect(() => {
-    if (!adminKey) {
-      setState(IDLE_CHAIN);
-      setActive(false);
-      seenCount.current = null;
-      activeUntil.current = 0;
-      return;
-    }
-    const entries = audit.data;
-    // A failed (or still in-flight) poll tells us nothing about governance, so
-    // the chain holds its last known reading rather than falsely reporting a
-    // denial.
-    if (!entries) return;
-    // Growth in the feed means new traffic since the last poll; that is the
-    // only thing that lights the chain. Count the same filtered set the chain
-    // draws from — an admin-plane row is not traffic.
-    const count = chainFeedCount(entries);
-    if (seenCount.current !== null && count > seenCount.current) {
-      activeUntil.current = Date.now() + LINGER_MS;
-    }
-    seenCount.current = count;
-    setState(latestChainState(entries));
-    setActive(Date.now() < activeUntil.current);
-  }, [adminKey, audit.data]);
+export function Chain({ adminKey, style }: ChainProps) {
+  const { packets, state, active } = useChainPackets(adminKey);
+  const [expanded, setExpanded] = useState(false);
 
   const renders = stageRenders(state);
   const glyph = outcomeGlyph(state, active);
-  // Fraction of the rule that should be inked, 0..1.
   const progress = state.cleared / CHAIN_STAGES.length;
+  const animated = style !== "minimal";
 
   return (
-    <div className="chain" data-outcome={state.outcome} data-active={active || undefined}>
-      <div className="chain-track" aria-hidden>
-        <div className="chain-rule" />
-        {reduced ? (
+    <div
+      className="chain"
+      data-outcome={state.outcome}
+      data-active={active || undefined}
+      data-style={style}
+      data-expanded={expanded || undefined}
+    >
+      {animated && (
+        <ChainCanvas
+          style={style}
+          packets={packets}
+          state={state}
+          height={expanded ? EXPANDED_HEIGHT : STRIP_HEIGHT}
+        />
+      )}
+
+      {!animated && (
+        <div className="chain-track" aria-hidden>
+          <div className="chain-rule" />
           <div className="chain-fill" style={{ transform: `scaleX(${progress})` }} />
-        ) : (
-          <motion.div
-            className="chain-fill"
-            initial={false}
-            animate={{ scaleX: progress }}
-            /* Not transitionFast/transition: this is the chain filling to reflect
-               real cleared-stage progress, deliberately slower (550ms) than any
-               UI-chrome preset so the ink read as tracking evidence, not a blip. */
-            transition={{ duration: 0.55, ease: EASE }}
-          />
-        )}
-      </div>
-      <ol className="chain-stages">
+        </div>
+      )}
+
+      {/* The accessible chain. Visually hidden under a canvas style — the
+          canvas draws the same six stages — but never removed, so screen
+          readers get the identical reading in every style. */}
+      <ol className="chain-stages" data-hidden={animated || undefined}>
         {CHAIN_STAGES.map((stage, i) => (
           <li key={stage} className="chain-stage" data-render={renders[i]} title={STAGE_TITLES[stage]}>
             <span className="chain-node" aria-hidden />
@@ -132,10 +106,23 @@ export function Chain({ adminKey }: ChainProps) {
           </li>
         ))}
       </ol>
+
       {/* A denial is the most important sentence the console speaks — announce it. */}
       <div className="chain-outcome" aria-live="polite">
         <StateIcon state={glyph.state} title={glyph.label} size={12} />
       </div>
+
+      {animated && (
+        <button
+          type="button"
+          className="chain-expand"
+          aria-expanded={expanded}
+          aria-label={expanded ? "Collapse governance chain" : "Expand governance chain"}
+          onClick={() => setExpanded((v) => !v)}
+        >
+          <span aria-hidden>{expanded ? "▲" : "▼"}</span>
+        </button>
+      )}
     </div>
   );
 }

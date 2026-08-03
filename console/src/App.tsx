@@ -22,6 +22,7 @@ import {
   saveStoredRole,
   whoamiRequest,
 } from "./lib/api";
+import { readChainStyle } from "./lib/chainStyle";
 import { defaultRegistry, installVisibilityPause } from "./lib/live/registry";
 import type { ConnectionState } from "./lib/live/status";
 import type { AuthRole } from "./lib/rbac";
@@ -280,7 +281,7 @@ export function App() {
                 <span className="eyebrow">{connGlyph.label}</span>
               </span>
             )}
-            <Chain adminKey={adminKey} />
+            <Chain adminKey={adminKey} style={readChainStyle()} />
           </header>
           {reducedMotion ? (
             <div className="page">{page}</div>
