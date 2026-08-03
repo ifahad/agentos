@@ -127,7 +127,7 @@
 }
 
 /* Live traffic: the leading edge of the run breathes. Only while requests are
-   actually arriving — see LINGER_MS in useChainPackets.ts. */
+   actually arriving — see the quiet-timer deadline in useChainPackets.ts. */
 .chain[data-active] .chain-fill {
   animation: chain-pulse 1.6s var(--ease) infinite;
 }

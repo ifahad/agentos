@@ -24,7 +24,7 @@ export const CHAIN_STYLE_LABELS: Record<ChainStyle, string> = {
   phosphor: "Phosphor — an instrument trace with persistence",
   corridor: "Corridor — luminous gates a request punches through",
   flow: "Flow — every request a particle in the stream",
-  minimal: "Minimal — the plain rule, no animation",
+  minimal: "Minimal — the plain rule, no canvas",
 };
 
 /** A stored value, or anything else, narrowed to a style. Never throws. */

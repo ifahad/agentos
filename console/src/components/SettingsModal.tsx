@@ -160,7 +160,7 @@ export function SettingsModal({
         <p className="muted" style={{ fontSize: "12px", margin: "6px 0 0" }}>
           How the chain above your content is drawn. Every style shows the same
           evidence — only requests the audit log recorded ever appear. Choose{" "}
-          <strong>minimal</strong> for the plain rule with no animation.
+          <strong>minimal</strong> for the plain rule, no canvas.
         </p>
       </div>
 
