@@ -5,6 +5,8 @@
  * The chain animates one mark per real audit row. That means answering two
  * questions this module owns and lib/chain.ts does not: which rows are NEW
  * since the last poll, and WHEN within the poll window each should appear.
+ * Admin-plane rows (ADMIN_PLANE_KINDS from chain.ts) are filtered to keep
+ * the diff layer and stage-render layer in agreement about what counts as traffic.
  *
  * Row identity is the hard part. AuditEntry has no id — every field is a
  * value, so two identical calls in the same millisecond are indistinguishable.
@@ -14,7 +16,7 @@
  * used only to LOCATE that anchor, never to identify a row on its own.
  */
 
-import { CHAIN_STAGES, chainStateFromEntry } from "./chain";
+import { ADMIN_PLANE_KINDS, CHAIN_STAGES, chainStateFromEntry } from "./chain";
 import type { ChainOutcome, ChainStage, GatewayAuditKind } from "./chain";
 import type { AuditEntry } from "./types";
 
@@ -25,9 +27,6 @@ import type { AuditEntry } from "./types";
  * because the alternative is animating a backlog as though it were live.
  */
 export const MAX_REPLAY_PER_POLL = 12;
-
-/** Admin-plane kinds, mirroring lib/chain.ts. A secret reload is not traffic. */
-const ADMIN_PLANE_KINDS: ReadonlySet<string> = new Set<string>(["secret_reload"]);
 
 export interface ChainPacket {
   /** Synthetic, for React keying and renderer bookkeeping only. Never dedupe on this. */
