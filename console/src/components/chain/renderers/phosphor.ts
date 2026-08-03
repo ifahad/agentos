@@ -16,7 +16,8 @@
  */
 
 import { CHAIN_STAGES, stageRenders } from "../../../lib/chain";
-import { alpha } from "../color";
+import type { ChainOutcome } from "../../../lib/chain";
+import { alpha, stopColor } from "../color";
 import type { ChainRenderer, RenderFrame } from "./types";
 
 const BURN_DECAY_MS = 2600;
@@ -25,10 +26,19 @@ const PULSE_HEIGHT = 30;
 const DEPOSIT_HEIGHT = 6;
 const DEPOSIT_WIDTH = 2;
 
+/**
+ * Cap on per-packet bookkeeping, matching the host's own (ChainCanvas.tsx:
+ * 197-209). `seen` and `deposited` otherwise hold one entry per packet
+ * forever, and at MAX_REPLAY_PER_POLL on a 5s poll that is ~8.6k entries an
+ * hour on a console left open.
+ */
+const MAX_TRACKED_IDS = 512;
+
 interface Burn {
   x: number;
   life: number; // 1 -> 0
-  denied: boolean;
+  /** Carried, not resolved, so a theme flip recolours a burn already fading. */
+  outcome: ChainOutcome;
 }
 
 export function createPhosphorRenderer(): ChainRenderer {
@@ -77,8 +87,10 @@ export function createPhosphorRenderer(): ChainRenderer {
       ctx.lineTo(w - pad, mid);
       ctx.stroke();
 
-      // Stage ticks and labels. `stageRenders` decides which may be lit at
-      // rest: cleared stages take ink, unproven and pending stay faint.
+      // Stage ticks and labels. `stageRenders` decides which TICK may be lit
+      // at rest: cleared takes ink, stopped takes the outcome hue, unproven
+      // and pending stay at the edge colour. The label below never varies —
+      // it is text, and it has a contrast floor to clear.
       const renders = stageRenders(state);
       ctx.textAlign = "center";
       ctx.font = '600 8px "IBM Plex Mono", ui-monospace, monospace';
@@ -87,9 +99,7 @@ export function createPhosphorRenderer(): ChainRenderer {
         const render = renders[i];
         const tickColor =
           render === "stopped"
-            ? state.outcome === "fail"
-              ? palette.hold
-              : palette.deny
+            ? stopColor(state.outcome, palette)
             : render === "cleared"
               ? palette.ink
               : palette.edge;
@@ -99,7 +109,14 @@ export function createPhosphorRenderer(): ChainRenderer {
         ctx.moveTo(x, mid - 9);
         ctx.lineTo(x, mid + 9);
         ctx.stroke();
-        ctx.fillStyle = render === "cleared" ? palette.ink : palette.faint;
+        // Label colour is always `ink` (--text-dim), never `faint`
+        // (--text-faint): design spec §6 and Chain.css:86-90 — --text-faint
+        // measures 2.65:1 on --bg, below the 4.5:1 floor, and at 8px uppercase
+        // mono this is EVERY label on an idle chain, in the default style, on
+        // every page. The tick above already carries which stage is lit, so
+        // the label does not have to encode it by being unreadable. `faint`
+        // stays for non-text furniture only.
+        ctx.fillStyle = palette.ink;
         ctx.fillText(CHAIN_STAGES[i].toUpperCase(), x, labelY);
       }
 
@@ -111,7 +128,7 @@ export function createPhosphorRenderer(): ChainRenderer {
           burns.splice(i, 1);
           continue;
         }
-        ctx.fillStyle = alpha(b.denied ? palette.deny : palette.hold, 0.55 * b.life);
+        ctx.fillStyle = alpha(stopColor(b.outcome, palette), 0.55 * b.life);
         ctx.fillRect(b.x - 1.5, mid - 22, 3, 44);
       }
 
@@ -123,7 +140,7 @@ export function createPhosphorRenderer(): ChainRenderer {
 
         if (lp.deadFor > 0 && packet.stopIndex >= 0 && !seen.has(packet.id)) {
           seen.add(packet.id);
-          burns.push({ x, life: 1, denied: packet.outcome === "deny" });
+          burns.push({ x, life: 1, outcome: packet.outcome });
         }
 
         // Track deposits per packet: only deposit at stages the evidence proves ran
@@ -132,7 +149,15 @@ export function createPhosphorRenderer(): ChainRenderer {
         }
         const packetDeposits = deposited.get(packet.id)!;
 
-        if (lp.deadFor === 0) {
+        // A still frame draws stopped packets too. Under reduced motion there
+        // is no rAF pass during which a denied packet was ever travelling, so
+        // gating deposits on `deadFor === 0` alone would give a reduced-motion
+        // user a burn mark with none of the deposits the live path lays down
+        // on the way to it. Placing a stopped packet at its resting position
+        // makes `reach === progressLimit`, so this deposits at exactly the
+        // stages up to and including its stop — the same set the animated path
+        // produces, and no more.
+        if (lp.deadFor === 0 || still) {
           // Pulse is still travelling — check each stage to see if the pulse
           // has crossed it, and deposit if evidence proves it ran
           const maxStageIndex = packet.stopIndex >= 0 ? packet.stopIndex : CHAIN_STAGES.length - 1;
@@ -141,7 +166,14 @@ export function createPhosphorRenderer(): ChainRenderer {
             const stageBoundary = (i + 1) / CHAIN_STAGES.length;
             const stageCrossed = reach >= stageBoundary;
 
-            if (stageCrossed && !packetDeposits.has(i)) {
+            // `packetDeposits` is an "already painted, let the phosphor carry
+            // it" memo, which only holds while the canvas PERSISTS between
+            // frames. A still frame repaints opaque (`still ? palette.bg`
+            // above) and is drawn twice — so pass 2 erased pass 1's deposits
+            // and then skipped redrawing them, and every deposit vanished for
+            // exactly the users who cannot see the animation. `still` is the
+            // frame telling the renderer nothing carries over: redraw.
+            if (stageCrossed && (still || !packetDeposits.has(i))) {
               // Only deposit if the stage is not in unproven
               if (!packet.unproven.includes(CHAIN_STAGES[i])) {
                 const stageXPos = stageX(i, w, pad);
@@ -170,19 +202,30 @@ export function createPhosphorRenderer(): ChainRenderer {
         ctx.stroke();
       }
 
-      // Readout
+      // Bookkeeping hygiene, same rule and same reasoning as the host's
+      // (ChainCanvas.tsx:197-209). `seen` and `deposited` are keyed by packet
+      // id and are only ever consulted for a packet the frame still carries;
+      // the host retires a LivePacket permanently and never re-adopts one (its
+      // own trim keeps the union of live and prop ids precisely so an id is
+      // never seen twice). So pruning to the ids on screen is lossless, and
+      // without it both structures grow for as long as the console is open.
+      if (seen.size > MAX_TRACKED_IDS || deposited.size > MAX_TRACKED_IDS) {
+        const onScreen = new Set(packets.map((lp) => lp.packet.id));
+        seen = new Set([...seen].filter((id) => onScreen.has(id)));
+        deposited = new Map([...deposited].filter(([id]) => onScreen.has(id)));
+      }
+
+      // Readout. `ink`, not `faint` — same contrast rule as the stage labels
+      // above (design spec §6); at 9px mono an `alpha(faint, 0.7)` readout was
+      // the worst-contrast text on the canvas.
       ctx.font = '500 9px "IBM Plex Mono", ui-monospace, monospace';
       ctx.textAlign = "left";
-      ctx.fillStyle = alpha(palette.faint, 0.7);
+      ctx.fillStyle = palette.ink;
       const flying = packets.filter((p) => p.deadFor === 0).length;
       ctx.fillText(`IN FLIGHT ${String(flying).padStart(2, "0")}`, pad, 12);
       ctx.textAlign = "right";
       ctx.fillStyle =
-        state.outcome === "deny"
-          ? palette.deny
-          : state.outcome === "fail"
-            ? palette.hold
-            : alpha(palette.faint, 0.7);
+        state.outcome === "pass" ? palette.ink : stopColor(state.outcome, palette);
       ctx.fillText(
         state.outcome === "deny" ? "DENIED" : state.outcome === "fail" ? "PROVIDER FAILED" : "NOMINAL",
         w - pad,

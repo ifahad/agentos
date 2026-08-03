@@ -18,7 +18,7 @@
  */
 
 import { CHAIN_STAGES, stageRenders } from "../../../lib/chain";
-import { alpha } from "../color";
+import { alpha, stopColor } from "../color";
 import type { ChainRenderer, RenderFrame } from "./types";
 
 interface Drift {
@@ -76,9 +76,7 @@ export function createFlowRenderer(): ChainRenderer {
           packets.some((lp) => lp.packet.unproven.includes(stage));
         ctx.strokeStyle =
           renders[i] === "stopped"
-            ? state.outcome === "fail"
-              ? palette.hold
-              : palette.deny
+            ? stopColor(state.outcome, palette)
             : alpha(palette.edge, unproven ? 0.5 : 1);
         ctx.lineWidth = 1;
         // Dashed == "the evidence does not prove this check ran."
@@ -89,7 +87,13 @@ export function createFlowRenderer(): ChainRenderer {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        ctx.fillStyle = renders[i] === "cleared" ? palette.ink : palette.faint;
+        // Label colour is always `ink` (--text-dim), never `faint`
+        // (--text-faint): design spec §6 and Chain.css:86-90 — --text-faint
+        // measures 2.65:1 on --bg, below the 4.5:1 floor, and at 8px uppercase
+        // mono this is EVERY label on an idle chain. The column above already
+        // says solid/dashed/stopped; the label need not encode it by being
+        // unreadable. `faint` is reserved for non-text furniture.
+        ctx.fillStyle = palette.ink;
         ctx.fillText(CHAIN_STAGES[i].toUpperCase(), x, labelY);
       }
 
@@ -104,7 +108,10 @@ export function createFlowRenderer(): ChainRenderer {
         const x = pad + (w - pad * 2) * reach;
 
         let y = lane;
-        let color = packet.outcome === "pass" ? palette.live : palette.deny;
+        // In flight, a doomed packet already carries its outcome's hue — and
+        // for a `fail` that hue is `hold`, not deny red. The provider broke;
+        // governance did not refuse anything.
+        let color = packet.outcome === "pass" ? palette.live : stopColor(packet.outcome, palette);
         let life = 1;
 
         if (lp.deadFor > 0 && packet.stopIndex >= 0) {
@@ -118,7 +125,7 @@ export function createFlowRenderer(): ChainRenderer {
           d.life = Math.max(0, 1 - lp.deadFor / 0.9);
           y = d.y;
           life = d.life;
-          color = packet.outcome === "fail" ? palette.hold : palette.deny;
+          color = stopColor(packet.outcome, palette);
         } else if (lp.deadFor === 0) {
           flying++;
         }
@@ -143,7 +150,8 @@ export function createFlowRenderer(): ChainRenderer {
 
       ctx.font = '500 9px "IBM Plex Mono", ui-monospace, monospace';
       ctx.textAlign = "left";
-      ctx.fillStyle = alpha(palette.faint, 0.7);
+      // `ink`, not `faint` — same contrast rule as the labels above.
+      ctx.fillStyle = palette.ink;
       ctx.fillText(still ? "STILL" : `IN FLIGHT ${String(flying).padStart(3, "0")}`, pad, 12);
     },
   };

@@ -237,7 +237,9 @@
   height: 20px;
   padding: 0;
   font-size: 8px;
-  color: var(--text-faint);
+  /* Same rule as .chain-label above: --text-faint measures 2.65:1 on --bg and
+     this glyph is 8px, so it fails 4.5:1 by more than the label does. */
+  color: var(--text-dim);
   background: none;
   border: 0;
   border-radius: 3px;

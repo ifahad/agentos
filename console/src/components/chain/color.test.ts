@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { alpha } from "./color";
+import { alpha, stopColor } from "./color";
+import { FALLBACK_PALETTE } from "./palette";
 
 describe("alpha", () => {
   it("converts 6-digit hex", () => {
@@ -24,5 +25,33 @@ describe("alpha", () => {
     expect(alpha("rebeccapurple", 0.5)).toBe("rebeccapurple");
     expect(alpha("#zzz", 0.5)).toBe("#zzz");
     expect(alpha("", 0.5)).toBe("");
+  });
+});
+
+describe("stopColor", () => {
+  it("paints a governance denial in the deny hue", () => {
+    expect(stopColor("deny", FALLBACK_PALETTE)).toBe(FALLBACK_PALETTE.deny);
+  });
+
+  it("paints a provider failure in the hold hue, NOT the denial hue", () => {
+    // The distinction lib/chain.ts:20-29 exists to protect: a `chat` row with
+    // a 5xx cleared every governance stage and broke at the provider. Drawing
+    // it in denial red tells the operator AgentOS refused a request it
+    // actually allowed.
+    expect(stopColor("fail", FALLBACK_PALETTE)).toBe(FALLBACK_PALETTE.hold);
+    expect(stopColor("fail", FALLBACK_PALETTE)).not.toBe(FALLBACK_PALETTE.deny);
+  });
+
+  it("fails closed on a pass, which can never reach a stopped mark", () => {
+    // `stoppedAt` is null on a pass, so no renderer has a stop position to
+    // draw. If one somehow asks, a visible red mark is how the bug surfaces —
+    // resolving to something inert would let it read as a clean pass.
+    expect(stopColor("pass", FALLBACK_PALETTE)).toBe(FALLBACK_PALETTE.deny);
+  });
+
+  it("reads from the injected palette, never a literal", () => {
+    const themed = { ...FALLBACK_PALETTE, deny: "#111111", hold: "#222222" };
+    expect(stopColor("deny", themed)).toBe("#111111");
+    expect(stopColor("fail", themed)).toBe("#222222");
   });
 });

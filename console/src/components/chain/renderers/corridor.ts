@@ -6,19 +6,34 @@
  * outline — the request was not stopped there, but nothing proves the check
  * ran, and a flare would assert exactly that.
  *
- * A denial momentarily slams its gate with a deny tint and then shatters into
- * sparks. Both the tint and sparks decay over FLARE_DECAY_MS and SPARK_LIFE_MS
- * respectively, so a gate returns to its live colour once the denial has fully
- * faded. A later packet passing the same gate is never rendered as denied.
+ * A request that stops slams its gate with the outcome's tint and then
+ * shatters into sparks. Both the tint and sparks decay over FLARE_DECAY_MS and
+ * SPARK_LIFE_MS respectively, so a gate returns to its live colour once the
+ * stop has fully faded. A later packet passing the same gate is never rendered
+ * as stopped.
+ *
+ * The tint is the OUTCOME's colour, not a fixed deny red — see `stopColor`.
+ * A `chat` row carrying a 5xx cleared every governance stage and broke at the
+ * provider; slamming its gate in denial red would announce a refusal AgentOS
+ * never made.
  */
 
 import { CHAIN_STAGES, stageRenders } from "../../../lib/chain";
-import { alpha } from "../color";
+import type { ChainOutcome } from "../../../lib/chain";
+import { alpha, stopColor } from "../color";
 import type { ChainRenderer, RenderFrame } from "./types";
 
 const SPARKS_PER_DENIAL = 16;
 const SPARK_LIFE_MS = 620;
 const FLARE_DECAY_MS = 260;
+
+/**
+ * Cap on per-packet bookkeeping, matching the host's own (ChainCanvas.tsx:
+ * 197-209). `handled` holds one id forever otherwise, and at
+ * MAX_REPLAY_PER_POLL on a 5s poll that is ~8.6k ids an hour on a console
+ * left open.
+ */
+const MAX_TRACKED_IDS = 512;
 
 interface Spark {
   x: number;
@@ -26,11 +41,14 @@ interface Spark {
   vx: number;
   vy: number;
   life: number;
+  /** Carried, not resolved, so a theme flip recolours sparks already in the air. */
+  outcome: ChainOutcome;
 }
 
 export function createCorridorRenderer(): ChainRenderer {
   let flare = new Array<number>(CHAIN_STAGES.length).fill(0);
-  let denyFlare = new Array<number>(CHAIN_STAGES.length).fill(0);
+  let stopFlare = new Array<number>(CHAIN_STAGES.length).fill(0);
+  let stopOutcome = new Array<ChainOutcome>(CHAIN_STAGES.length).fill("deny");
   let sparks: Spark[] = [];
   let handled = new Set<string>();
 
@@ -41,7 +59,8 @@ export function createCorridorRenderer(): ChainRenderer {
   return {
     reset() {
       flare = new Array<number>(CHAIN_STAGES.length).fill(0);
-      denyFlare = new Array<number>(CHAIN_STAGES.length).fill(0);
+      stopFlare = new Array<number>(CHAIN_STAGES.length).fill(0);
+      stopOutcome = new Array<ChainOutcome>(CHAIN_STAGES.length).fill("deny");
       sparks = [];
       handled = new Set();
     },
@@ -74,10 +93,10 @@ export function createCorridorRenderer(): ChainRenderer {
       for (let i = 0; i < CHAIN_STAGES.length; i++) {
         const x = gateX(i, w, pad);
         const f = flare[i];
-        const d = denyFlare[i];
+        const d = stopFlare[i];
         flare[i] = Math.max(0, f - dt / FLARE_DECAY_MS);
-        denyFlare[i] = Math.max(0, d - dt / FLARE_DECAY_MS);
-        const col = d > 0 ? palette.deny : palette.live;
+        stopFlare[i] = Math.max(0, d - dt / FLARE_DECAY_MS);
+        const col = d > 0 ? stopColor(stopOutcome[i], palette) : palette.live;
 
         // Gate body — a vertical slit that brightens with the flare.
         const grad = ctx.createLinearGradient(x, mid - gateHalf, x, mid + gateHalf);
@@ -98,15 +117,14 @@ export function createCorridorRenderer(): ChainRenderer {
           ctx.fillRect(x - 1, mid - gateHalf, 2, gateHalf * 2);
         }
 
+        // Label colour. The base is `ink` (--text-dim), never `faint`
+        // (--text-faint): design spec §6 and Chain.css:86-90 — --text-faint
+        // measures 2.65:1 on --bg, below the 4.5:1 floor, and at 8px uppercase
+        // mono this is EVERY label on an idle chain. Which stage is lit is
+        // carried by the gate itself, not by making the pending ones
+        // unreadable. `faint` is reserved for non-text furniture.
         const render = renders[i];
-        ctx.fillStyle =
-          render === "stopped"
-            ? state.outcome === "fail"
-              ? palette.hold
-              : palette.deny
-            : render === "cleared" || f > 0
-              ? palette.ink
-              : palette.faint;
+        ctx.fillStyle = render === "stopped" ? stopColor(state.outcome, palette) : palette.ink;
         ctx.fillText(CHAIN_STAGES[i].toUpperCase(), x, labelY);
       }
 
@@ -115,7 +133,12 @@ export function createCorridorRenderer(): ChainRenderer {
         if (lp.deadFor > 0) {
           if (lp.packet.stopIndex >= 0 && !handled.has(lp.packet.id)) {
             handled.add(lp.packet.id);
-            denyFlare[lp.packet.stopIndex] = 1;
+            stopFlare[lp.packet.stopIndex] = 1;
+            // The gate takes THIS packet's outcome. A provider failure and a
+            // governance denial stop at different stages for different
+            // reasons, and the gate must not report the second when the
+            // evidence says the first.
+            stopOutcome[lp.packet.stopIndex] = lp.packet.outcome;
             flare[lp.packet.stopIndex] = 1;
             const sx = gateX(lp.packet.stopIndex, w, pad);
             for (let k = 0; k < SPARKS_PER_DENIAL; k++) {
@@ -125,6 +148,7 @@ export function createCorridorRenderer(): ChainRenderer {
                 vx: (k / SPARKS_PER_DENIAL - 0.7) * 90,
                 vy: (k % 2 === 0 ? 1 : -1) * (30 + k * 6),
                 life: 1,
+                outcome: lp.packet.outcome,
               });
             }
           }
@@ -156,14 +180,25 @@ export function createCorridorRenderer(): ChainRenderer {
           sparks.splice(i, 1);
           continue;
         }
-        ctx.fillStyle = alpha(palette.deny, s.life);
+        ctx.fillStyle = alpha(stopColor(s.outcome, palette), s.life);
         ctx.fillRect(s.x, s.y, 1.6, 1.6);
+      }
+
+      // Bookkeeping hygiene. `handled` exists only to fire a gate's slam once
+      // per packet, so an id the frame no longer carries can never trigger
+      // again: the host retires a LivePacket permanently and never re-adopts
+      // it (ChainCanvas.tsx:197-209 keeps the union of live and prop ids
+      // precisely so a retired id is never seen twice). Pruning to the ids on
+      // screen is therefore lossless, and the same rule the host applies.
+      if (handled.size > MAX_TRACKED_IDS) {
+        const onScreen = new Set(packets.map((lp) => lp.packet.id));
+        handled = new Set([...handled].filter((id) => onScreen.has(id)));
       }
 
       if (still) {
         ctx.font = '500 9px "IBM Plex Mono", ui-monospace, monospace';
         ctx.textAlign = "left";
-        ctx.fillStyle = alpha(palette.faint, 0.7);
+        ctx.fillStyle = palette.ink;
         ctx.fillText("STILL", pad, 12);
       }
     },

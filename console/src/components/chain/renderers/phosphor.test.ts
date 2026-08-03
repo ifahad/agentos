@@ -57,6 +57,34 @@ describe("phosphor renderer", () => {
     expect(() => r.draw(frame())).not.toThrow();
   });
 
+  it("bounds its per-packet bookkeeping instead of growing for the session", () => {
+    // `seen` and `deposited` previously held one entry per packet forever —
+    // ~8.6k an hour at MAX_REPLAY_PER_POLL on a console left open. The cap
+    // prunes to the ids currently on screen, safe only because the host never
+    // re-presents a retired packet (ChainCanvas.tsx:197-209). "It was pruned"
+    // is observable as a forgotten id depositing afresh.
+    const passing = (id: string) =>
+      livePacket({ packet: { ...livePacket().packet, id }, progress: 1, progressLimit: 1 });
+    const deposits = (draws: ReturnType<typeof stubCtx>["draws"]) =>
+      draws.filter((d) => d.method === "fillRect" && d.args[2] === 2 && d.args[3] === 6).length;
+
+    // Control: under the cap, a packet already deposited does not deposit again.
+    const small = createPhosphorRenderer();
+    const ctlCtx = stubCtx();
+    for (let n = 0; n < 10; n++) small.draw(frame({ ctx: ctlCtx.ctx, packets: [passing(`p${n}`)] }));
+    ctlCtx.draws.length = 0;
+    small.draw(frame({ ctx: ctlCtx.ctx, packets: [passing("p0")] }));
+    expect(deposits(ctlCtx.draws), "a remembered packet must not re-deposit").toBe(0);
+
+    // Over the cap the oldest ids are gone, so the same id deposits afresh.
+    const big = createPhosphorRenderer();
+    const bigCtx = stubCtx();
+    for (let n = 0; n < 600; n++) big.draw(frame({ ctx: bigCtx.ctx, packets: [passing(`p${n}`)] }));
+    bigCtx.draws.length = 0;
+    big.draw(frame({ ctx: bigCtx.ctx, packets: [passing("p0")] }));
+    expect(deposits(bigCtx.draws), "the bookkeeping must have been pruned").toBeGreaterThan(0);
+  });
+
   it("deposits nothing at unproven stages (guardrail on a passing chat)", () => {
     const r = createPhosphorRenderer();
     const { ctx, draws } = stubCtx();

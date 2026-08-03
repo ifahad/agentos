@@ -1,3 +1,6 @@
+import type { ChainOutcome } from "../../lib/chain";
+import type { ChainPalette } from "./palette";
+
 /**
  * Alpha compositing for canvas colour.
  *
@@ -34,4 +37,30 @@ export function alpha(color: string, a: number): string {
   }
 
   return c;
+}
+
+/**
+ * Colour for any mark that says "the request stopped here."
+ *
+ * This encodes the one distinction lib/chain.ts:20-29 spends its longest
+ * comment forbidding the console to blur. `deny` is AgentOS refusing the
+ * request — a governance stage said no. `fail` is AgentOS clearing the whole
+ * gauntlet and the *provider* then breaking, which `chainStateFromEntry`
+ * reports as `outcome: "fail"`, `stoppedAt: "upstream"`. Painting that in the
+ * governance-denial hue tells the operator the gateway rejected a request it
+ * actually allowed, and blames the wrong side of the proxy.
+ *
+ * Every renderer needs the same answer for gate flares, sparks, burn marks,
+ * particle trails and stage labels, so it lives here once rather than as four
+ * hand-copied ternaries — one of which (corridor's) had already drifted.
+ *
+ * `pass` cannot reach a stopped mark: `stoppedAt` is null on a pass, so no
+ * renderer has a stop position to draw. It resolves to the denial hue anyway
+ * rather than to something inert, on the same fail-closed principle
+ * `chainStateFromEntry`'s default branch uses — a caller that asks for the
+ * stop colour of a passing request has a bug, and a visible red mark is how
+ * it gets found instead of silently reading as a clean pass.
+ */
+export function stopColor(outcome: ChainOutcome, palette: ChainPalette): string {
+  return outcome === "fail" ? palette.hold : palette.deny;
 }
