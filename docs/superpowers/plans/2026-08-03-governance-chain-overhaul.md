@@ -863,7 +863,7 @@ export function stubCtx(): StubCtx {
     get(t, prop) {
       const key = String(prop);
       if (key in t) return t[key];
-      return (...._args: unknown[]) => {
+      return (..._args: unknown[]) => {
         calls.push(key);
       };
     },
