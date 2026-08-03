@@ -6,7 +6,8 @@ import type { ChainStyle } from "../../lib/chainStyle";
 import { RETIRE_AFTER_S, advance, progressLimitFor } from "./lifecycle";
 import { readPalette } from "./palette";
 import { createRenderer } from "./renderers";
-import type { ChainRenderer, LivePacket, RenderFrame } from "./renderers/types";
+import type { ChainRenderer, LivePacket } from "./renderers/types";
+import { drawStill } from "./stillFrame";
 
 interface Props {
   style: ChainStyle;
@@ -84,67 +85,27 @@ export function ChainCanvas({ style, packets, state, height }: Props) {
 
     /**
      * One static frame built fresh from the current props — no loop, no
-     * accumulation, nothing that moves. Each on-screen packet is placed at
-     * its resting position (its own progress ceiling) rather than mid-flight,
-     * since there is no rAF to carry it there.
+     * accumulation, nothing that moves.
+     *
+     * The construction and the two-pass/reset policy live in stillFrame.ts,
+     * which is pure and therefore actually testable under vitest's node
+     * environment; this wrapper only supplies the mutable pieces the effect
+     * owns (ctx, size, palette) and the current props.
      *
      * Reused from several places: the initial paint below, a resize, a theme
-     * flip, and — via repaintStillRef — whenever new evidence arrives while
-     * reduced motion stays on. Only ever called when `reduced` is true.
+     * flip, an OS colour-scheme flip, and — via repaintStillRef — whenever new
+     * evidence arrives while reduced motion stays on. Only ever called when
+     * `reduced` is true.
      */
     function stillFrame() {
-      const stillLive: LivePacket[] = packetsRef.current.map((p) => {
-        const limit = progressLimitFor(p);
-        // Cleared packets (stopIndex < 0) keep deadFor 0, so they render as
-        // an ordinary travelling pulse resting at the end of the trace.
-        // Stopped packets need a small POSITIVE deadFor: phosphor's burn
-        // mark and corridor's deny-flare/spark shower only fire on
-        // `deadFor > 0` (phosphor.ts:124, corridor.ts:110-119), and flow's
-        // fail-vs-deny colour override is gated the same way (flow.ts:110).
-        // 0.05s clears every one of those gates while staying far under
-        // flow's 0.9s full-decay window (`1 - deadFor / 0.9`), so opacity
-        // there is still ~94% — a denial reads as a denial, not as a faded
-        // live mark or an unflagged pulse indistinguishable from a pass.
-        const deadFor = p.stopIndex >= 0 ? 0.05 : 0;
-        return { packet: p, progress: limit, progressLimit: limit, deadFor };
-      });
-      const frame: RenderFrame = {
+      drawStill(renderer, {
         ctx,
         w,
         h,
-        dt: 0,
-        elapsed: 0,
-        packets: stillLive,
+        packets: packetsRef.current,
         state: stateRef.current,
         palette,
-        still: true,
-      };
-      // Two passes, not one. phosphor and corridor each register a newly
-      // stopped packet's denial visuals (phosphor's burn, corridor's gate
-      // flare) in a loop that runs AFTER the loop that draws that same
-      // state — phosphor.ts:106-116 draws burns, then :124-127 pushes a new
-      // one; corridor.ts:74-111 draws gate flare, then :113-130 sets it for
-      // a newly-handled packet. That is a renderer-internal ordering, fine
-      // under a continuous rAF loop where the next tick draws what this one
-      // registered, but fatal to a single still-frame draw: a packet's
-      // FIRST appearance as denied would register and draw as blank, and if
-      // no further trigger follows (it was the session's last request), it
-      // would stay blank permanently. The second call has nothing left to
-      // register — phosphor's `seen` / corridor's `handled` already hold
-      // the id from pass one — so it only draws what pass one recorded.
-      // Safe against double-compositing: both renderers fully clear or
-      // opaque-fill on every call (phosphor paints opaque specifically
-      // because `still` is true), so the visible result is exactly pass
-      // two's, not a blend of the two. Two passes is provably enough here:
-      // the only renderer state with a one-call registration lag is each
-      // renderer's own decay array (burns / flare), and nothing either
-      // renderer's draw() does can register something new to a THIRD
-      // renderer-internal array only revealed on a follow-up call — a third
-      // pass would draw pixel-identical output to the second. flow.ts has no
-      // such split (its per-packet state is read and drawn in the same loop
-      // iteration) and is unaffected by running twice.
-      renderer.draw(frame);
-      renderer.draw(frame);
+      });
     }
 
     const ro = new ResizeObserver(() => {
@@ -156,18 +117,31 @@ export function ChainCanvas({ style, packets, state, height }: Props) {
     });
     ro.observe(canvas);
 
-    // The palette is theme-dependent; re-read it when the theme attribute
-    // flips, and — under reduced motion — repaint immediately, since nothing
-    // else will pick up the new colours until new evidence arrives.
-    const themeObserver = new MutationObserver(() => {
+    // The palette is theme-dependent; re-read it whenever the theme changes,
+    // and — under reduced motion — repaint immediately, since nothing else
+    // will pick up the new colours until new evidence arrives.
+    function rereadPalette() {
       const canvasEl = canvasRef.current;
       if (canvasEl) palette = readPalette(canvasEl);
       if (reduced) stillFrame();
-    });
+    }
+
+    // Explicit choice: `data-theme` on <html>, set by the settings modal.
+    const themeObserver = new MutationObserver(rereadPalette);
     themeObserver.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ["data-theme"],
     });
+
+    // No explicit choice: styles.css:166 also themes `:root:not([data-theme])`
+    // off `prefers-color-scheme`, and that path sets NO attribute — so a user
+    // who has never picked a theme gets a full palette swap that the mutation
+    // observer above cannot see. Phosphor fills the entire canvas with
+    // `palette.bg`, so the failure mode is a black bar across a light-themed
+    // console for the rest of the session. Query the dark side specifically;
+    // `change` fires in both directions.
+    const schemeQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    schemeQuery.addEventListener("change", rereadPalette);
 
     if (reduced) {
       repaintStillRef.current = stillFrame;
@@ -176,6 +150,7 @@ export function ChainCanvas({ style, packets, state, height }: Props) {
         repaintStillRef.current = null;
         ro.disconnect();
         themeObserver.disconnect();
+        schemeQuery.removeEventListener("change", rereadPalette);
       };
     }
 
@@ -245,6 +220,7 @@ export function ChainCanvas({ style, packets, state, height }: Props) {
       stop();
       ro.disconnect();
       themeObserver.disconnect();
+      schemeQuery.removeEventListener("change", rereadPalette);
       document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [style, reduced]);
