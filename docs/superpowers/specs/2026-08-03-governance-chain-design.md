@@ -136,7 +136,12 @@ audit row it came from.
    `ADMIN_PLANE_KINDS` filter via `chainFeedCount`/`latestChainState` semantics.
    An operator clicking Reload on the Secrets page must not launch a packet.
 4. Each new row is scheduled for release at its own `ts` offset within the
-   window, so a burst replays with its real internal spacing.
+   window, so a burst replays spread out rather than as a single clump.
+   (Correction, post-implementation: `releaseSchedule` min-max *normalises* the
+   batch onto `0 .. 0.9 × cadence`, so the batch's internal proportions and
+   ordering are preserved but its real absolute spacing is not — the window is
+   one cadence wide and a burst must fit inside it whatever it really spanned.
+   The original wording, "replays with its real internal spacing", over-promised.)
 5. The `upstream` leg's traversal duration scales with that row's `latency_ms`.
 6. `state` (the existing `ChainState` for the newest row) continues to drive the
    resting/summary appearance exactly as today.

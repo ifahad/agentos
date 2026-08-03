@@ -41,7 +41,17 @@ export interface ChainPacket {
   unproven: readonly ChainStage[];
 }
 
-/** Composite of every AuditEntry field — used solely to locate the diff anchor. */
+/**
+ * Composite of every AuditEntry field — used solely to locate the diff anchor.
+ *
+ * Joined on NUL, not a space: every part is attacker- or operator-influenced
+ * text (`key_name`, `model`), and a separator those values can themselves
+ * contain lets two different rows collide on one key. A key name of
+ * `alpha gpt-4o` beside an empty model is indistinguishable from `alpha` beside
+ * `gpt-4o` under a space join, and a collision here makes `diffFeed` anchor on
+ * the wrong row — replaying marks that already played, or dropping ones that
+ * never did. NUL cannot appear in these fields.
+ */
 export function rowKey(entry: AuditEntry): string {
   return [
     entry.ts,
@@ -53,7 +63,7 @@ export function rowKey(entry: AuditEntry): string {
     entry.latency_ms,
     entry.status,
     entry.kind,
-  ].join(" ");
+  ].join("\0");
 }
 
 function requestRows(entries: readonly AuditEntry[]): AuditEntry[] {
@@ -112,10 +122,22 @@ export function toPacket(entry: AuditEntry, id: string): ChainPacket {
 /**
  * Delay in ms before each packet is released, index-aligned with `packets`.
  *
- * Packets are spread across the poll window in proportion to their real
- * timestamps, so a burst replays with its own internal spacing rather than
- * arriving as a single clump. Identical timestamps — common, since `ts` has
- * second resolution — fall back to even spacing so marks never stack exactly.
+ * The batch is min-max NORMALISED onto `0 .. 0.9 * windowMs`: the oldest row
+ * in the batch always releases at 0 and the newest at the end of that span,
+ * whatever the real elapsed time between them. So what survives is the
+ * batch's internal *proportions* and ordering — three rows clustered at the
+ * start still replay clustered at the start — but not its real spacing. Two
+ * rows 40ms apart and two rows 4s apart both stretch to fill the same span.
+ * Absolute timing is deliberately not preserved: the window is fixed at one
+ * poll cadence, and a burst has to fit inside it whatever it really spanned.
+ *
+ * The `max === min` branch is a divide-by-zero guard, not a common path.
+ * `ChainPacket.ts` is `audit_log.created_at` (TIMESTAMPTZ DEFAULT now(), so
+ * microsecond resolution at the source) parsed down to epoch milliseconds, so
+ * two rows collide only when they landed in the same millisecond — possible
+ * under a burst, but rare, not the norm. It stays because the alternative
+ * when it does fire is `0/0` NaN offsets.
+ *
  * 90% of the window is used, leaving headroom before the next poll lands.
  */
 export function releaseSchedule(packets: readonly ChainPacket[], windowMs: number): number[] {
@@ -129,7 +151,8 @@ export function releaseSchedule(packets: readonly ChainPacket[], windowMs: numbe
   const max = Math.max(...times);
 
   if (max === min) {
-    // No usable spread: distribute evenly.
+    // No usable spread (every row in the same millisecond): distribute evenly
+    // rather than divide by zero.
     return packets.map((_, i) => (span * i) / (n - 1));
   }
   return packets.map((p) => {

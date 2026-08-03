@@ -238,7 +238,7 @@ export function rowKey(entry: AuditEntry): string {
     entry.latency_ms,
     entry.status,
     entry.kind,
-  ].join(" ");
+  ].join("\0");
 }
 
 function requestRows(entries: readonly AuditEntry[]): AuditEntry[] {
