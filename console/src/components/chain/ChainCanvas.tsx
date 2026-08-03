@@ -6,7 +6,7 @@ import type { ChainStyle } from "../../lib/chainStyle";
 import { RETIRE_AFTER_S, advance, progressLimitFor } from "./lifecycle";
 import { readPalette } from "./palette";
 import { createRenderer } from "./renderers";
-import type { ChainRenderer, LivePacket } from "./renderers/types";
+import type { ChainRenderer, LivePacket, RenderFrame } from "./renderers/types";
 
 interface Props {
   style: ChainStyle;
@@ -108,7 +108,7 @@ export function ChainCanvas({ style, packets, state, height }: Props) {
         const deadFor = p.stopIndex >= 0 ? 0.05 : 0;
         return { packet: p, progress: limit, progressLimit: limit, deadFor };
       });
-      renderer.draw({
+      const frame: RenderFrame = {
         ctx,
         w,
         h,
@@ -118,7 +118,33 @@ export function ChainCanvas({ style, packets, state, height }: Props) {
         state: stateRef.current,
         palette,
         still: true,
-      });
+      };
+      // Two passes, not one. phosphor and corridor each register a newly
+      // stopped packet's denial visuals (phosphor's burn, corridor's gate
+      // flare) in a loop that runs AFTER the loop that draws that same
+      // state — phosphor.ts:106-116 draws burns, then :124-127 pushes a new
+      // one; corridor.ts:74-111 draws gate flare, then :113-130 sets it for
+      // a newly-handled packet. That is a renderer-internal ordering, fine
+      // under a continuous rAF loop where the next tick draws what this one
+      // registered, but fatal to a single still-frame draw: a packet's
+      // FIRST appearance as denied would register and draw as blank, and if
+      // no further trigger follows (it was the session's last request), it
+      // would stay blank permanently. The second call has nothing left to
+      // register — phosphor's `seen` / corridor's `handled` already hold
+      // the id from pass one — so it only draws what pass one recorded.
+      // Safe against double-compositing: both renderers fully clear or
+      // opaque-fill on every call (phosphor paints opaque specifically
+      // because `still` is true), so the visible result is exactly pass
+      // two's, not a blend of the two. Two passes is provably enough here:
+      // the only renderer state with a one-call registration lag is each
+      // renderer's own decay array (burns / flare), and nothing either
+      // renderer's draw() does can register something new to a THIRD
+      // renderer-internal array only revealed on a follow-up call — a third
+      // pass would draw pixel-identical output to the second. flow.ts has no
+      // such split (its per-packet state is read and drawn in the same loop
+      // iteration) and is unaffected by running twice.
+      renderer.draw(frame);
+      renderer.draw(frame);
     }
 
     const ro = new ResizeObserver(() => {
