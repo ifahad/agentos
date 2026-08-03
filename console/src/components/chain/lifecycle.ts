@@ -35,6 +35,12 @@ export function travelDurationMs(packet: ChainPacket): number {
  *
  * `progressLimit` is the packet's own ceiling — a request denied at `rate` may
  * never be drawn past the rate boundary, however long it lingers.
+ *
+ * Note: denied packets traverse at asymmetric on-screen speeds. When stopped
+ * early, the step is scaled by `progressLimit` rather than 1, so a packet
+ * denied at stage 1 takes roughly 1/5 the on-screen speed of one denied at
+ * stage 4, even for identical real latency. This keeps early rejections
+ * watchable rather than snapping instantly to a near-origin stop point.
  */
 export function advance(live: LivePacket, dtMs: number): LivePacket {
   const limit = live.progressLimit;
