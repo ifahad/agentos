@@ -63,7 +63,6 @@ describe("phosphor renderer", () => {
     const w = 900;
     const h = 76;
     const pad = Math.min(26, w * 0.05);
-    const mid = h * 0.46;
 
     // Packet travels all the way across with guardrail unproven
     r.draw(
@@ -98,7 +97,6 @@ describe("phosphor renderer", () => {
     const w = 900;
     const h = 76;
     const pad = Math.min(26, w * 0.05);
-    const mid = h * 0.46;
 
     // Packet travels all the way across, auth is proven
     r.draw(
