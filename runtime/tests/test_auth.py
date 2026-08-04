@@ -1,8 +1,8 @@
 """Runtime authentication tests (finding C1).
 
-Every route except ``GET /healthz`` requires ``Authorization: Bearer <token>``,
-compared constant-time against AGENTOS_RUNTIME_AUTH_TOKEN. The app refuses to
-start when the token is unset.
+Every route except ``GET /healthz`` and ``/operators/webhooks/{token}`` requires
+``Authorization: Bearer <token>``, compared constant-time against
+AGENTOS_RUNTIME_AUTH_TOKEN. The app refuses to start when the token is unset.
 """
 
 import httpx

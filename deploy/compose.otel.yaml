@@ -1,6 +1,15 @@
 # Observability overlay: OTel collector receiving traces from gateway + runtime.
 #   docker compose -f compose.yaml -f compose.otel.yaml up -d
 # Forwarding to Langfuse/LangSmith: edit otel-collector.yaml (see comments).
+#
+# An overlay is not sticky, and this one fails quietly. A later `docker compose
+# up -d` that omits this file recreates gateway and runtime WITHOUT
+# AGENTOS_OTEL_ENDPOINT, so both stop emitting, while otel-collector keeps
+# running as an "orphan" the resulting warning invites you to --remove-orphans.
+# Nothing errors; tracing just goes dark. To pin it, set this once in
+# deploy/.env (paths are relative to that directory):
+#   COMPOSE_FILE=compose.yaml:compose.otel.yaml
+# An explicit -f on the command line still overrides it.
 services:
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.116.1

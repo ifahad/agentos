@@ -10,8 +10,9 @@ class Settings(BaseSettings):
 
     Environment variables:
         AGENTOS_RUNTIME_AUTH_TOKEN: Shared bearer token every caller must present
-            on every route except ``GET /healthz``. Unset/empty -> the app refuses
-            to start (fail-closed).
+            on every route except ``GET /healthz`` and the operator-webhook prefix
+            ``/operators/webhooks/{token}`` (there the ``whk-`` path segment is the
+            credential). Unset/empty -> the app refuses to start (fail-closed).
         AGENTOS_GATEWAY_URL: Base URL of the LLM gateway (e.g. http://gateway:8080).
         AGENTOS_GATEWAY_KEY: Gateway API key (``agos-...``).
         AGENTOS_MODEL: Provider-prefixed model name.
