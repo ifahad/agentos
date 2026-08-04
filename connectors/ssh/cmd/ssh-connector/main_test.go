@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/ed25519"
 	"crypto/rand"
+	"net"
 	"os"
 	"path/filepath"
 	"testing"
@@ -103,6 +104,33 @@ func TestResolveHostKeyCallback(t *testing.T) {
 		}
 		if cb != nil {
 			t.Fatalf("expected nil callback on load error")
+		}
+	})
+}
+
+// Same probe contract as the other MCP connectors: a listener that accepts is
+// healthy, a port nothing is on is not.
+func TestRunHealthCheck(t *testing.T) {
+	t.Run("listening is healthy", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen: %v", err)
+		}
+		defer ln.Close()
+		if got := runHealthCheck(ln.Addr().String()); got != 0 {
+			t.Errorf("runHealthCheck = %d, want 0", got)
+		}
+	})
+
+	t.Run("closed port is unhealthy", func(t *testing.T) {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen: %v", err)
+		}
+		addr := ln.Addr().String()
+		ln.Close()
+		if got := runHealthCheck(addr); got == 0 {
+			t.Error("runHealthCheck = 0 against a closed port, want non-zero")
 		}
 	})
 }

@@ -109,6 +109,47 @@ restConnector:
   authHeader: ""
   maxBodyBytes: 65536
   resources: {}
+
+# Opt-in, like restConnector. Both join AGENTOS_MCP_SERVERS automatically when
+# enabled, so the runtime picks them up without further wiring.
+soapConnector:
+  enabled: false
+  image:
+    repository: agentos/soap-connector
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 8093
+  # -- WSDL 1.1 document URL (required when enabled).
+  wsdlUrl: ""
+  # -- Override the endpoint address in the WSDL (empty = use the WSDL's).
+  endpoint: ""
+  # -- Comma-separated callable operations. EMPTY MEANS ALL OF THEM; name the
+  # operations explicitly to bound what the agent can invoke.
+  allowOperations: ""
+  # -- Raw header ("Name: value") attached to upstream calls (empty = none).
+  authHeader: ""
+  timeoutSeconds: 20
+  maxBodyBytes: 65536
+  resources: {}
+  extraEnv: []
+
+browserConnector:
+  enabled: false
+  image:
+    repository: agentos/browser-connector
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 8094
+  # -- Comma-separated navigable domains. EMPTY MEANS DENY ALL — the opposite
+  # of soapConnector.allowOperations, and deliberately so: an un-listed domain
+  # is an egress the agent should not have.
+  allowDomains: ""
+  timeoutSeconds: 20
+  maxText: 20000
+  resources: {}
+  extraEnv: []
   extraEnv: []
 
 sandbox:

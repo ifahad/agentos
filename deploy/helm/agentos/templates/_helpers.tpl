@@ -99,6 +99,12 @@ plus runtime.extraMcpServers.
 {{- if .Values.restConnector.enabled -}}
 {{- $servers = append $servers (printf "http://%s-rest-connector:%v/mcp" (include "agentos.fullname" .) .Values.restConnector.service.port) -}}
 {{- end -}}
+{{- if .Values.soapConnector.enabled -}}
+{{- $servers = append $servers (printf "http://%s-soap-connector:%v/mcp" (include "agentos.fullname" .) .Values.soapConnector.service.port) -}}
+{{- end -}}
+{{- if .Values.browserConnector.enabled -}}
+{{- $servers = append $servers (printf "http://%s-browser-connector:%v/mcp" (include "agentos.fullname" .) .Values.browserConnector.service.port) -}}
+{{- end -}}
 {{- $servers = concat $servers .Values.runtime.extraMcpServers -}}
 {{- join "," $servers -}}
 {{- end }}

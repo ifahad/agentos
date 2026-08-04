@@ -1,0 +1,87 @@
+{{- if .Values.browserConnector.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentos.fullname" . }}-browser-connector
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-connector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentos.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: browser-connector
+  template:
+    metadata:
+      labels:
+        {{- include "agentos.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: browser-connector
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: browser-connector
+          image: "{{ .Values.browserConnector.image.repository }}:{{ .Values.browserConnector.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.browserConnector.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            # Chromium writes its profile and shared-memory files at runtime, so
+            # unlike the Go connectors this one cannot take a read-only rootfs.
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 8094
+          env:
+            # Empty is DENY ALL, not allow all — the connector refuses every
+            # navigation until a domain is listed. Named unconditionally so the
+            # deployed allowlist is visible in the manifest.
+            - name: AGENTOS_BROWSER_ALLOW_DOMAINS
+              value: {{ .Values.browserConnector.allowDomains | quote }}
+            - name: AGENTOS_BROWSER_TIMEOUT_S
+              value: {{ .Values.browserConnector.timeoutSeconds | quote }}
+            - name: AGENTOS_BROWSER_MAX_TEXT
+              value: {{ .Values.browserConnector.maxText | quote }}
+            {{- with .Values.browserConnector.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          # tcpSocket, not httpGet: the MCP endpoint speaks streamable HTTP,
+          # where a GET is a server-initiated event stream that stays open.
+          readinessProbe:
+            tcpSocket:
+              port: http
+            # The Playwright image boots a browser context before it listens.
+            initialDelaySeconds: 15
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          {{- with .Values.browserConnector.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentos.fullname" . }}-browser-connector
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-connector
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.browserConnector.service.port }}
+      targetPort: http
+  selector:
+    {{- include "agentos.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: browser-connector
+{{- end }}

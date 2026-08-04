@@ -242,6 +242,13 @@ services:
       AGENTOS_SOAP_ALLOW_OPERATIONS: ${AGENTOS_SOAP_ALLOW_OPERATIONS:-}
     ports:
       - "${AGENTOS_SOAP_PORT:-8093}:8093"
+    # Liveness only, for the same reason as the other MCP connectors.
+    healthcheck:
+      test: ["CMD", "/soap-connector", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
 
   browser-connector:
     build: ../connectors/browser
@@ -251,6 +258,29 @@ services:
       AGENTOS_BROWSER_TIMEOUT_S: ${AGENTOS_BROWSER_TIMEOUT_S:-20}
     ports:
       - "${AGENTOS_BROWSER_PORT:-8094}:8094"
+    # Liveness only, as with the other MCP connectors — but done in python
+    # rather than by the binary, because this one runs on the Playwright image
+    # and has an interpreter rather than a distroless single binary.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import socket, sys
+          sock = socket.socket()
+          sock.settimeout(2)
+          try:
+              sock.connect(("127.0.0.1", 8094))
+          except OSError as exc:
+              sys.exit(f"healthcheck: {exc}")
+          finally:
+              sock.close()
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      # The Playwright image is large and boots a browser context; give it room.
+      start_period: 45s
 
   console:
     build: ../console

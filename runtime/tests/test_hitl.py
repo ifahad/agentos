@@ -111,3 +111,33 @@ async def test_threads_shape_and_404(client):
     assert "tool_calls" not in body["messages"][3]
     assert body["messages"][3]["content"] == "answer"
     assert (await client.get("/threads/unknown")).status_code == 404
+
+
+def test_approval_tools_with_no_tools_loaded_does_not_crash(caplog):
+    """A connector outage must not take the runtime down.
+
+    create_agent only builds a tools node when there are tools, so passing
+    interrupt_before=["tools"] with none raises "Interrupt node `tools` not
+    found" at construction. Nothing can execute without tools, so gating is
+    vacuous here — but HITL going inactive has to be said out loud rather than
+    inferred from a missing log line.
+    """
+    import logging
+
+    settings = make_settings(approval_tools="query")
+    with caplog.at_level(logging.WARNING, logger="agentos_runtime.agent"):
+        agent = build_agent(settings, [], InMemorySaver(), model=query_then_answer())
+
+    assert "tools" not in agent.nodes, "no tools loaded, so there is no tools node"
+    messages = [r.getMessage() for r in caplog.records]
+    assert any("approval gating is inactive" in m for m in messages), (
+        f"expected a warning that gating is inactive, got: {messages}"
+    )
+    assert any("query" in m for m in messages), "the warning must name the configured tools"
+
+
+def test_approval_tools_with_tools_loaded_still_gates():
+    """The warning path must not have disarmed the normal case."""
+    settings = make_settings(approval_tools="query")
+    agent = build_agent(settings, [query], InMemorySaver(), model=query_then_answer())
+    assert "tools" in agent.nodes

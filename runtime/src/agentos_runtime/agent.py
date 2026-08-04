@@ -1,5 +1,6 @@
 """Agent construction: model wiring, MCP tool loading, and checkpointing."""
 
+import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
@@ -14,6 +15,8 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from agentos_runtime.config import Settings
 from agentos_runtime.window import build_trim_middleware
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a careful data analyst operating over legacy enterprise systems "
@@ -110,7 +113,22 @@ def build_agent(
             system_prompt=system_prompt,
             checkpointer=checkpointer,
         )
-    interrupt_before = ["tools"] if settings.approval_tool_names else None
+    # Approval gating interrupts before the tools node, and create_agent only
+    # builds that node when there are tools — passing interrupt_before without
+    # any is a startup crash ("Interrupt node `tools` not found"), which turns a
+    # connector outage into a dead runtime. With no tools nothing can execute,
+    # so gating would be vacuous anyway; the one thing that must not happen
+    # quietly is HITL being disarmed, hence the warning.
+    interrupt_before = None
+    if settings.approval_tool_names:
+        if tools:
+            interrupt_before = ["tools"]
+        else:
+            logger.warning(
+                "AGENTOS_APPROVAL_TOOLS is set (%s) but no tools loaded; "
+                "approval gating is inactive for this run",
+                ",".join(settings.approval_tool_names),
+            )
     # Bound the history sent to the model when AGENTOS_MAX_CONTEXT_TOKENS is set.
     # The middleware rewrites only this call's request, so the checkpointed
     # thread stays whole and remains resumable and auditable.
