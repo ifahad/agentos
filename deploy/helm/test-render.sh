@@ -102,6 +102,71 @@ assert_contains "ingress class"         'ingressClassName: nginx'
 assert_contains "ingress tls secret"    'secretName: agentos-tls'
 assert_contains "ingress -> console svc" 'name: agentos-console'
 
+echo "== structural: every workload runs non-root with a uid, or is a named exception"
+# Two failure modes, neither visible to a per-service string assertion:
+#
+#   1. `runAsNonRoot: true` with no `runAsUser` passes helm lint and then fails
+#      at container-create time with CreateContainerConfigError, because the
+#      kubelet cannot resolve an image's `USER <name>` to a numeric id.
+#   2. No securityContext at all — silently root.
+#
+# The first version of this check grepped for runAsNonRoot FIRST and skipped
+# anything lacking it, which meant the one workload in case 2 was precisely the
+# one it ignored: it read as coverage while proving nothing about it. Enumerate
+# every workload instead and make each exception explicit.
+#
+# postgres is the documented exception: the upstream pgvector entrypoint
+# initialises its data directory as root on first start.
+NONROOT_EXCEPTIONS="postgres.yaml"
+ALL_ON=(--set restConnector.enabled=true
+        --set restConnector.specUrl=http://spec.example.com/openapi.json
+        --set demoCrm.enabled=true
+        --set soapConnector.enabled=true
+        --set soapConnector.wsdlUrl=http://legacy.example.com/svc?wsdl
+        --set browserConnector.enabled=true)
+for tpl in "$CHART_DIR"/templates/*.yaml; do
+    name=$(basename "$tpl")
+    out=$(helm template "$RELEASE" "$CHART_DIR" "${ALL_ON[@]}" \
+        --show-only "templates/$name" 2>/dev/null) || continue
+    # Only workloads run containers; Services/Secrets/NetworkPolicies do not.
+    grep -qE '^kind: (Deployment|StatefulSet|DaemonSet|Job|CronJob)' <<<"$out" || continue
+    if grep -qF " $name " <<<" $NONROOT_EXCEPTIONS "; then
+        echo "  ok: $name is a documented root exception"
+    elif ! grep -q 'runAsNonRoot: true' <<<"$out"; then
+        echo "  FAIL: $name is a workload with no runAsNonRoot and no documented exception" >&2
+        fails=$((fails + 1))
+    elif grep -q 'runAsUser:' <<<"$out"; then
+        echo "  ok: $name runs non-root and names a uid"
+    else
+        echo "  FAIL: $name sets runAsNonRoot: true with no runAsUser" >&2
+        fails=$((fails + 1))
+    fi
+done
+
+echo "== template: the runtime auth token reaches everything that needs it"
+# The runtime calls require_runtime_auth_token() in lifespan() and refuses to
+# start without this, so a chart that omits it does not degrade — it never boots.
+rendered=$(helm template "$RELEASE" "$CHART_DIR")
+assert_contains "secret carries the runtime auth token" 'runtime-auth-token:'
+assert_contains "something consumes it"                 'key: runtime-auth-token'
+rendered=$(helm template "$RELEASE" "$CHART_DIR" --show-only templates/runtime.yaml)
+assert_contains "runtime is given the auth token" 'key: runtime-auth-token'
+
+echo "== template: console nginx wiring"
+rendered=$(helm template "$RELEASE" "$CHART_DIR" --show-only templates/console.yaml)
+# The image entrypoint renders templates/default.conf.template INTO
+# conf.d/default.conf under `set -eu`. Mounting the output path read-only makes
+# that write fail and the container exit before nginx starts.
+assert_contains "console mounts the template, not the rendered output" \
+    'mountPath: /etc/nginx/templates/default.conf.template'
+assert_not_contains "console must not mount over the entrypoint's output" \
+    'mountPath: /etc/nginx/conf.d/default.conf'
+assert_contains "console listens on the unprivileged port" 'listen 8080;'
+assert_not_contains "console must not listen on a privileged port" 'listen 80;'
+assert_contains "console injects the runtime bearer server-side" \
+    'proxy_set_header Authorization "Bearer ${AGENTOS_RUNTIME_AUTH_TOKEN}"'
+assert_contains "console is given the token to inject" 'key: runtime-auth-token'
+
 echo "== template: soap + browser connectors enabled"
 rendered=$(helm template "$RELEASE" "$CHART_DIR" \
     --set soapConnector.enabled=true \

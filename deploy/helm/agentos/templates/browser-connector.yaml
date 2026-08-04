@@ -20,6 +20,12 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
+        # pwuser from the Playwright base image, which connectors/browser/
+        # Dockerfile now selects with `USER 1001:1001`. Numeric on both sides
+        # deliberately: runAsNonRoot cannot resolve a USER name to an id, so
+        # declaring it without runAsUser fails with CreateContainerConfigError.
+        runAsUser: 1001
+        runAsGroup: 1001
         seccompProfile:
           type: RuntimeDefault
       containers:

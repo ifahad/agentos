@@ -8,6 +8,17 @@ fullnameOverride: ""
 # Override these for anything beyond a local/dev cluster.
 adminKey: "admin-local-dev"
 runtimeKey: "agos-local-dev-runtime"
+# -- Bearer token the runtime demands on every route except GET /healthz and
+# /operators/webhooks/{token}. The runtime fails closed and refuses to start
+# without it, and the console's nginx injects it server-side so it never
+# reaches the browser — so anything able to reach the console port holds full
+# runtime authority. Override it for anything beyond a local/dev cluster.
+#
+# Must not contain a '$'. The console's entrypoint substitutes this into its
+# nginx config, where a '$' reads as a variable reference and nginx refuses to
+# start; the entrypoint rejects it up front with that explanation. Hex and
+# base64 tokens are safe.
+runtimeAuthToken: "runtime-local-dev"
 # -- Monthly budget (USD) granted to the runtime's virtual key via
 # AGENTOS_BOOTSTRAP_KEYS ("runtime:<runtimeKey>:<budget>").
 runtimeBudget: 25

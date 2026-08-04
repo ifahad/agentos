@@ -1,9 +1,18 @@
 {{- if .Values.console.enabled }}
 {{/*
-The console image bakes an nginx config that proxies /api/gateway and
-/api/runtime to the compose hostnames ("gateway", "runtime"). In Kubernetes
-the services are named after the chart fullname, so we override
-/etc/nginx/conf.d/default.conf with a templated copy of the same config.
+The console image ships an nginx config template naming the compose hostnames
+("gateway", "runtime"). In Kubernetes the services are named after the chart
+fullname, so this ConfigMap replaces that template.
+
+It is mounted over /etc/nginx/templates/default.conf.template — the image's
+INPUT — not over /etc/nginx/conf.d/default.conf, its output. The entrypoint
+runs `envsubst < templates/default.conf.template > conf.d/default.conf` under
+`set -eu`, so mounting the output path read-only makes that write fail and the
+container exit before nginx ever starts.
+
+Consequently ${AGENTOS_RUNTIME_AUTH_TOKEN} below is deliberately NOT rendered
+by Helm: envsubst substitutes it at container start, which is what keeps the
+runtime bearer out of both the manifest and the browser.
 */}}
 apiVersion: v1
 kind: ConfigMap
@@ -13,34 +22,8 @@ metadata:
     {{- include "agentos.labels" . | nindent 4 }}
     app.kubernetes.io/component: console
 data:
-  default.conf: |
-    server {
-        listen 80;
-        server_name _;
-
-        root /usr/share/nginx/html;
-        index index.html;
-
-        location /api/gateway/ {
-            proxy_pass {{ include "agentos.gatewayUrl" . }}/;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_buffering off;
-            proxy_read_timeout 300s;
-        }
-
-        location /api/runtime/ {
-            proxy_pass http://{{ include "agentos.fullname" . }}-runtime:{{ .Values.runtime.service.port }}/;
-            proxy_http_version 1.1;
-            proxy_set_header Host $host;
-            proxy_buffering off;
-            proxy_read_timeout 300s;
-        }
-
-        location / {
-            try_files $uri $uri/ /index.html;
-        }
-    }
+  default.conf.template: |
+{{ include "agentos.consoleNginxConf" . | indent 4 }}
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -61,7 +44,16 @@ spec:
         {{- include "agentos.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: console
       annotations:
-        checksum/nginx-config: {{ printf "%s-%s" (include "agentos.gatewayUrl" .) (include "agentos.fullname" .) | sha256sum }}
+        # Hash the config's ACTUAL bytes, not a couple of the values that feed
+        # it: the ConfigMap is subPath-mounted, so it is frozen for the pod's
+        # lifetime and an edit that triggers no rollout never takes effect.
+        checksum/nginx-config: {{ include "agentos.consoleNginxConf" . | sha256sum }}
+        # And the token, because envsubst bakes it into the rendered config at
+        # container start. Without this, rotating runtimeAuthToken rewrites the
+        # Secret and rolls nothing — the console keeps injecting the old bearer
+        # while staying Ready, since its probe is the static SPA shell and never
+        # touches the proxy. The runtime carries the matching annotation.
+        checksum/runtime-token: {{ .Values.runtimeAuthToken | sha256sum }}
     spec:
       securityContext:
         runAsNonRoot: true
@@ -83,14 +75,22 @@ spec:
               # 8080: the console image runs nginx unprivileged, which cannot
               # bind a port below 1024. The Service port is unchanged.
               containerPort: 8080
-          {{- with .Values.console.extraEnv }}
           env:
+            # envsubst reads this at container start to fill the Authorization
+            # header in the config template above. Without it the header renders
+            # as an empty Bearer and every /api/runtime/ call 401s.
+            - name: AGENTOS_RUNTIME_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentos.secretName" . }}
+                  key: runtime-auth-token
+            {{- with .Values.console.extraEnv }}
             {{- toYaml . | nindent 12 }}
-          {{- end }}
+            {{- end }}
           volumeMounts:
             - name: nginx-config
-              mountPath: /etc/nginx/conf.d/default.conf
-              subPath: default.conf
+              mountPath: /etc/nginx/templates/default.conf.template
+              subPath: default.conf.template
               readOnly: true
           readinessProbe:
             httpGet:

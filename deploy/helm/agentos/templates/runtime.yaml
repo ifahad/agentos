@@ -17,6 +17,13 @@ spec:
       labels:
         {{- include "agentos.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: runtime
+      annotations:
+        # The token is read once, in lifespan(), and held for the process's
+        # life. Rotating runtimeAuthToken rewrites the Secret but rolls no pod
+        # without this, so the runtime and the console would drift apart on the
+        # next restart of either — every /api/runtime/* call 401ing while both
+        # pods report Ready.
+        checksum/runtime-token: {{ .Values.runtimeAuthToken | sha256sum }}
     spec:
       securityContext:
         runAsNonRoot: true
@@ -53,6 +60,14 @@ spec:
                 secretKeyRef:
                   name: {{ include "agentos.secretName" . }}
                   key: runtime-key
+            # Required. lifespan() calls require_runtime_auth_token() and the
+            # app refuses to start without it, so omitting this is not a
+            # degraded runtime — it is a CrashLoopBackOff.
+            - name: AGENTOS_RUNTIME_AUTH_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "agentos.secretName" . }}
+                  key: runtime-auth-token
             - name: AGENTOS_MODEL
               value: {{ .Values.runtime.model | quote }}
             - name: AGENTOS_MCP_SERVERS

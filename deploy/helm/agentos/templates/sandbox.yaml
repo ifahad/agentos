@@ -23,6 +23,13 @@ spec:
       # per-execution workdirs, resource limits always set.
       securityContext:
         runAsNonRoot: true
+        # The image declares `USER sandbox` by NAME. Kubernetes cannot resolve a
+        # name to a uid before starting the container, so runAsNonRoot alone
+        # fails admission with CreateContainerConfigError. These are the ids the
+        # image actually runs as (useradd --system --uid 10001 in
+        # sandbox/Dockerfile; gid 999 assigned by the system group).
+        runAsUser: 10001
+        runAsGroup: 999
         seccompProfile:
           type: RuntimeDefault
       containers:
