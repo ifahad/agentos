@@ -18,6 +18,20 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // React and framer-motion change only when a dependency is bumped,
+        // while the app changes on every deploy. Splitting them means a
+        // console update re-downloads app code alone instead of invalidating
+        // the whole bundle. Nothing here reaches the network at runtime — the
+        // chunks are served by the same nginx as the rest of the console.
+        manualChunks: {
+          vendor: ["react", "react-dom", "framer-motion"],
+        },
+      },
+    },
+  },
   test: {
     environment: "node",
     include: ["src/**/*.test.ts"],

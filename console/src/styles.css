@@ -405,6 +405,14 @@ a:hover {
   padding-top: 28px;
 }
 
+/* Suspense fallback while a code-split page's chunk arrives. It holds height
+   so the shell does not collapse and snap back over the frame or two this is
+   on screen. Deliberately blank: it is not an empty state, and it reports
+   nothing about whether any data exists. */
+.page-loading {
+  min-height: 60vh;
+}
+
 .page-head {
   margin-bottom: 24px;
 }

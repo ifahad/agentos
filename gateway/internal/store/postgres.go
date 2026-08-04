@@ -119,6 +119,12 @@ ALTER TABLE "usage" DROP CONSTRAINT IF EXISTS usage_pkey;
 CREATE UNIQUE INDEX IF NOT EXISTS usage_secret_hash_idx ON "usage" (secret_hash);
 CREATE INDEX IF NOT EXISTS usage_org_idx ON "usage" (org_id);
 CREATE INDEX IF NOT EXISTS audit_log_org_idx ON audit_log (org_id);
+-- Retention pruning is DELETE ... WHERE created_at < $1, which sequential-scans
+-- without this. audit_log is the one table that grows without bound (retention
+-- is off by default, deliberately), so it is also the one where a scan per
+-- prune tick gets steadily worse. AuditList orders by id DESC and rides the
+-- primary key, so it needs nothing here.
+CREATE INDEX IF NOT EXISTS audit_log_created_at_idx ON audit_log (created_at);
 CREATE INDEX IF NOT EXISTS keys_org_idx ON keys (org_id);
 `
 

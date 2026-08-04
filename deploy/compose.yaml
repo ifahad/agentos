@@ -153,10 +153,12 @@ services:
       interval: 10s
       timeout: 5s
       retries: 10
-      # The runtime imports langchain/langgraph before it serves, which is slow
-      # on a cold start; failures inside this window do not count against
-      # retries or mark the container unhealthy.
-      start_period: 90s
+      # Measured cold start (import langchain/langgraph, then serve) is ~6s.
+      # This window is the grace period before failures count, so making it
+      # generous is not free: it is also how long a genuinely broken runtime
+      # goes on reporting "starting" instead of "unhealthy". 30s is ~5x the
+      # measured start and still bounds detection.
+      start_period: 30s
     depends_on:
       gateway:
         condition: service_healthy
