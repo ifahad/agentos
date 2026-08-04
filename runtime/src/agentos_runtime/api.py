@@ -65,9 +65,12 @@ def _expected_auth_token(request: Request) -> str:
 async def require_auth(request: Request) -> None:
     """App-wide dependency enforcing ``Authorization: Bearer <token>`` (finding C1).
 
-    Applies to every route except ``GET /healthz``. Compares the presented
-    token to the configured token with :func:`secrets.compare_digest`
-    (constant-time). Any missing/malformed/mismatched token -> 401.
+    Applies to every route except ``GET /healthz`` and the operator-webhook
+    prefix ``/operators/webhooks/{token}``, where the ``whk-`` path segment is
+    itself the credential (see :data:`OPEN_PATHS` and :data:`OPEN_PREFIXES`).
+    Compares the presented token to the configured token with
+    :func:`secrets.compare_digest` (constant-time). Any missing, malformed or
+    mismatched token -> 401.
     """
     if request.url.path in OPEN_PATHS:
         return
@@ -253,7 +256,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="agentos-runtime",
     lifespan=lifespan,
-    dependencies=[Depends(require_auth)],  # every route except GET /healthz
+    dependencies=[Depends(require_auth)],  # except OPEN_PATHS + OPEN_PREFIXES
 )
 app.include_router(evals.router)
 app.include_router(improve.router)

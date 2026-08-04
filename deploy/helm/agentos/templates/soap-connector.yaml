@@ -1,0 +1,96 @@
+{{- if .Values.soapConnector.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "agentos.fullname" . }}-soap-connector
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: soap-connector
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentos.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: soap-connector
+  template:
+    metadata:
+      labels:
+        {{- include "agentos.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: soap-connector
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: soap-connector
+          image: "{{ .Values.soapConnector.image.repository }}:{{ .Values.soapConnector.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.soapConnector.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 8093
+          env:
+            - name: AGENTOS_SOAP_WSDL_URL
+              value: {{ required "soapConnector.wsdlUrl is required when soapConnector.enabled=true" .Values.soapConnector.wsdlUrl | quote }}
+            {{- with .Values.soapConnector.endpoint }}
+            - name: AGENTOS_SOAP_ENDPOINT
+              value: {{ . | quote }}
+            {{- end }}
+            # Empty means every operation in the WSDL is callable. Named here
+            # even when empty so the deployed surface is explicit rather than
+            # inherited from the image default.
+            - name: AGENTOS_SOAP_ALLOW_OPERATIONS
+              value: {{ .Values.soapConnector.allowOperations | quote }}
+            {{- with .Values.soapConnector.authHeader }}
+            - name: AGENTOS_SOAP_AUTH_HEADER
+              value: {{ . | quote }}
+            {{- end }}
+            - name: AGENTOS_SOAP_TIMEOUT_S
+              value: {{ .Values.soapConnector.timeoutSeconds | quote }}
+            - name: AGENTOS_SOAP_MAX_BODY_BYTES
+              value: {{ .Values.soapConnector.maxBodyBytes | quote }}
+            {{- with .Values.soapConnector.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          # tcpSocket, not httpGet: the MCP endpoint speaks streamable HTTP,
+          # where a GET is a server-initiated event stream that stays open.
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          {{- with .Values.soapConnector.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "agentos.fullname" . }}-soap-connector
+  labels:
+    {{- include "agentos.labels" . | nindent 4 }}
+    app.kubernetes.io/component: soap-connector
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ .Values.soapConnector.service.port }}
+      targetPort: http
+  selector:
+    {{- include "agentos.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: soap-connector
+{{- end }}

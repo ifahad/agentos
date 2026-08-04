@@ -26,6 +26,16 @@ func decodeJSON(t *testing.T, rec *httptest.ResponseRecorder, v any) {
 	}
 }
 
+func TestHealthz(t *testing.T) {
+	rec := doGet(t, "/healthz")
+	if rec.Code != http.StatusOK {
+		t.Errorf("GET /healthz = %d, want 200", rec.Code)
+	}
+	if body := rec.Body.String(); body != "ok" {
+		t.Errorf("GET /healthz body = %q, want %q", body, "ok")
+	}
+}
+
 func TestListCustomers(t *testing.T) {
 	tests := []struct {
 		name      string

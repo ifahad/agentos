@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -24,10 +25,53 @@ import (
 	"github.com/ifahad/agentos/gateway/internal/telemetry"
 )
 
+// healthCheckArg is the argument a container probe passes to make the binary
+// check itself. The gateway image is gcr.io/distroless/static — no shell and no
+// curl — so the binary is the only thing in it that can make an HTTP request,
+// and compose runs it against itself rather than the image growing a probe tool
+// it would otherwise never use.
+const healthCheckArg = "-healthcheck"
+
+// healthCheckURL is where the probe looks. main serves on :8080 unconditionally.
+const healthCheckURL = "http://127.0.0.1:8080/healthz"
+
+// runHealthCheck probes the given URL and returns the exit code a container
+// healthcheck expects: 0 healthy, anything else not. It reads no configuration,
+// so a gateway that failed to configure itself still reports unhealthy rather
+// than leaving the probe unable to run at all.
+func runHealthCheck(url string) int {
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		log.Printf("healthcheck: %v", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("healthcheck: %s -> %d", url, resp.StatusCode)
+		return 1
+	}
+	return 0
+}
+
 func main() {
+	// Before any configuration is read: the probe must work regardless of it.
+	if len(os.Args) > 1 && os.Args[1] == healthCheckArg {
+		os.Exit(runHealthCheck(healthCheckURL))
+	}
+
+	if err := run(); err != nil {
+		log.Fatalf("gateway: %v", err)
+	}
+}
+
+// run holds startup so failures return instead of calling log.Fatal, which
+// skips deferred cleanup — notably the Postgres pool close and the OTel
+// shutdown registered below. Same shape as the connectors and demo-crm.
+func run() error {
 	adminKey := os.Getenv("AGENTOS_ADMIN_KEY")
 	if adminKey == "" {
-		log.Fatal("AGENTOS_ADMIN_KEY must be set")
+		return errors.New("AGENTOS_ADMIN_KEY must be set")
 	}
 
 	ctx := context.Background()
@@ -37,7 +81,7 @@ func main() {
 	if dsn := os.Getenv("AGENTOS_DATABASE_URL"); dsn != "" {
 		pg, err := store.NewPostgres(ctx, dsn)
 		if err != nil {
-			log.Fatalf("postgres store: %v", err)
+			return fmt.Errorf("postgres store: %w", err)
 		}
 		defer pg.Close()
 		st = pg
@@ -55,15 +99,15 @@ func main() {
 		bootstrapOrg = "default"
 	}
 	if err := st.EnsureOrg(ctx, store.DefaultOrgID, bootstrapOrg, 0); err != nil {
-		log.Fatalf("bootstrap org: %v", err)
+		return fmt.Errorf("bootstrap org: %w", err)
 	}
 
 	bootstrap, err := store.ParseBootstrapKeys(os.Getenv("AGENTOS_BOOTSTRAP_KEYS"))
 	if err != nil {
-		log.Fatalf("AGENTOS_BOOTSTRAP_KEYS: %v", err)
+		return fmt.Errorf("AGENTOS_BOOTSTRAP_KEYS: %w", err)
 	}
 	if err := store.ApplyBootstrapKeys(ctx, st, bootstrap); err != nil {
-		log.Fatalf("bootstrap keys: %v", err)
+		return fmt.Errorf("bootstrap keys: %w", err)
 	}
 	if len(bootstrap) > 0 {
 		log.Printf("bootstrapped %d virtual key(s) into org %q", len(bootstrap), store.DefaultOrgID)
@@ -73,7 +117,7 @@ func main() {
 	// reproduces current behavior exactly). Misconfig is fatal.
 	secrets, err := secret.FromEnv()
 	if err != nil {
-		log.Fatalf("secrets backend: %v", err)
+		return fmt.Errorf("secrets backend: %w", err)
 	}
 	log.Printf("secrets backend: %s", secrets.Backend())
 	anthropicKey, _ := secrets.Get("AGENTOS_ANTHROPIC_API_KEY")
@@ -124,7 +168,7 @@ func main() {
 		guardMode = guardrail.ModeOff
 	}
 	if !guardrail.ValidMode(guardMode) {
-		log.Fatalf("AGENTOS_GUARDRAILS_MODE must be off, log, block, or model (got %q)", guardMode)
+		return fmt.Errorf("AGENTOS_GUARDRAILS_MODE must be off, log, block, or model (got %q)", guardMode)
 	}
 	switch guardMode {
 	case guardrail.ModeOff:
@@ -155,7 +199,7 @@ func main() {
 	if raw := os.Getenv("AGENTOS_RATE_LIMIT_RPM"); raw != "" {
 		rpm, err := strconv.Atoi(raw)
 		if err != nil || rpm < 0 {
-			log.Fatalf("AGENTOS_RATE_LIMIT_RPM must be a non-negative integer (got %q)", raw)
+			return fmt.Errorf("AGENTOS_RATE_LIMIT_RPM must be a non-negative integer (got %q)", raw)
 		}
 		opts = append(opts, server.WithRateLimits(rpm))
 		if rpm > 0 {
@@ -170,7 +214,7 @@ func main() {
 	if raw := os.Getenv("AGENTOS_AUDIT_RETENTION_DAYS"); raw != "" {
 		days, err := strconv.Atoi(raw)
 		if err != nil || days < 0 {
-			log.Fatalf("AGENTOS_AUDIT_RETENTION_DAYS must be a non-negative integer (got %q)", raw)
+			return fmt.Errorf("AGENTOS_AUDIT_RETENTION_DAYS must be a non-negative integer (got %q)", raw)
 		}
 		if days > 0 {
 			startAuditRetention(ctx, st, time.Duration(days)*24*time.Hour)
@@ -184,7 +228,7 @@ func main() {
 	if raw := os.Getenv("AGENTOS_MAX_BODY_BYTES"); raw != "" {
 		n, err := strconv.ParseInt(raw, 10, 64)
 		if err != nil || n < 0 {
-			log.Fatalf("AGENTOS_MAX_BODY_BYTES must be a non-negative integer (got %q)", raw)
+			return fmt.Errorf("AGENTOS_MAX_BODY_BYTES must be a non-negative integer (got %q)", raw)
 		}
 		opts = append(opts, server.WithMaxBodyBytes(n))
 		log.Printf("max request body: %d bytes", n)
@@ -196,7 +240,7 @@ func main() {
 	if raw := os.Getenv("AGENTOS_BUDGET_RESERVE_USD"); raw != "" {
 		reserve, err := strconv.ParseFloat(raw, 64)
 		if err != nil || reserve < 0 {
-			log.Fatalf("AGENTOS_BUDGET_RESERVE_USD must be a non-negative number (got %q)", raw)
+			return fmt.Errorf("AGENTOS_BUDGET_RESERVE_USD must be a non-negative number (got %q)", raw)
 		}
 		opts = append(opts, server.WithBudgetReserve(reserve))
 		log.Printf("budget reserve: $%.4f held per in-flight request", reserve)
@@ -214,16 +258,16 @@ func main() {
 		// default in-process limiter; nothing to wire
 	case "postgres":
 		if pgStore == nil {
-			log.Fatal("AGENTOS_RATELIMIT_BACKEND=postgres requires the Postgres store (set AGENTOS_DATABASE_URL)")
+			return errors.New("AGENTOS_RATELIMIT_BACKEND=postgres requires the Postgres store (set AGENTOS_DATABASE_URL)")
 		}
 		pgLimiter, err := ratelimit.NewPostgres(ctx, pgStore.Pool())
 		if err != nil {
-			log.Fatalf("postgres rate-limit backend: %v", err)
+			return fmt.Errorf("postgres rate-limit backend: %w", err)
 		}
 		opts = append(opts, server.WithRateLimiter(pgLimiter))
 		log.Println("rate-limit backend: postgres (distributed)")
 	default:
-		log.Fatalf("AGENTOS_RATELIMIT_BACKEND must be memory or postgres (got %q)", rlBackend)
+		return fmt.Errorf("AGENTOS_RATELIMIT_BACKEND must be memory or postgres (got %q)", rlBackend)
 	}
 
 	// SCIM 2.0 provisioning (Phase 7). Enabled only when AGENTOS_SCIM_TOKEN is
@@ -241,7 +285,7 @@ func main() {
 		// missing org. The default org is already bootstrapped above.
 		if scimOrg != store.DefaultOrgID {
 			if err := st.EnsureOrg(ctx, scimOrg, scimOrg, 0); err != nil {
-				log.Fatalf("ensure SCIM default org: %v", err)
+				return fmt.Errorf("ensure SCIM default org: %w", err)
 			}
 		}
 		opts = append(opts, server.WithSCIM(scimToken, scimOrg, scimRole))
@@ -253,7 +297,7 @@ func main() {
 	// fatal at startup.
 	oidcProvider, oidcEnabled, err := oidc.FromEnv(ctx, adminKey)
 	if err != nil {
-		log.Fatalf("OIDC: %v", err)
+		return fmt.Errorf("OIDC: %w", err)
 	}
 	if oidcEnabled {
 		opts = append(opts, server.WithOIDC(oidcProvider))
@@ -263,7 +307,7 @@ func main() {
 	if endpoint := os.Getenv("AGENTOS_OTEL_ENDPOINT"); endpoint != "" {
 		tracer, shutdown, err := telemetry.Setup(ctx, endpoint)
 		if err != nil {
-			log.Fatalf("AGENTOS_OTEL_ENDPOINT: %v", err)
+			return fmt.Errorf("AGENTOS_OTEL_ENDPOINT: %w", err)
 		}
 		defer func() {
 			if err := shutdown(ctx); err != nil {
@@ -282,7 +326,7 @@ func main() {
 	if raw := os.Getenv("AGENTOS_SECRETS_REFRESH_S"); raw != "" {
 		secs, err := strconv.Atoi(raw)
 		if err != nil || secs < 0 {
-			log.Fatalf("AGENTOS_SECRETS_REFRESH_S must be a non-negative integer (got %q)", raw)
+			return fmt.Errorf("AGENTOS_SECRETS_REFRESH_S must be a non-negative integer (got %q)", raw)
 		}
 		if secs > 0 {
 			srv.StartSecretsRefresh(ctx, time.Duration(secs)*time.Second)
@@ -323,9 +367,9 @@ func main() {
 	select {
 	case err := <-serveErr:
 		if err != nil {
-			log.Fatalf("listen: %v", err)
+			return fmt.Errorf("listen: %w", err)
 		}
-		return
+		return nil
 	case <-stopCtx.Done():
 	}
 
@@ -339,6 +383,7 @@ func main() {
 	if err := httpServer.Shutdown(drainCtx); err != nil {
 		log.Printf("shutdown: %v", err)
 	}
+	return nil
 }
 
 // buildModelGuardrail wires the AGENTOS_GUARDRAILS_MODE=model screener:

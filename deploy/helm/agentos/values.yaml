@@ -109,6 +109,47 @@ restConnector:
   authHeader: ""
   maxBodyBytes: 65536
   resources: {}
+
+# Opt-in, like restConnector. Both join AGENTOS_MCP_SERVERS automatically when
+# enabled, so the runtime picks them up without further wiring.
+soapConnector:
+  enabled: false
+  image:
+    repository: agentos/soap-connector
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 8093
+  # -- WSDL 1.1 document URL (required when enabled).
+  wsdlUrl: ""
+  # -- Override the endpoint address in the WSDL (empty = use the WSDL's).
+  endpoint: ""
+  # -- Comma-separated callable operations. EMPTY MEANS ALL OF THEM; name the
+  # operations explicitly to bound what the agent can invoke.
+  allowOperations: ""
+  # -- Raw header ("Name: value") attached to upstream calls (empty = none).
+  authHeader: ""
+  timeoutSeconds: 20
+  maxBodyBytes: 65536
+  resources: {}
+  extraEnv: []
+
+browserConnector:
+  enabled: false
+  image:
+    repository: agentos/browser-connector
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 8094
+  # -- Comma-separated navigable domains. EMPTY MEANS DENY ALL — the opposite
+  # of soapConnector.allowOperations, and deliberately so: an un-listed domain
+  # is an egress the agent should not have.
+  allowDomains: ""
+  timeoutSeconds: 20
+  maxText: 20000
+  resources: {}
+  extraEnv: []
   extraEnv: []
 
 sandbox:
@@ -148,6 +189,31 @@ console:
     port: 80
   resources: {}
   extraEnv: []
+
+# The public landing page. A static, self-contained document that calls no API
+# and holds no credential, so it carries no proxy config, no secret and no
+# dependency on the release — it serves whether or not the platform is up.
+landing:
+  enabled: true
+  image:
+    repository: agentos/landing
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 80
+  resources: {}
+  # Its own Ingress, not the chart's: the landing page and the admin console
+  # are normally published on different hosts, and routing both through the
+  # single `ingress` block above would put the console behind the public
+  # marketing domain. Leave disabled to expose it however you prefer.
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: ""
+    path: /
+    pathType: Prefix
+    tls: []
 
 demoCrm:
   enabled: false

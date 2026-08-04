@@ -14,11 +14,21 @@ import (
 // NewHandler returns the demo CRM HTTP handler.
 func NewHandler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", handleHealthz)
 	mux.HandleFunc("GET /openapi.json", handleOpenAPI)
 	mux.HandleFunc("GET /customers", handleListCustomers)
 	mux.HandleFunc("GET /customers/{id}", handleGetCustomer)
 	mux.HandleFunc("GET /tickets", handleListTickets)
 	return mux
+}
+
+// handleHealthz answers the container probe. The demo-crm image is distroless,
+// so the probe is the binary itself (`demo-crm -healthcheck`) calling this.
+func handleHealthz(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	if _, err := w.Write([]byte("ok")); err != nil {
+		log.Printf("demo-crm: write healthz: %v", err)
+	}
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

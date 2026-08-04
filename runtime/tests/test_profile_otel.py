@@ -13,15 +13,22 @@ from agentos_runtime.otel import record_tool_spans, run_span, setup_tracing
 
 def test_react_profile_is_default_graph():
     agent = build_agent(make_settings(), [query], InMemorySaver(), model=query_then_answer())
-    assert "agent" in agent.nodes  # create_react_agent model node
+    assert "model" in agent.nodes  # langchain create_agent model node
+    assert "tools" in agent.nodes
+    # Both profiles are built on create_agent and so share the "model" node
+    # name; what separates them is deepagents' middleware, which the react
+    # profile must not carry.
+    assert not [n for n in agent.nodes if "Middleware" in n]
 
 
 def test_deep_profile_builds_deepagents_graph():
     settings = make_settings(agent_profile="deep")
     agent = build_agent(settings, [query], InMemorySaver(), model=query_then_answer())
     assert "model" in agent.nodes  # deepagents/langchain create_agent model node
-    assert "agent" not in agent.nodes
     assert "tools" in agent.nodes
+    # The discriminator against the react profile: deepagents stacks its own
+    # middleware (todo list, tool-call patching) into the compiled graph.
+    assert [n for n in agent.nodes if "Middleware" in n]
 
 
 async def test_deep_profile_answers_with_fake_model():

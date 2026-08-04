@@ -20,7 +20,34 @@ import (
 
 const listenAddr = ":8095"
 
+// healthCheckArg makes the binary probe itself. The image is
+// gcr.io/distroless/static — no shell, no curl — so the binary is the only
+// thing in it that can make an HTTP request.
+const healthCheckArg = "-healthcheck"
+
+const healthCheckURL = "http://127.0.0.1:8095/healthz"
+
+// runHealthCheck returns the exit code a container healthcheck expects:
+// 0 healthy, anything else not.
+func runHealthCheck(url string) int {
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		log.Printf("healthcheck: %v", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("healthcheck: %s -> %d", url, resp.StatusCode)
+		return 1
+	}
+	return 0
+}
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == healthCheckArg {
+		os.Exit(runHealthCheck(healthCheckURL))
+	}
 	if err := run(); err != nil {
 		log.Fatalf("demo-crm: %v", err)
 	}

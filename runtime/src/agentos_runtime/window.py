@@ -5,9 +5,9 @@ will eventually exceed its model's context window and fail — not gracefully, b
 with a provider error mid-run, after the work is already paid for. Multi-cycle
 autonomous runs reach that point routinely; a single chat rarely does.
 
-This module trims the history immediately before each model call, via
-LangGraph's ``pre_model_hook``. Two properties matter more than the trimming
-itself:
+This module trims the history immediately before each model call, via an
+``AgentMiddleware`` that rewrites the request on its way to the model. Two
+properties matter more than the trimming itself:
 
 * The **system prompt is always kept**. It carries the immutable safety frame
   (``SAFETY_PREAMBLE``), so dropping it to save tokens would quietly remove the
@@ -27,6 +27,7 @@ why the limit is configurable rather than fixed.
 from collections.abc import Callable
 from typing import Any
 
+from langchain.agents.middleware import AgentMiddleware
 from langchain_core.messages import BaseMessage
 from langchain_core.messages.utils import count_tokens_approximately, trim_messages
 
@@ -79,21 +80,43 @@ def trim_history(
     return trimmed
 
 
-def build_trim_hook(max_tokens: int) -> Callable[[dict[str, Any]], dict[str, Any]] | None:
-    """Build a LangGraph ``pre_model_hook`` that bounds the context window.
+class TrimContextMiddleware(AgentMiddleware):
+    """Bound the history sent to the model on each turn.
+
+    Replaces the ``pre_model_hook`` that ``create_react_agent`` accepted;
+    ``create_agent`` takes middleware instead.
+
+    ``request.override`` builds the request for this one call and leaves
+    ``request.state`` alone, so the checkpointed thread stays whole and remains
+    resumable and auditable — the same guarantee writing ``llm_input_messages``
+    used to give.
+
+    Both the sync and async entry points are implemented. The runtime drives
+    the agent exclusively with ``ainvoke``/``astream``, so a sync-only
+    middleware would never be consulted and trimming would silently stop
+    happening — a context-limit failure reappearing with no sign of why.
+    """
+
+    def __init__(self, max_tokens: int) -> None:
+        super().__init__()
+        self.max_tokens = max_tokens
+
+    def _trimmed(self, request: Any) -> Any:
+        return request.override(messages=trim_history(request.messages, self.max_tokens))
+
+    def wrap_model_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
+        return handler(self._trimmed(request))
+
+    async def awrap_model_call(self, request: Any, handler: Callable[[Any], Any]) -> Any:
+        return await handler(self._trimmed(request))
+
+
+def build_trim_middleware(max_tokens: int) -> TrimContextMiddleware | None:
+    """Build the middleware that bounds the context window.
 
     Returns ``None`` when ``max_tokens <= 0`` so callers can pass the result
-    straight through and leave the graph unchanged when trimming is off.
-
-    The hook writes to ``llm_input_messages``, which supplies the model for this
-    call only — the checkpointed history is left intact, so trimming never
-    destroys the audit trail or a resumable thread.
+    straight through and leave the agent unchanged when trimming is off.
     """
     if max_tokens <= 0:
         return None
-
-    def hook(state: dict[str, Any]) -> dict[str, Any]:
-        messages = state.get("messages", [])
-        return {"llm_input_messages": trim_history(messages, max_tokens)}
-
-    return hook
+    return TrimContextMiddleware(max_tokens)

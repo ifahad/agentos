@@ -70,6 +70,20 @@ request, model call, and tool call emits a span. By default the collector logs
 spans to its own debug exporter; edit `deploy/otel-collector.yaml` (commented
 example inside) to forward elsewhere, or use the Langfuse overlay below.
 
+**Overlays are not sticky, and this one goes quiet rather than failing.** A
+later `docker compose up -d` that omits the overlay recreates gateway and
+runtime without `AGENTOS_OTEL_ENDPOINT`, so both stop emitting, while
+`otel-collector` lingers as an orphan whose warning invites you to
+`--remove-orphans` it. To pin the overlay for every command run in `deploy/`,
+set it once in `deploy/.env`:
+
+```bash
+COMPOSE_FILE=compose.yaml:compose.otel.yaml
+```
+
+Paths are relative to `deploy/`, the separator is `:`, and an explicit `-f`
+still overrides it. This applies to every overlay on this page, not just OTel.
+
 ### Langfuse (bundled observability UI)
 
 ```bash

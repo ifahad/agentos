@@ -27,24 +27,14 @@ jobs:
           # Cache module downloads keyed on every module's go.sum. Modules that
           # do not exist yet simply contribute nothing to the key.
           cache-dependency-path: "**/go.sum"
-      - name: vet + test each Go module that exists
+      # scripts/go.sh owns the module list, so CI and a local run cover exactly
+      # the same set. It uses the toolchain installed above when `go` is on
+      # PATH and falls back to the pinned image otherwise, which is what makes
+      # the gateway testable on a machine with no Go install.
+      - name: vet + test every Go module
         run: |
-          set -euo pipefail
-          # gateway plus every connector module. A module is tested only when
-          # it actually has a go.mod, so a not-yet-landed connector (e.g. soap
-          # while it is still in progress) is skipped rather than failing CI.
-          modules="gateway connectors/sql connectors/rest connectors/ssh connectors/soap"
-          failed=0
-          for d in $modules; do
-            if [ -f "$d/go.mod" ]; then
-              echo "::group::$d"
-              ( cd "$d" && go vet ./... && go test ./... ) || failed=1
-              echo "::endgroup::"
-            else
-              echo "skip $d (no go.mod)"
-            fi
-          done
-          exit $failed
+          scripts/go.sh vet ./...
+          scripts/go.sh test ./...
 
   python:
     name: python runtime

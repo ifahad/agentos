@@ -15,7 +15,7 @@ from mcp.server.fastmcp import FastMCP
 from .browser import BrowserManager
 from .config import LISTEN_HOST, LISTEN_PORT, MCP_PATH, Config
 
-logger = logging.getLogger("agentos_browser")
+logger = logging.getLogger(__name__)
 
 SERVER_NAME = "agentos-browser"
 

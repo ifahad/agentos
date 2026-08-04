@@ -1,8 +1,10 @@
 """Agent construction: model wiring, MCP tool loading, and checkpointing."""
 
+import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
 
+from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -10,10 +12,11 @@ from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from langgraph.prebuilt import create_react_agent
 
 from agentos_runtime.config import Settings
-from agentos_runtime.window import build_trim_hook
+from agentos_runtime.window import build_trim_middleware
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = (
     "You are a careful data analyst operating over legacy enterprise systems "
@@ -93,11 +96,11 @@ def build_agent(
         # profile only (documented deviation).
         from deepagents import create_deep_agent
 
-        # It also takes no pre_model_hook — but it does not need one:
-        # create_deep_agent already includes SummarizationMiddleware in its base
-        # stack, so this profile bounds its own context by summarising older
-        # turns. AGENTOS_MAX_CONTEXT_TOKENS therefore applies to the react
-        # profile only.
+        # It also takes no context-trimming middleware from us — and does not
+        # need one: create_deep_agent already includes SummarizationMiddleware
+        # in its base stack, so this profile bounds its own context by
+        # summarising older turns. AGENTOS_MAX_CONTEXT_TOKENS therefore applies
+        # to the react profile only.
         #
         # Do not add another SummarizationMiddleware here to honour the setting.
         # deepagents rejects duplicate middleware instances outright, so the
@@ -110,18 +113,33 @@ def build_agent(
             system_prompt=system_prompt,
             checkpointer=checkpointer,
         )
-    interrupt_before = ["tools"] if settings.approval_tool_names else None
+    # Approval gating interrupts before the tools node, and create_agent only
+    # builds that node when there are tools — passing interrupt_before without
+    # any is a startup crash ("Interrupt node `tools` not found"), which turns a
+    # connector outage into a dead runtime. With no tools nothing can execute,
+    # so gating would be vacuous anyway; the one thing that must not happen
+    # quietly is HITL being disarmed, hence the warning.
+    interrupt_before = None
+    if settings.approval_tool_names:
+        if tools:
+            interrupt_before = ["tools"]
+        else:
+            logger.warning(
+                "AGENTOS_APPROVAL_TOOLS is set (%s) but no tools loaded; "
+                "approval gating is inactive for this run",
+                ",".join(settings.approval_tool_names),
+            )
     # Bound the history sent to the model when AGENTOS_MAX_CONTEXT_TOKENS is set.
-    # The hook writes llm_input_messages, so the checkpointed thread stays whole
-    # and remains resumable and auditable — only this call's input is trimmed.
-    pre_model_hook = build_trim_hook(settings.max_context_tokens)
-    return create_react_agent(
+    # The middleware rewrites only this call's request, so the checkpointed
+    # thread stays whole and remains resumable and auditable.
+    trim = build_trim_middleware(settings.max_context_tokens)
+    return create_agent(
         model,
         tools=list(tools),
-        prompt=system_prompt,
+        system_prompt=system_prompt,
         checkpointer=checkpointer,
         interrupt_before=interrupt_before,
-        pre_model_hook=pre_model_hook,
+        middleware=[trim] if trim is not None else [],
     )
 
 

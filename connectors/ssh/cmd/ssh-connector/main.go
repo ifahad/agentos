@@ -32,7 +32,39 @@ const (
 	endpointPath  = "/mcp"
 )
 
+// healthCheckArg makes the binary probe itself. The image is
+// gcr.io/distroless/static — no shell, no curl — so the binary is the only
+// thing in it that can open a socket.
+const healthCheckArg = "-healthcheck"
+
+const healthCheckAddr = "127.0.0.1:8092"
+
+// runHealthCheck reports whether the connector is accepting connections on
+// addr: 0 healthy, anything else not.
+//
+// This is a liveness check and deliberately no more. The MCP endpoint speaks
+// streamable HTTP, where a GET is a server-initiated event stream that stays
+// open — probing it would hang until the timeout and report a healthy
+// connector as failed. A successful dial proves the process is up and
+// listening; it does not prove a tool call would succeed.
+//
+// This connector has no compose service (there is no SSH target in the demo,
+// and it fails closed without a known_hosts file), but it ships the same probe
+// as its siblings so deploying it needs no extra wiring.
+func runHealthCheck(addr string) int {
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		log.Printf("healthcheck: %v", err)
+		return 1
+	}
+	_ = conn.Close()
+	return 0
+}
+
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == healthCheckArg {
+		os.Exit(runHealthCheck(healthCheckAddr))
+	}
 	if err := run(); err != nil {
 		log.Fatalf("ssh-connector: %v", err)
 	}

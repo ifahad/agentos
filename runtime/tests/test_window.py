@@ -1,8 +1,29 @@
 """Context-window trimming: bounds, safety-frame retention, tool-call pairing."""
 
+from dataclasses import dataclass, replace
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
-from agentos_runtime.window import RESPONSE_HEADROOM_TOKENS, build_trim_hook, trim_history
+from agentos_runtime.window import (
+    RESPONSE_HEADROOM_TOKENS,
+    build_trim_middleware,
+    trim_history,
+)
+
+
+@dataclass
+class FakeRequest:
+    """The slice of ``ModelRequest`` the middleware touches.
+
+    ``override`` returns a new request rather than mutating, which is what lets
+    the middleware rewrite one call's input while leaving checkpointed state
+    alone. The real type is exercised by ``test_graph_applies_the_trim_hook``.
+    """
+
+    messages: list
+
+    def override(self, **kwargs) -> "FakeRequest":
+        return replace(self, **kwargs)
 
 
 def counter(messages) -> int:
@@ -13,7 +34,7 @@ def counter(messages) -> int:
 def conversation(turns: int) -> list:
     """A system prompt, ``turns`` completed human/AI exchanges, then a pending question.
 
-    The trailing human message matters: a ``pre_model_hook`` runs when the model
+    The trailing human message matters: the middleware runs when the model
     is about to reply, so the history it sees always ends on a human or tool
     message and never on an AI one. Building it any other way would test a state
     the hook cannot encounter.
@@ -107,27 +128,68 @@ def test_oversized_single_message_still_yields_a_sendable_history():
     assert trimmed, "trimming must never produce an empty history"
 
 
-def test_build_trim_hook_returns_none_when_disabled():
-    assert build_trim_hook(0) is None
-    assert build_trim_hook(-5) is None
+def test_build_trim_middleware_returns_none_when_disabled():
+    assert build_trim_middleware(0) is None
+    assert build_trim_middleware(-5) is None
 
 
-def test_hook_supplies_model_input_without_mutating_history():
-    # llm_input_messages feeds this call only; the checkpointed history must
-    # stay whole so threads remain resumable and auditable.
-    hook = build_trim_hook(RESPONSE_HEADROOM_TOKENS + 8)
-    assert hook is not None
+def test_middleware_trims_this_call_without_mutating_the_request():
+    # The rewritten request feeds this call only; the original must stay whole
+    # so the checkpointed thread remains resumable and auditable.
+    middleware = build_trim_middleware(RESPONSE_HEADROOM_TOKENS + 8)
+    assert middleware is not None
     messages = conversation(200)
-    out = hook({"messages": messages})
-    assert "llm_input_messages" in out
-    assert "messages" not in out, "the hook must not overwrite checkpointed history"
-    assert len(out["llm_input_messages"]) <= len(messages)
+    request = FakeRequest(messages=messages)
+
+    seen: dict[str, list] = {}
+
+    def handler(req):
+        seen["messages"] = req.messages
+        return "response"
+
+    assert middleware.wrap_model_call(request, handler) == "response"
+    assert len(seen["messages"]) <= len(messages)
+    assert request.messages is messages, "the original request must not be mutated"
 
 
-def test_hook_handles_missing_messages_key():
-    hook = build_trim_hook(1000)
-    assert hook is not None
-    assert hook({})["llm_input_messages"] == []
+def test_middleware_trims_on_the_async_path():
+    """The async entry point must trim too.
+
+    The runtime drives the agent only with ``ainvoke``/``astream``. A middleware
+    that implemented the sync hook alone would pass every other test here while
+    trimming quietly did nothing in production.
+    """
+    import asyncio
+
+    middleware = build_trim_middleware(RESPONSE_HEADROOM_TOKENS + 8)
+    assert middleware is not None
+    messages = conversation(200)
+
+    seen: dict[str, list] = {}
+
+    async def handler(req):
+        seen["messages"] = req.messages
+        return "response"
+
+    result = asyncio.run(
+        middleware.awrap_model_call(FakeRequest(messages=messages), handler)
+    )
+    assert result == "response"
+    assert len(seen["messages"]) <= len(messages)
+
+
+def test_middleware_handles_an_empty_history():
+    middleware = build_trim_middleware(1000)
+    assert middleware is not None
+
+    seen: dict[str, list] = {}
+
+    def handler(req):
+        seen["messages"] = req.messages
+        return None
+
+    middleware.wrap_model_call(FakeRequest(messages=[]), handler)
+    assert seen["messages"] == []
 
 
 # --- Integration: the hook must actually be applied by the compiled graph ---
@@ -186,7 +248,7 @@ def test_graph_applies_the_trim_hook(monkeypatch):
 def test_deep_profile_builds_with_context_bounding():
     """The deep profile must construct with trimming enabled.
 
-    deepagents takes no pre_model_hook, so this branch bounds context with
+    deepagents takes no trimming middleware from us, so this branch bounds context with
     SummarizationMiddleware instead — configured differently enough that a
     mistake here raises at build time and takes the whole service down at
     start-up. Every other test in this file exercises the react profile, so

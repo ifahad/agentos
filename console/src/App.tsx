@@ -1,5 +1,5 @@
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useState } from "react";
 import { Chain } from "./components/Chain";
 import type { Command } from "./components/CommandPalette";
 import { CommandPalette } from "./components/CommandPalette";
@@ -33,7 +33,12 @@ import type { WhoAmI } from "./lib/types";
 import { ToastProvider, pageTransition } from "./ui";
 import { Audit } from "./pages/Audit";
 import { Documents } from "./pages/Documents";
-import { Docs } from "./pages/Docs";
+// Docs is the one page that is both heavy (its content tree dwarfs every other
+// page's source) and rarely opened — an operator lives on Overview, Keys and
+// Audit. Splitting it keeps that weight out of the initial load. The other
+// twelve stay eager on purpose: this is a console people click straight
+// through, and a chunk fetch per navigation would be a worse trade.
+const Docs = lazy(() => import("./pages/Docs").then((m) => ({ default: m.Docs })));
 import { Improve } from "./pages/Improve";
 import { Multiverse } from "./pages/Multiverse";
 import { Operators } from "./pages/Operators";
@@ -57,7 +62,8 @@ interface Route {
   path: string;
   label: string;
   icon: IconName;
-  Component: (props: PageProps) => React.JSX.Element;
+  // ComponentType, not a plain function, so a lazily-loaded page fits here too.
+  Component: React.ComponentType<PageProps>;
   // When set, the nav item is shown only if the predicate holds for the role.
   visible?: (role: AuthRole) => boolean;
 }
@@ -247,13 +253,20 @@ export function App() {
   const reducedMotion = useReducedMotion();
   const connGlyph = connectionGlyph(connection);
   const page = (
-    <route.Component
-      adminKey={adminKey}
-      role={role}
-      orgId={orgId}
-      openSettings={openSettings}
-      navigate={navigate}
-    />
+    // The fallback is deliberately empty rather than a skeleton: the chunk
+    // comes from the same nginx as the page requesting it, so this renders for
+    // a frame or two, and a skeleton that flashes reads as a slower load than
+    // no skeleton at all. It is not an "empty state" — nothing is being
+    // reported about the data here.
+    <Suspense fallback={<div className="page-loading" aria-busy="true" />}>
+      <route.Component
+        adminKey={adminKey}
+        role={role}
+        orgId={orgId}
+        openSettings={openSettings}
+        navigate={navigate}
+      />
+    </Suspense>
   );
 
   return (
