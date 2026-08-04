@@ -149,6 +149,31 @@ console:
   resources: {}
   extraEnv: []
 
+# The public landing page. A static, self-contained document that calls no API
+# and holds no credential, so it carries no proxy config, no secret and no
+# dependency on the release — it serves whether or not the platform is up.
+landing:
+  enabled: true
+  image:
+    repository: agentos/landing
+    tag: ""
+    pullPolicy: IfNotPresent
+  service:
+    port: 80
+  resources: {}
+  # Its own Ingress, not the chart's: the landing page and the admin console
+  # are normally published on different hosts, and routing both through the
+  # single `ingress` block above would put the console behind the public
+  # marketing domain. Leave disabled to expose it however you prefer.
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    host: ""
+    path: /
+    pathType: Prefix
+    tls: []
+
 demoCrm:
   enabled: false
   image:

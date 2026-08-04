@@ -24,7 +24,41 @@ import (
 	"github.com/ifahad/agentos/gateway/internal/telemetry"
 )
 
+// healthCheckArg is the argument a container probe passes to make the binary
+// check itself. The gateway image is gcr.io/distroless/static — no shell and no
+// curl — so the binary is the only thing in it that can make an HTTP request,
+// and compose runs it against itself rather than the image growing a probe tool
+// it would otherwise never use.
+const healthCheckArg = "-healthcheck"
+
+// healthCheckURL is where the probe looks. main serves on :8080 unconditionally.
+const healthCheckURL = "http://127.0.0.1:8080/healthz"
+
+// runHealthCheck probes the given URL and returns the exit code a container
+// healthcheck expects: 0 healthy, anything else not. It reads no configuration,
+// so a gateway that failed to configure itself still reports unhealthy rather
+// than leaving the probe unable to run at all.
+func runHealthCheck(url string) int {
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		log.Printf("healthcheck: %v", err)
+		return 1
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		log.Printf("healthcheck: %s -> %d", url, resp.StatusCode)
+		return 1
+	}
+	return 0
+}
+
 func main() {
+	// Before any configuration is read: the probe must work regardless of it.
+	if len(os.Args) > 1 && os.Args[1] == healthCheckArg {
+		os.Exit(runHealthCheck(healthCheckURL))
+	}
+
 	adminKey := os.Getenv("AGENTOS_ADMIN_KEY")
 	if adminKey == "" {
 		log.Fatal("AGENTOS_ADMIN_KEY must be set")

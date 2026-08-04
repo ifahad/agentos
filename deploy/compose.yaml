@@ -76,6 +76,13 @@ services:
       - "host.docker.internal:host-gateway"
     ports:
       - "${AGENTOS_GATEWAY_PORT:-8080}:8080"
+    # The image is distroless (no shell, no curl), so the binary probes itself.
+    healthcheck:
+      test: ["CMD", "/gateway", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,6 +95,14 @@ services:
       AGENTOS_CONNECTOR_STATEMENT_TIMEOUT_S: ${AGENTOS_CONNECTOR_STATEMENT_TIMEOUT_S:-30}
     ports:
       - "${AGENTOS_CONNECTOR_PORT:-8090}:8090"
+    # Liveness only — see runHealthCheck in cmd/sql-connector: probing the MCP
+    # endpoint itself would open an event stream and hang.
+    healthcheck:
+      test: ["CMD", "/sql-connector", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
     depends_on:
       postgres:
         condition: service_healthy
@@ -125,11 +140,32 @@ services:
     networks:
       - default
       - sandbox-net
+    # python is in the image (it is the runtime); no curl is.
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          sys.exit(0 if urllib.request.urlopen(
+              "http://127.0.0.1:8000/healthz", timeout=2).status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      # The runtime imports langchain/langgraph before it serves, which is slow
+      # on a cold start; failures inside this window do not count against
+      # retries or mark the container unhealthy.
+      start_period: 90s
     depends_on:
-      - gateway
-      - sql-connector
-      - rest-connector
-      - sandbox
+      gateway:
+        condition: service_healthy
+      sql-connector:
+        condition: service_healthy
+      rest-connector:
+        condition: service_healthy
+      sandbox:
+        condition: service_healthy
 
   sandbox:
     build: ../sandbox
@@ -150,11 +186,32 @@ services:
     # it for debugging via `docker compose exec runtime curl http://sandbox:8070/...`.
     networks:
       - sandbox-net
+    # python3 is in the image because the sandbox executes Python; the probe
+    # runs inside the container, so the internal-only network is no obstacle.
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - |
+          import sys, urllib.request
+          sys.exit(0 if urllib.request.urlopen(
+              "http://127.0.0.1:8070/healthz", timeout=2).status == 200 else 1)
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
 
   demo-crm:
     build: ../deploy/demo-crm
     ports:
       - "${AGENTOS_CRM_PORT:-8095}:8095"
+    healthcheck:
+      test: ["CMD", "/demo-crm", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
   rest-connector:
     build: ../connectors/rest
@@ -162,8 +219,16 @@ services:
       AGENTOS_REST_SPEC_URL: http://demo-crm:8095/openapi.json
     ports:
       - "${AGENTOS_REST_PORT:-8091}:8091"
+    # Liveness only, for the same reason as sql-connector.
+    healthcheck:
+      test: ["CMD", "/rest-connector", "-healthcheck"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
     depends_on:
-      - demo-crm
+      demo-crm:
+        condition: service_healthy
 
   # Opt-in connectors (Phase 5). Start with:
   #   docker compose --profile connectors up -d
@@ -195,9 +260,17 @@ services:
       AGENTOS_RUNTIME_AUTH_TOKEN: ${AGENTOS_RUNTIME_AUTH_TOKEN:-runtime-local-dev}
     ports:
       - "${AGENTOS_CONSOLE_PORT:-3000}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     depends_on:
-      - gateway
-      - runtime
+      gateway:
+        condition: service_healthy
+      runtime:
+        condition: service_healthy
 
   # The public landing page. It is a static, self-contained document that calls
   # no API and holds no credential, so unlike the console it has no depends_on
@@ -207,6 +280,12 @@ services:
     build: ../landing
     ports:
       - "${AGENTOS_LANDING_PORT:-8081}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
 
 networks:
   # Internal-only network for the code-execution sandbox: containers on it

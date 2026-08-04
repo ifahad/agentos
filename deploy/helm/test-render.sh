@@ -38,6 +38,7 @@ assert_contains "gateway image"        'image: "agentos/gateway:0.3.0"'
 assert_contains "runtime image"        'image: "agentos/runtime:0.3.0"'
 assert_contains "sandbox image"        'image: "agentos/sandbox:0.3.0"'
 assert_contains "console image"        'image: "agentos/console:0.3.0"'
+assert_contains "landing image"        'image: "agentos/landing:0.3.0"'
 assert_contains "postgres image"       'image: "pgvector/pgvector:pg16"'
 assert_contains "postgres statefulset" 'kind: StatefulSet'
 assert_contains "initdb seed in ConfigMap" 'CREATE DATABASE legacy_erp;'
@@ -98,6 +99,49 @@ assert_contains "ingress host"          'host: "agentos.example.com"'
 assert_contains "ingress class"         'ingressClassName: nginx'
 assert_contains "ingress tls secret"    'secretName: agentos-tls'
 assert_contains "ingress -> console svc" 'name: agentos-console'
+
+echo "== template: landing"
+rendered=$(helm template "$RELEASE" "$CHART_DIR" --show-only templates/landing.yaml)
+assert_contains "landing deployment"        'kind: Deployment'
+assert_contains "landing service"           'kind: Service'
+assert_contains "landing runs nonroot"      'runAsNonRoot: true'
+assert_contains "landing unprivileged port" 'containerPort: 8080'
+# The landing page's whole claim is that it holds no credential and depends on
+# nothing. Both are asserted rather than trusted to stay true.
+assert_not_contains "landing mounts no secret"  'secretKeyRef'
+assert_not_contains "landing has no ingress unless asked" 'kind: Ingress'
+
+echo "== template: landing ingress enabled"
+rendered=$(helm template "$RELEASE" "$CHART_DIR" \
+    --set landing.ingress.enabled=true \
+    --set landing.ingress.host=agentos.example.com \
+    --set landing.ingress.className=nginx \
+    --set landing.ingress.tls[0].secretName=landing-tls \
+    --show-only templates/landing.yaml)
+assert_contains "landing ingress rendered"       'kind: Ingress'
+assert_contains "landing ingress host"           'host: "agentos.example.com"'
+assert_contains "landing ingress class"          'ingressClassName: nginx'
+assert_contains "landing ingress tls secret"     'secretName: landing-tls'
+assert_contains "landing ingress -> landing svc" 'name: agentos-landing'
+
+echo "== template: landing disabled"
+if helm template "$RELEASE" "$CHART_DIR" \
+    --set landing.enabled=false \
+    --show-only templates/landing.yaml >/dev/null 2>&1; then
+    echo "  FAIL: landing rendered despite landing.enabled=false" >&2
+    fails=$((fails + 1))
+else
+    echo "  ok: no landing when landing.enabled=false"
+fi
+
+echo "== template: landing ingress without a host must fail"
+if helm template "$RELEASE" "$CHART_DIR" \
+    --set landing.ingress.enabled=true >/dev/null 2>&1; then
+    echo "  FAIL: expected a 'requires landing.ingress.host' error" >&2
+    fails=$((fails + 1))
+else
+    echo "  ok: landing ingress without a host rejected"
+fi
 
 echo "== template: sandbox NetworkPolicy (egress-less topology)"
 rendered=$(helm template "$RELEASE" "$CHART_DIR" \
