@@ -1,0 +1,42 @@
+AgentOS {{ .Chart.AppVersion }} installed as release {{ .Release.Name }}.
+
+Reach the console:
+
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "agentos.fullname" . }}-console {{ .Values.console.service.port }}:{{ .Values.console.service.port }}
+
+READ THIS BEFORE EXPOSING THE CONSOLE
+─────────────────────────────────────
+The console proxies /api/runtime/ with the runtime bearer injected server-side.
+That is what keeps the token out of the browser — and it means the proxy asks
+the caller for nothing. Anything that can open a TCP connection to the console
+Service can run an agent:
+
+  curl -X POST http://<console>/api/runtime/runs -d '{"input":"..."}'
+
+returns 200 and executes. That reaches agent runs, the code sandbox, every
+connected MCP tool, and spend against the runtime key. The console's own
+sign-in is client-side only; it does not gate this path. By contrast
+/api/gateway/ authenticates every request itself, so the two paths are not
+equally protected and the difference is easy to miss.
+
+Treat the console Service as an administrative surface:
+{{- if .Values.ingress.enabled }}
+
+  !! ingress.enabled=true — the console is published at
+     {{ .Values.ingress.host }}{{ .Values.ingress.path }}
+     Everything above is now reachable by anyone who resolves that host unless
+     your ingress controller authenticates in front of it. Put SSO, mTLS, or an
+     IP allowlist on it, or leave the ingress off and use port-forward.
+{{- else }}
+
+  ingress is disabled (the default). Keep it that way unless you are putting
+  authentication in front of it — an ingress controller annotation for SSO or
+  mTLS, or an IP allowlist.
+{{- end }}
+
+{{- if not .Values.sandbox.networkPolicy.enabled }}
+
+The sandbox NetworkPolicy is disabled, so agent-authored Python has whatever
+egress your cluster allows. The chart cannot verify your CNI enforces
+NetworkPolicy at all; if it does not, the object renders and does nothing.
+{{- end }}

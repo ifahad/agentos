@@ -70,11 +70,26 @@ Then open the console: `kubectl port-forward svc/agentos-console 3000:80`.
   `restConnector.specUrl`; if `demoCrm.enabled=true` and no spec URL is set,
   it defaults to the demo CRM's `/openapi.json`.
 - **Console** — the image's nginx config proxies `/api/gateway/` and
-  `/api/runtime/` to the compose hostnames, so the chart overrides
-  `/etc/nginx/conf.d/default.conf` with a ConfigMap pointing at the
-  fullname-based services. The optional Ingress (`ingress.enabled`) exposes
-  only the console; the gateway/runtime APIs are reachable through its proxy
-  paths.
+  `/api/runtime/` to the compose hostnames, so the chart replaces it with a
+  ConfigMap pointing at the fullname-based services. The ConfigMap is mounted
+  over `/etc/nginx/templates/default.conf.template`, the image entrypoint's
+  **input** — not over `/etc/nginx/conf.d/default.conf`, its output. The
+  entrypoint renders one into the other under `set -eu`, so mounting the output
+  path read-only makes that write fail and the container exits before nginx
+  starts. (It did exactly that until 2026-08-04.)
+- **Console exposure** — `/api/runtime/` is proxied with the runtime bearer
+  injected server-side, so the proxy asks the caller for nothing:
+  `POST /api/runtime/runs` against the console port runs an agent, with no
+  credential. `/api/gateway/` authenticates every request itself, so the two
+  paths are not equally protected. The console's sign-in is client-side and
+  does not gate the proxy. Treat the console Service as an administrative
+  surface, and put authentication in front of `ingress.enabled=true` — the
+  chart prints this after install.
+- **`runtimeAuthToken` is required** and has no default: a shipped one is a
+  published credential for the whole runtime API. Generate it, e.g.
+  `--set runtimeAuthToken=$(openssl rand -hex 32)`. It must not contain a `$`
+  (the console entrypoint substitutes it into nginx config, where `$` starts a
+  variable reference; the entrypoint rejects it up front).
 
 ## Values
 

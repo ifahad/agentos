@@ -18,6 +18,17 @@ spec:
         {{- include "agentos.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: gateway
     spec:
+      # No pod here calls the Kubernetes API, so mounting a ServiceAccount token
+      # only widens what an escape reaches — most of all in the sandbox, which
+      # exists to run model-authored code.
+      automountServiceAccountToken: false
+      # The gateway drains for up to 30s on SIGTERM (cmd/gateway/main.go), and
+      # in-flight requests hold budget reservations released only when they
+      # finish. Kubernetes' default grace period is also 30s, so SIGKILL would
+      # land exactly as the drain expires and strand those holds until the
+      # reaper clears them. compose buys the same 10s of headroom via
+      # stop_grace_period: 40s.
+      terminationGracePeriodSeconds: 40
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532

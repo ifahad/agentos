@@ -18,6 +18,10 @@ spec:
         {{- include "agentos.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: browser-connector
     spec:
+      # No pod here calls the Kubernetes API, so mounting a ServiceAccount token
+      # only widens what an escape reaches — most of all in the sandbox, which
+      # exists to run model-authored code.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         # pwuser from the Playwright base image, which connectors/browser/

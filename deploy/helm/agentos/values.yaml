@@ -12,13 +12,21 @@ runtimeKey: "agos-local-dev-runtime"
 # /operators/webhooks/{token}. The runtime fails closed and refuses to start
 # without it, and the console's nginx injects it server-side so it never
 # reaches the browser — so anything able to reach the console port holds full
-# runtime authority. Override it for anything beyond a local/dev cluster.
+# runtime authority.
+#
+# REQUIRED — there is deliberately no default. A shipped default here is a
+# published credential: it grants the full runtime API to anyone who can reach
+# the console Service, and `helm install` with no arguments would hand that out
+# silently. The runtime itself fails closed without the token
+# (api.py require_runtime_auth_token), and the chart now matches it.
+#
+#   --set runtimeAuthToken=$(openssl rand -hex 32)
 #
 # Must not contain a '$'. The console's entrypoint substitutes this into its
 # nginx config, where a '$' reads as a variable reference and nginx refuses to
 # start; the entrypoint rejects it up front with that explanation. Hex and
 # base64 tokens are safe.
-runtimeAuthToken: "runtime-local-dev"
+runtimeAuthToken: ""
 # -- Monthly budget (USD) granted to the runtime's virtual key via
 # AGENTOS_BOOTSTRAP_KEYS ("runtime:<runtimeKey>:<budget>").
 runtimeBudget: 25

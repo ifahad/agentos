@@ -18,6 +18,10 @@ spec:
         {{- include "agentos.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: sandbox
     spec:
+      # No pod here calls the Kubernetes API, so mounting a ServiceAccount token
+      # only widens what an escape reaches — most of all in the sandbox, which
+      # exists to run model-authored code.
+      automountServiceAccountToken: false
       # Hardened per the Phase 3 sandbox contract: read-only root FS, no
       # privilege escalation, all capabilities dropped, tmpfs-style /tmp for
       # per-execution workdirs, resource limits always set.
@@ -25,11 +29,11 @@ spec:
         runAsNonRoot: true
         # The image declares `USER sandbox` by NAME. Kubernetes cannot resolve a
         # name to a uid before starting the container, so runAsNonRoot alone
-        # fails admission with CreateContainerConfigError. These are the ids the
-        # image actually runs as (useradd --system --uid 10001 in
-        # sandbox/Dockerfile; gid 999 assigned by the system group).
+        # fails admission with CreateContainerConfigError. Both ids are pinned
+        # explicitly in sandbox/Dockerfile (groupadd --gid 10001 + useradd
+        # --uid 10001 --gid 10001) so these are declared, not observed.
         runAsUser: 10001
-        runAsGroup: 999
+        runAsGroup: 10001
         seccompProfile:
           type: RuntimeDefault
       containers:

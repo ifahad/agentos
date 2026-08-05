@@ -6,6 +6,13 @@ set -euo pipefail
 CHART_DIR="$(cd "$(dirname "$0")/agentos" && pwd)"
 RELEASE=agentos # fullname collapses to "agentos" -> services agentos-<svc>
 
+# The chart requires an explicit runtimeAuthToken (no default: a shipped one is
+# a published credential). Every render below passes this, INCLUDING the
+# negative tests — without it those would still fail, but for the missing token
+# rather than the condition under test, and would report "ok" while proving
+# nothing.
+TOKEN=(--set runtimeAuthToken=render-test-token)
+
 command -v helm >/dev/null || {
     echo "helm binary not found in PATH" >&2
     exit 1
@@ -33,7 +40,7 @@ echo "== helm lint"
 helm lint "$CHART_DIR" --strict
 
 echo "== template: defaults"
-rendered=$(helm template "$RELEASE" "$CHART_DIR")
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}")
 assert_contains "gateway image"        'image: "agentos/gateway:0.3.0"'
 assert_contains "runtime image"        'image: "agentos/runtime:0.3.0"'
 assert_contains "sandbox image"        'image: "agentos/sandbox:0.3.0"'
@@ -65,7 +72,7 @@ assert_not_contains "no ingress by default"         'kind: Ingress'
 assert_not_contains "MCP list has no rest entry"    '8091/mcp'
 
 echo "== template: external database (postgres.enabled=false)"
-rendered=$(helm template "$RELEASE" "$CHART_DIR" \
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
     --set postgres.enabled=false \
     --set externalDatabaseUrl=postgres://u:p@db.example.com:5432/agentos \
     --set sqlConnector.databaseUrl=postgres://erp:erp@db.example.com:5432/legacy_erp)
@@ -75,7 +82,7 @@ assert_contains "external DB url in secret" 'database-url: "postgres://u:p@db.ex
 assert_contains "external connector DB url" 'connector-database-url: "postgres://erp:erp@db.example.com:5432/legacy_erp"'
 
 echo "== template: rest-connector + demo-crm enabled"
-rendered=$(helm template "$RELEASE" "$CHART_DIR" \
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
     --set restConnector.enabled=true \
     --set demoCrm.enabled=true \
     --set providerKeys.existingSecret=agentos-provider-keys)
@@ -90,7 +97,7 @@ assert_contains "anthropic key env"             'key: AGENTOS_ANTHROPIC_API_KEY'
 assert_contains "provider keys optional"        'optional: true'
 
 echo "== template: ingress enabled"
-rendered=$(helm template "$RELEASE" "$CHART_DIR" \
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
     --set ingress.enabled=true \
     --set ingress.host=agentos.example.com \
     --set ingress.className=nginx \
@@ -124,12 +131,20 @@ ALL_ON=(--set restConnector.enabled=true
         --set soapConnector.enabled=true
         --set soapConnector.wsdlUrl=http://legacy.example.com/svc?wsdl
         --set browserConnector.enabled=true)
+# A render FAILURE and a disabled template both produce no output, so a bare
+# `|| continue` would quietly check nothing and still print a clean run — the
+# same silence-on-skip this check exists to catch. Count what was actually
+# examined and fail below if the count collapses (cf. MIN_MEASURED in
+# console/scripts/render.py).
+checked=0
+MIN_WORKLOADS=11
 for tpl in "$CHART_DIR"/templates/*.yaml; do
     name=$(basename "$tpl")
-    out=$(helm template "$RELEASE" "$CHART_DIR" "${ALL_ON[@]}" \
+    out=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" "${ALL_ON[@]}" \
         --show-only "templates/$name" 2>/dev/null) || continue
     # Only workloads run containers; Services/Secrets/NetworkPolicies do not.
     grep -qE '^kind: (Deployment|StatefulSet|DaemonSet|Job|CronJob)' <<<"$out" || continue
+    checked=$((checked + 1))
     if grep -qF " $name " <<<" $NONROOT_EXCEPTIONS "; then
         echo "  ok: $name is a documented root exception"
     elif ! grep -q 'runAsNonRoot: true' <<<"$out"; then
@@ -142,18 +157,25 @@ for tpl in "$CHART_DIR"/templates/*.yaml; do
         fails=$((fails + 1))
     fi
 done
+if [ "$checked" -lt "$MIN_WORKLOADS" ]; then
+    echo "  FAIL: only $checked workload(s) examined, expected >= $MIN_WORKLOADS —" >&2
+    echo "        a render error is being swallowed as 'disabled'" >&2
+    fails=$((fails + 1))
+else
+    echo "  ok: $checked workloads examined (floor $MIN_WORKLOADS)"
+fi
 
 echo "== template: the runtime auth token reaches everything that needs it"
 # The runtime calls require_runtime_auth_token() in lifespan() and refuses to
 # start without this, so a chart that omits it does not degrade — it never boots.
-rendered=$(helm template "$RELEASE" "$CHART_DIR")
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}")
 assert_contains "secret carries the runtime auth token" 'runtime-auth-token:'
 assert_contains "something consumes it"                 'key: runtime-auth-token'
-rendered=$(helm template "$RELEASE" "$CHART_DIR" --show-only templates/runtime.yaml)
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" --show-only templates/runtime.yaml)
 assert_contains "runtime is given the auth token" 'key: runtime-auth-token'
 
 echo "== template: console nginx wiring"
-rendered=$(helm template "$RELEASE" "$CHART_DIR" --show-only templates/console.yaml)
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" --show-only templates/console.yaml)
 # The image entrypoint renders templates/default.conf.template INTO
 # conf.d/default.conf under `set -eu`. Mounting the output path read-only makes
 # that write fail and the container exit before nginx starts.
@@ -168,7 +190,7 @@ assert_contains "console injects the runtime bearer server-side" \
 assert_contains "console is given the token to inject" 'key: runtime-auth-token'
 
 echo "== template: soap + browser connectors enabled"
-rendered=$(helm template "$RELEASE" "$CHART_DIR" \
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
     --set soapConnector.enabled=true \
     --set soapConnector.wsdlUrl=http://legacy.example.com/svc?wsdl \
     --set browserConnector.enabled=true \
@@ -187,7 +209,7 @@ assert_contains "connectors probe by tcpSocket" 'tcpSocket:'
 assert_not_contains "no httpGet probe on connectors" 'path: /mcp'
 
 echo "== template: soap-connector without a WSDL must fail"
-if helm template "$RELEASE" "$CHART_DIR" --set soapConnector.enabled=true >/dev/null 2>&1; then
+if helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" --set soapConnector.enabled=true >/dev/null 2>&1; then
     echo "  FAIL: expected a 'soapConnector.wsdlUrl is required' error" >&2
     fails=$((fails + 1))
 else
@@ -195,7 +217,7 @@ else
 fi
 
 echo "== template: landing"
-rendered=$(helm template "$RELEASE" "$CHART_DIR" --show-only templates/landing.yaml)
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" --show-only templates/landing.yaml)
 assert_contains "landing deployment"        'kind: Deployment'
 assert_contains "landing service"           'kind: Service'
 assert_contains "landing runs nonroot"      'runAsNonRoot: true'
@@ -206,7 +228,7 @@ assert_not_contains "landing mounts no secret"  'secretKeyRef'
 assert_not_contains "landing has no ingress unless asked" 'kind: Ingress'
 
 echo "== template: landing ingress enabled"
-rendered=$(helm template "$RELEASE" "$CHART_DIR" \
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
     --set landing.ingress.enabled=true \
     --set landing.ingress.host=agentos.example.com \
     --set landing.ingress.className=nginx \
@@ -219,7 +241,7 @@ assert_contains "landing ingress tls secret"     'secretName: landing-tls'
 assert_contains "landing ingress -> landing svc" 'name: agentos-landing'
 
 echo "== template: landing disabled"
-if helm template "$RELEASE" "$CHART_DIR" \
+if helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
     --set landing.enabled=false \
     --show-only templates/landing.yaml >/dev/null 2>&1; then
     echo "  FAIL: landing rendered despite landing.enabled=false" >&2
@@ -229,7 +251,7 @@ else
 fi
 
 echo "== template: landing ingress without a host must fail"
-if helm template "$RELEASE" "$CHART_DIR" \
+if helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
     --set landing.ingress.enabled=true >/dev/null 2>&1; then
     echo "  FAIL: expected a 'requires landing.ingress.host' error" >&2
     fails=$((fails + 1))
@@ -238,7 +260,7 @@ else
 fi
 
 echo "== template: sandbox NetworkPolicy (egress-less topology)"
-rendered=$(helm template "$RELEASE" "$CHART_DIR" \
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
     --show-only templates/sandbox-networkpolicy.yaml)
 assert_contains "netpol selects sandbox pod"      'app.kubernetes.io/component: sandbox'
 assert_contains "netpol governs Ingress"          '- Ingress'
@@ -251,7 +273,7 @@ assert_contains "netpol DNS port"                 'port: 53'
 assert_contains "netpol DNS over UDP"             'protocol: UDP'
 
 echo "== template: sandbox NetworkPolicy disabled"
-if helm template "$RELEASE" "$CHART_DIR" \
+if helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
     --set sandbox.networkPolicy.enabled=false \
     --show-only templates/sandbox-networkpolicy.yaml >/dev/null 2>&1; then
     echo "  FAIL: NetworkPolicy rendered despite networkPolicy.enabled=false" >&2
@@ -259,7 +281,7 @@ if helm template "$RELEASE" "$CHART_DIR" \
 else
     echo "  ok: no NetworkPolicy when networkPolicy.enabled=false"
 fi
-if helm template "$RELEASE" "$CHART_DIR" \
+if helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
     --set sandbox.enabled=false \
     --show-only templates/sandbox-networkpolicy.yaml >/dev/null 2>&1; then
     echo "  FAIL: NetworkPolicy rendered despite sandbox.enabled=false" >&2
@@ -269,7 +291,7 @@ else
 fi
 
 echo "== template: rest-connector without spec must fail"
-if helm template "$RELEASE" "$CHART_DIR" --set restConnector.enabled=true >/dev/null 2>&1; then
+if helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" --set restConnector.enabled=true >/dev/null 2>&1; then
     echo "  FAIL: expected 'required' error for missing restConnector.specUrl" >&2
     fails=$((fails + 1))
 else
@@ -277,7 +299,7 @@ else
 fi
 
 echo "== template: postgres disabled without externalDatabaseUrl must fail"
-if helm template "$RELEASE" "$CHART_DIR" --set postgres.enabled=false >/dev/null 2>&1; then
+if helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" --set postgres.enabled=false >/dev/null 2>&1; then
     echo "  FAIL: expected 'required' error for missing externalDatabaseUrl" >&2
     fails=$((fails + 1))
 else

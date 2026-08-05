@@ -24,6 +24,10 @@ spec:
         {{- include "agentos.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: landing
     spec:
+      # No pod here calls the Kubernetes API, so mounting a ServiceAccount token
+      # only widens what an escape reaches — most of all in the sandbox, which
+      # exists to run model-authored code.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 101

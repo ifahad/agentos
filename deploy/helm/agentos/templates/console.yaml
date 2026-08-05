@@ -55,6 +55,10 @@ spec:
         # touches the proxy. The runtime carries the matching annotation.
         checksum/runtime-token: {{ .Values.runtimeAuthToken | sha256sum }}
     spec:
+      # No pod here calls the Kubernetes API, so mounting a ServiceAccount token
+      # only widens what an escape reaches — most of all in the sandbox, which
+      # exists to run model-authored code.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 101
