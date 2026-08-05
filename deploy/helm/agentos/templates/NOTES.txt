@@ -22,17 +22,19 @@ equally protected and the difference is easy to miss.
 Treat the console Service as an administrative surface:
 {{- if .Values.ingress.enabled }}
 
-  !! ingress.enabled=true — the console is published at
-     {{ .Values.ingress.host }}{{ .Values.ingress.path }}
-     Everything above is now reachable by anyone who resolves that host unless
-     your ingress controller authenticates in front of it. Put SSO, mTLS, or an
-     IP allowlist on it, or leave the ingress off and use port-forward.
+  !! The console is published at {{ .Values.ingress.host }}{{ .Values.ingress.path }}
+     You set ingress.frontedByAuth=true, asserting that SSO, mTLS or an IP
+     allowlist authenticates in front of it. The chart cannot verify that.
+     If it is not true, everything above is reachable by anyone who resolves
+     that host.
 {{- else }}
 
-  ingress is disabled (the default). Keep it that way unless you are putting
-  authentication in front of it — an ingress controller annotation for SSO or
-  mTLS, or an IP allowlist.
+  ingress is disabled (the default), so the console is reachable only in-cluster
+  — use port-forward. Enabling it requires ingress.frontedByAuth=true, which is
+  your assertion that something authenticates in front.
 {{- end }}
+
+  Full model: docs/security/trust-boundaries.md
 
 {{- if not .Values.sandbox.networkPolicy.enabled }}
 

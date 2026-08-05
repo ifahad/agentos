@@ -248,6 +248,15 @@ demoCrm:
 # -- Ingress for the console (which reverse-proxies gateway + runtime APIs).
 ingress:
   enabled: false
+  # -- REQUIRED to enable the Ingress. Publishing the console publishes the
+  # runtime API: its /api/runtime/ proxy injects the bearer server-side and
+  # authenticates no caller, so `curl -X POST .../api/runtime/runs` against the
+  # published host runs an agent. See docs/security/trust-boundaries.md.
+  #
+  # Set this to true only once something in front of the Ingress authenticates
+  # — an SSO/auth annotation on your ingress controller, mTLS, or an IP
+  # allowlist. It is an assertion by you; the chart cannot verify it.
+  frontedByAuth: false
   className: ""
   annotations: {}
   host: agentos.local

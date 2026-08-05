@@ -1,4 +1,7 @@
 {{- if and .Values.ingress.enabled .Values.console.enabled }}
+{{- if not .Values.ingress.frontedByAuth }}
+{{- fail "ingress.enabled publishes the console, and the console's /api/runtime/ proxy authenticates no caller — a POST to it runs an agent (docs/security/trust-boundaries.md). Put SSO, mTLS or an IP allowlist in front of the Ingress, then set ingress.frontedByAuth=true to assert it." }}
+{{- end }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

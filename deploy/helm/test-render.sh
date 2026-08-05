@@ -96,9 +96,23 @@ assert_contains "provider secret referenced"    'name: agentos-provider-keys'
 assert_contains "anthropic key env"             'key: AGENTOS_ANTHROPIC_API_KEY'
 assert_contains "provider keys optional"        'optional: true'
 
+echo "== template: publishing the console without auth in front must fail"
+# Reaching the console is equivalent to holding the runtime token, so enabling
+# the Ingress is an explicit assertion that something authenticates in front of
+# it (docs/security/trust-boundaries.md).
+if helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
+    --set ingress.enabled=true \
+    --set ingress.host=agentos.example.com >/dev/null 2>&1; then
+    echo "  FAIL: Ingress rendered without ingress.frontedByAuth" >&2
+    fails=$((fails + 1))
+else
+    echo "  ok: Ingress refuses to render until frontedByAuth is asserted"
+fi
+
 echo "== template: ingress enabled"
 rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
     --set ingress.enabled=true \
+    --set ingress.frontedByAuth=true \
     --set ingress.host=agentos.example.com \
     --set ingress.className=nginx \
     --set ingress.tls[0].secretName=agentos-tls \

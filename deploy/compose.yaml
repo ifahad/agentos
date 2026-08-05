@@ -291,7 +291,13 @@ services:
       # so the browser never holds the runtime credential.
       AGENTOS_RUNTIME_AUTH_TOKEN: ${AGENTOS_RUNTIME_AUTH_TOKEN:-runtime-local-dev}
     ports:
-      - "${AGENTOS_CONSOLE_PORT:-3000}:8080"
+      # The bind address is explicit because reaching this port is equivalent
+      # to holding the runtime token: /api/runtime/ is proxied with the bearer
+      # injected and no caller check (docs/security/trust-boundaries.md).
+      # 0.0.0.0 keeps the previous behaviour — publishing on every interface of
+      # the host. Set AGENTOS_CONSOLE_BIND=127.0.0.1 and reach it over an SSH
+      # tunnel unless the host's network is itself the trust boundary.
+      - "${AGENTOS_CONSOLE_BIND:-0.0.0.0}:${AGENTOS_CONSOLE_PORT:-3000}:8080"
     healthcheck:
       test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:8080/"]
       interval: 10s
