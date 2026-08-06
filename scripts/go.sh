@@ -45,6 +45,11 @@ else
       -v "$REPO_ROOT:/src" \
       -v "$CACHE:/gocache" \
       -w "/src/$mod" \
+      `# Share the host network so a DSN pointing at localhost means the same` \
+      `# thing here as it does on the native path. Without this the DB-backed` \
+      `# suites silently t.Skip in the fallback and report ok.` \
+      --network host \
+      -e AGENTOS_TEST_DATABASE_URL \
       -e HOME=/gocache \
       -e GOMODCACHE=/gocache/mod \
       -e GOCACHE=/gocache/build \

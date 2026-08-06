@@ -19,6 +19,27 @@ jobs:
   go:
     name: go (gateway + connectors)
     runs-on: ubuntu-latest
+    # Postgres is the production store, and until now CI ran none of it: every
+    # DB-backed suite called t.Skip and its package still reported ok. That
+    # includes ReserveSpend — the ordered-FOR UPDATE transaction that closes the
+    # budget TOCTOU — and the only proof the distributed rate limiter is atomic.
+    # pgvector rather than plain postgres, to match what production runs.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: agentos
+          POSTGRES_PASSWORD: agentos
+          POSTGRES_DB: agentos_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentos"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      AGENTOS_TEST_DATABASE_URL: postgres://agentos:agentos@localhost:5432/agentos_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -36,8 +57,30 @@ jobs:
       # suite was already race-clean; nothing asserted it.
       - name: vet + test every Go module
         run: |
+          set -euo pipefail
           scripts/go.sh vet ./...
-          scripts/go.sh test -race ./...
+          # -v so the skip guard below can see what ran; -count=1 so a cached
+          # result from a run without the database cannot stand in for one.
+          # Redirect rather than pipe: `... | tee | grep || true` would run
+          # `true` and reset PIPESTATUS, swallowing a real test failure.
+          if ! scripts/go.sh test -race -count=1 -v ./... >/tmp/go-test.log 2>&1; then
+            grep -E '^(FAIL|--- FAIL)' /tmp/go-test.log | head -40
+            exit 1
+          fi
+          grep -E '^ok' /tmp/go-test.log
+
+      # Without this, losing the service container returns every DB-backed suite
+      # to t.Skip and the job stays green — the same shape of gate that let an
+      # unbootable chart sit on main behind thirty passing runs.
+      - name: the Postgres-backed suites must not have skipped
+        run: |
+          set -euo pipefail
+          if grep -q 'AGENTOS_TEST_DATABASE_URL not set' /tmp/go-test.log; then
+            grep -n 'AGENTOS_TEST_DATABASE_URL not set' /tmp/go-test.log | head -5
+            echo "::error::Postgres-backed tests skipped — the service container was not reachable"
+            exit 1
+          fi
+          echo "executed $(grep -c '^=== RUN' /tmp/go-test.log) tests against a live Postgres"
 
   python:
     name: python runtime
