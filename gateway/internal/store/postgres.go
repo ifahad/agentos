@@ -682,6 +682,22 @@ func (p *Postgres) SetUserActive(ctx context.Context, userID string, active bool
 	return nil
 }
 
+func (p *Postgres) SetUserRole(ctx context.Context, userID, role string) error {
+	// Validated before the UPDATE rather than relying on a column constraint:
+	// the roles are a frozen application-level set, not a database enum.
+	if err := validateRole(role); err != nil {
+		return err
+	}
+	tag, err := p.pool.Exec(ctx, `UPDATE users SET role = $2 WHERE id = $1`, userID, role)
+	if err != nil {
+		return fmt.Errorf("set user role: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
 func (p *Postgres) SetUserExternalID(ctx context.Context, userID, externalID string) error {
 	tag, err := p.pool.Exec(ctx, `UPDATE users SET external_id = NULLIF($2, '') WHERE id = $1`, userID, externalID)
 	if err != nil {

@@ -25,6 +25,12 @@ var ErrOrgNotFound = errors.New("org not found")
 // ErrUserNotFound is returned when a user id does not exist in the given org.
 var ErrUserNotFound = errors.New("user not found")
 
+// ErrInvalidRole is returned for a role outside the frozen set in rbac. It is a
+// sentinel because callers must tell it apart from ErrUserNotFound: SCIM group
+// mapping takes role names from operator config, and a typo there is a 400 the
+// operator can fix, not a 404.
+var ErrInvalidRole = errors.New("invalid role")
+
 // ErrUserInactive is returned by AuthenticateUser when a user exists but has
 // been deactivated (SCIM active=false). Its agu- token stops working while the
 // account is retained and can be reactivated.
@@ -250,6 +256,13 @@ type Store interface {
 	// SetUserExternalID sets (or clears, with "") a user's SCIM external id.
 	// Returns ErrUserNotFound for an unknown id.
 	SetUserExternalID(ctx context.Context, userID, externalID string) error
+	// SetUserRole changes a user's role. Until this existed a role could only be
+	// chosen at creation — there was no UPDATE on it anywhere — so an identity
+	// provider could grant authority through group membership but never revoke
+	// it. Returns ErrUserNotFound for an unknown id and ErrInvalidRole for a
+	// role outside the frozen set, so an operator's typo cannot write a role
+	// that Can() will silently treat as holding nothing.
+	SetUserRole(ctx context.Context, userID, role string) error
 	// UserByExternalID finds a user by SCIM external id within an org. Returns
 	// ErrUserNotFound when no such user exists.
 	UserByExternalID(ctx context.Context, orgID, externalID string) (*User, error)
@@ -300,7 +313,7 @@ func newID(prefix string) (string, error) {
 // validateRole guards CreateUser against unknown roles.
 func validateRole(role string) error {
 	if !rbac.ValidRole(role) {
-		return fmt.Errorf("invalid role %q", role)
+		return fmt.Errorf("%w %q", ErrInvalidRole, role)
 	}
 	return nil
 }

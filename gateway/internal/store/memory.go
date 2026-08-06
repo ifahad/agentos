@@ -493,6 +493,20 @@ func (m *Memory) SetUserActive(_ context.Context, userID string, active bool) er
 	return nil
 }
 
+func (m *Memory) SetUserRole(_ context.Context, userID, role string) error {
+	if err := validateRole(role); err != nil {
+		return err
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	mu, ok := m.users[userID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	mu.user.Role = role
+	return nil
+}
+
 func (m *Memory) SetUserExternalID(_ context.Context, userID, externalID string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

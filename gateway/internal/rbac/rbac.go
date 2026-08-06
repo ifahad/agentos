@@ -86,3 +86,33 @@ func CanManageRole(actorRole, targetRole string) bool {
 		return false
 	}
 }
+
+// RoleRank orders roles by authority for callers that must collapse a SET of
+// roles into one. SCIM group mapping is the case that needs it: a user may be
+// in several groups that each map to a role, and exactly one role can be
+// stored (User.Role is scalar), so the strongest wins.
+//
+// The order is read off the capability matrix above rather than invented.
+// viewer's actions are a strict subset of member's, member's of admin's, and
+// owner holds admin's actions plus the one power admin lacks — CanManageRole
+// over owners. TestRoleRankIsDerivedFromCapabilities pins that derivation, so
+// granting member something admin cannot do fails the build instead of quietly
+// making this ordering a lie.
+//
+// An unknown role ranks BELOW every real one. Operator-supplied role names
+// reach this function (AGENTOS_SCIM_GROUP_ROLES), and a typo there must never
+// outrank viewer.
+func RoleRank(role string) int {
+	switch role {
+	case RoleOwner:
+		return 3
+	case RoleAdmin:
+		return 2
+	case RoleMember:
+		return 1
+	case RoleViewer:
+		return 0
+	default:
+		return -1
+	}
+}
