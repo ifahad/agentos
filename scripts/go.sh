@@ -49,9 +49,12 @@ else
       -e GOMODCACHE=/gocache/mod \
       -e GOCACHE=/gocache/build \
       -e GOFLAGS=-buildvcs=false \
-      "golang:${GO_VERSION}-alpine" go "$@"
+      "golang:${GO_VERSION}" go "$@"
   }
-  echo "toolchain: golang:${GO_VERSION}-alpine (no local go; cache: $CACHE)"
+  # Debian-based rather than -alpine: the race detector needs cgo and a C
+  # toolchain, and alpine's image ships neither. CI runs `test -race`, so an
+  # alpine fallback would make the same command pass there and fail here.
+  echo "toolchain: golang:${GO_VERSION} (no local go; cache: $CACHE)"
 fi
 
 failed=0

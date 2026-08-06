@@ -31,10 +31,13 @@ jobs:
       # the same set. It uses the toolchain installed above when `go` is on
       # PATH and falls back to the pinned image otherwise, which is what makes
       # the gateway testable on a machine with no Go install.
+      # -race because the gateway is concurrent by nature: budget reservations,
+      # the rate limiter and the secret refresh loop all race by design. The
+      # suite was already race-clean; nothing asserted it.
       - name: vet + test every Go module
         run: |
           scripts/go.sh vet ./...
-          scripts/go.sh test ./...
+          scripts/go.sh test -race ./...
 
   python:
     name: python runtime
@@ -105,3 +108,150 @@ jobs:
         uses: azure/setup-helm@v4
       - name: render tests (helm lint + template assertions)
         run: bash deploy/helm/test-render.sh
+
+  compose:
+    name: compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # compose.yaml and its overlays were only ever validated by running them
+      # on someone's machine. `config` resolves interpolation, merges overlays
+      # and rejects malformed service definitions without starting anything.
+      - name: validate compose and every documented overlay combination
+        working-directory: deploy
+        run: |
+          set -euo pipefail
+          cp .env.example .env
+          check() {
+            echo "::group::docker compose $*"
+            docker compose "$@" config -q
+            echo "::endgroup::"
+          }
+          check -f compose.yaml
+          check -f compose.yaml -f compose.otel.yaml
+          check -f compose.yaml -f compose.hitl.yaml
+          check -f compose.yaml -f compose.auth-mocks.yaml
+          check -f compose.yaml -f compose.otel.yaml -f compose.langfuse.yaml
+          # Opt-in connectors only render under their profile.
+          COMPOSE_PROFILES=connectors check -f compose.yaml
+
+  images:
+    name: image (${{ matrix.image.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - { name: gateway,           context: gateway }
+          - { name: runtime,           context: runtime }
+          - { name: sandbox,           context: sandbox }
+          - { name: console,           context: console }
+          - { name: landing,           context: landing }
+          - { name: sql-connector,     context: connectors/sql }
+          - { name: rest-connector,    context: connectors/rest }
+          - { name: ssh-connector,     context: connectors/ssh }
+          - { name: soap-connector,    context: connectors/soap }
+          - { name: browser-connector, context: connectors/browser }
+          - { name: demo-crm,          context: deploy/demo-crm }
+    steps:
+      - uses: actions/checkout@v4
+      # Nothing in CI built an image until now. That is how the browser
+      # connector shipped for two weeks with no USER line — running the one
+      # container that renders untrusted web content as root — and how three
+      # image-to-manifest contract violations reached main in the Helm chart.
+      - name: build
+        run: docker build -t "agentos/${{ matrix.image.name }}:ci" "${{ matrix.image.context }}"
+      # Every service except postgres is expected to run unprivileged. Asserted
+      # from the built image rather than from the Dockerfile text, so a base
+      # image that changes its default user is caught too.
+      - name: assert the image does not run as root
+        run: |
+          set -euo pipefail
+          uid=$(docker image inspect "agentos/${{ matrix.image.name }}:ci" --format '{{.Config.User}}')
+          echo "USER = '${uid:-<unset>}'"
+          if [ -z "$uid" ] || [ "$uid" = "root" ] || [ "$uid" = "0" ]; then
+            echo "::error::agentos/${{ matrix.image.name }} runs as root; every service must declare a non-root USER"
+            exit 1
+          fi
+
+  k8s:
+    name: helm install on kind
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+
+      # The chart's only gate was `helm template` + grep, which cannot observe
+      # an image. Every boot defect it missed — a missing required env var, a
+      # ConfigMap mounted over the entrypoint's output, runAsNonRoot without a
+      # uid — is a contract between manifest and image that only shows up when
+      # something actually starts them.
+      - name: build the images a default install needs
+        run: |
+          set -euo pipefail
+          for svc in gateway:gateway runtime:runtime sandbox:sandbox console:console \
+                     landing:landing sql-connector:connectors/sql; do
+            name="${svc%%:*}"; ctx="${svc##*:}"
+            echo "::group::build $name"
+            docker build -t "agentos/$name:0.3.0" "$ctx"
+            echo "::endgroup::"
+          done
+
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: agentos
+
+      - name: load images into the cluster
+        run: |
+          set -euo pipefail
+          for name in gateway runtime sandbox console landing sql-connector; do
+            kind load docker-image "agentos/$name:0.3.0" --name agentos
+          done
+
+      - name: helm install
+        run: |
+          set -euo pipefail
+          helm install agentos deploy/helm/agentos \
+            --set runtimeAuthToken="$(openssl rand -hex 32)" \
+            --wait --timeout 15m
+
+      # Reaching Ready is the regression test: the runtime fails closed without
+      # its token, the console exits if its config is mounted over the
+      # entrypoint's output, and the sandbox will not admit without a numeric
+      # uid. All three were green under `helm template` and none of them start.
+      - name: every workload became Ready
+        run: |
+          set -euo pipefail
+          kubectl rollout status statefulset/agentos-postgres --timeout=5m
+          for d in gateway runtime sandbox console landing sql-connector; do
+            kubectl rollout status "deployment/agentos-$d" --timeout=5m
+          done
+          kubectl get pods -o wide
+
+      - name: the console actually serves
+        run: |
+          set -euo pipefail
+          code=$(kubectl exec deploy/agentos-console -- \
+            curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/)
+          echo "console / -> $code"
+          [ "$code" = "200" ]
+          # Proves the injected bearer reaches the runtime: /threads/<unknown>
+          # is an authenticated route, so 404 means authenticated-and-absent
+          # while 401 would mean the token never arrived.
+          code=$(kubectl exec deploy/agentos-console -- \
+            curl -s -o /dev/null -w '%{http_code}' http://localhost:8080/api/runtime/threads/does-not-exist)
+          echo "console -> runtime /threads/does-not-exist -> $code (401 would mean the bearer is missing)"
+          [ "$code" != "401" ]
+
+      - name: diagnose on failure
+        if: failure()
+        run: |
+          kubectl get pods -o wide || true
+          kubectl describe pods || true
+          for p in $(kubectl get pods -o name); do
+            echo "::group::logs $p"
+            kubectl logs "$p" --all-containers --tail=80 || true
+            echo "::endgroup::"
+          done
