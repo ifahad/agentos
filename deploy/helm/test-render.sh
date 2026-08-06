@@ -128,6 +128,11 @@ echo "== schema: values.schema.json rejects what used to be silently ignored"
 # `--set gateway.rateLimitRpm=60` exited 0 and rendered byte-identical output:
 # an operator reaching for the obvious camelCase name got a successful upgrade
 # and a no-op. Each case below is one that really did pass silently.
+# The expected fragment is the offending KEY (or the type word), never helm's
+# phrasing: helm 3 says "Additional property x is not allowed" and helm 4 says
+# "additional properties 'x' not allowed". Matching the wording pinned this
+# suite to whichever helm the author happened to have — CI installs the latest,
+# and all five of these failed there while passing locally.
 reject() { # <label> <--set expr> <expected fragment>
     if out=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" --set "$2" 2>&1); then
         echo "  FAIL: $1 was accepted" >&2
@@ -139,13 +144,13 @@ reject() { # <label> <--set expr> <expected fragment>
         fails=$((fails + 1))
     fi
 }
-reject "unknown key on a service" gateway.rateLimitRpm=60 "Additional property rateLimitRpm is not allowed"
-reject "misspelled top-level key"  gatway.enabled=true     "Additional property gatway is not allowed"
-reject "invalid guardrails mode"   gateway.guardrailsMode=maybe "must be one of the following"
-reject "wrong type for a port"     console.service.port=eighty  "Expected: integer"
+reject "unknown key on a service" gateway.rateLimitRpm=60 "rateLimitRpm"
+reject "misspelled top-level key"  gatway.enabled=true     "gatway"
+reject "invalid guardrails mode"   gateway.guardrailsMode=maybe "guardrailsMode"
+reject "wrong type for a port"     console.service.port=eighty  "integer"
 # The console entrypoint substitutes this into nginx config, where '$' starts a
 # variable reference; catching it here beats catching it at container start.
-reject "a '$' in the runtime token" 'runtimeAuthToken=has$dollar' "Does not match pattern"
+reject "a '$' in the runtime token" 'runtimeAuthToken=has$dollar' "pattern"
 
 # Free-form pass-throughs must stay free-form, or the schema breaks real use.
 rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
