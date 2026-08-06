@@ -1,0 +1,784 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "AgentOS chart values",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "adminKey": {
+      "type": "string"
+    },
+    "runtimeKey": {
+      "type": "string"
+    },
+    "runtimeAuthToken": {
+      "type": "string",
+      "pattern": "^[^$]*$",
+      "description": "Bearer the runtime demands on every route. Required (the chart fails to render without it). Must not contain '$'."
+    },
+    "runtimeBudget": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "providerKeys": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "existingSecret": {
+          "type": "string"
+        }
+      }
+    },
+    "externalDatabaseUrl": {
+      "type": "string"
+    },
+    "otel": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        }
+      }
+    },
+    "postgres": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "auth": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "username": {
+              "type": "string"
+            },
+            "password": {
+              "type": "string"
+            },
+            "database": {
+              "type": "string"
+            }
+          }
+        },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "size": {
+              "type": "string"
+            },
+            "storageClassName": {
+              "type": "string"
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        }
+      }
+    },
+    "gateway": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "guardrailsMode": {
+          "type": "string",
+          "enum": [
+            "off",
+            "log",
+            "block",
+            "model"
+          ]
+        },
+        "ollamaBaseUrl": {
+          "type": "string"
+        },
+        "corsOrigins": {
+          "type": "string"
+        },
+        "resources": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        },
+        "extraEnv": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Free-form; passed through to the manifest unchanged."
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "model": {
+          "type": "string"
+        },
+        "embedModel": {
+          "type": "string"
+        },
+        "agentProfile": {
+          "type": "string",
+          "enum": [
+            "react",
+            "deep"
+          ]
+        },
+        "approvalTools": {
+          "type": "string"
+        },
+        "extraMcpServers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "resources": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        },
+        "extraEnv": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Free-form; passed through to the manifest unchanged."
+        }
+      }
+    },
+    "sqlConnector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "databaseUrl": {
+          "type": "string"
+        },
+        "maxRows": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resources": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        },
+        "extraEnv": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Free-form; passed through to the manifest unchanged."
+        }
+      }
+    },
+    "restConnector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "specUrl": {
+          "type": "string"
+        },
+        "baseUrl": {
+          "type": "string"
+        },
+        "allowMutations": {
+          "type": "boolean"
+        },
+        "authHeader": {
+          "type": "string"
+        },
+        "maxBodyBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resources": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        }
+      }
+    },
+    "soapConnector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "wsdlUrl": {
+          "type": "string"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "allowOperations": {
+          "type": "string"
+        },
+        "authHeader": {
+          "type": "string"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxBodyBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resources": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        },
+        "extraEnv": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Free-form; passed through to the manifest unchanged."
+        }
+      }
+    },
+    "browserConnector": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "allowDomains": {
+          "type": "string"
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxText": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resources": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        },
+        "extraEnv": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Free-form; passed through to the manifest unchanged."
+        }
+      }
+    },
+    "sandbox": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "maxTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxOutputBytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "networkPolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        },
+        "extraEnv": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Free-form; passed through to the manifest unchanged."
+        }
+      }
+    },
+    "console": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        },
+        "extraEnv": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Free-form; passed through to the manifest unchanged."
+        }
+      }
+    },
+    "landing": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        },
+        "ingress": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "className": {
+              "type": "string"
+            },
+            "annotations": {
+              "type": "object",
+              "description": "Free-form; passed through to the manifest unchanged."
+            },
+            "host": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "pathType": {
+              "type": "string",
+              "enum": [
+                "Exact",
+                "Prefix",
+                "ImplementationSpecific"
+              ]
+            },
+            "tls": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              },
+              "description": "Free-form; passed through to the manifest unchanged."
+            }
+          }
+        }
+      }
+    },
+    "demoCrm": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "image": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "repository": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": [
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "resources": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        },
+        "extraEnv": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Free-form; passed through to the manifest unchanged."
+        }
+      }
+    },
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "frontedByAuth": {
+          "type": "boolean"
+        },
+        "className": {
+          "type": "string"
+        },
+        "annotations": {
+          "type": "object",
+          "description": "Free-form; passed through to the manifest unchanged."
+        },
+        "host": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "pathType": {
+          "type": "string",
+          "enum": [
+            "Exact",
+            "Prefix",
+            "ImplementationSpecific"
+          ]
+        },
+        "tls": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "description": "Free-form; passed through to the manifest unchanged."
+        }
+      }
+    }
+  }
+}

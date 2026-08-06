@@ -123,6 +123,37 @@ assert_contains "ingress class"         'ingressClassName: nginx'
 assert_contains "ingress tls secret"    'secretName: agentos-tls'
 assert_contains "ingress -> console svc" 'name: agentos-console'
 
+echo "== schema: values.schema.json rejects what used to be silently ignored"
+# helm validates values against values.schema.json before rendering. Without it
+# `--set gateway.rateLimitRpm=60` exited 0 and rendered byte-identical output:
+# an operator reaching for the obvious camelCase name got a successful upgrade
+# and a no-op. Each case below is one that really did pass silently.
+reject() { # <label> <--set expr> <expected fragment>
+    if out=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" --set "$2" 2>&1); then
+        echo "  FAIL: $1 was accepted" >&2
+        fails=$((fails + 1))
+    elif grep -qF -- "$3" <<<"$out"; then
+        echo "  ok: $1"
+    else
+        echo "  FAIL: $1 rejected for the wrong reason (wanted: $3)" >&2
+        fails=$((fails + 1))
+    fi
+}
+reject "unknown key on a service" gateway.rateLimitRpm=60 "Additional property rateLimitRpm is not allowed"
+reject "misspelled top-level key"  gatway.enabled=true     "Additional property gatway is not allowed"
+reject "invalid guardrails mode"   gateway.guardrailsMode=maybe "must be one of the following"
+reject "wrong type for a port"     console.service.port=eighty  "Expected: integer"
+# The console entrypoint substitutes this into nginx config, where '$' starts a
+# variable reference; catching it here beats catching it at container start.
+reject "a '$' in the runtime token" 'runtimeAuthToken=has$dollar' "Does not match pattern"
+
+# Free-form pass-throughs must stay free-form, or the schema breaks real use.
+rendered=$(helm template "$RELEASE" "$CHART_DIR" "${TOKEN[@]}" \
+    --set gateway.resources.limits.cpu=2 \
+    --set 'gateway.extraEnv[0].name=CUSTOM' --set 'gateway.extraEnv[0].value=v')
+assert_contains "resources still pass through" 'cpu: 2'
+assert_contains "extraEnv still passes through" 'name: CUSTOM'
+
 echo "== structural: every workload runs non-root with a uid, or is a named exception"
 # Two failure modes, neither visible to a per-service string assertion:
 #
