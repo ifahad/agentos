@@ -57,6 +57,12 @@ are not one RBAC-gated group:
 | `PATCH` | `/scim/v2/Users/{id}` | Patch a SCIM user | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |
 | `PUT` | `/scim/v2/Users/{id}` | Replace a SCIM user | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |
 | `DELETE` | `/scim/v2/Users/{id}` | Delete a SCIM user | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |
+| `POST` | `/scim/v2/Groups` | Create a SCIM group | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |
+| `GET` | `/scim/v2/Groups` | List groups (`?filter=displayName eq "x"`) | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |
+| `GET` | `/scim/v2/Groups/{id}` | Get a group | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |
+| `PATCH` | `/scim/v2/Groups/{id}` | Add/remove/replace members, rename | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |
+| `PUT` | `/scim/v2/Groups/{id}` | Replace a group wholesale | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |
+| `DELETE` | `/scim/v2/Groups/{id}` | Delete a group | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |
 | `GET` | `/scim/v2/ServiceProviderConfig` | SCIM service-provider config | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |
 | `GET` | `/scim/v2/ResourceTypes` | SCIM resource types | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |
 | `GET` | `/scim/v2/Schemas` | SCIM schemas | `scimAuth` (`AGENTOS_SCIM_TOKEN`) |

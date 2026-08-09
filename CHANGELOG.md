@@ -4,6 +4,17 @@ All notable delivery milestones. Each phase was smoke-tested live end-to-end
 before it was considered done; the verification targets are documented in
 [`docs/operations.md`](docs/operations.md).
 
+## SCIM Groups — IdP-driven role assignment
+
+Six `/scim/v2/Groups` routes speaking both Entra's and Okta's PATCH dialects,
+with groups stored as first-class org-scoped objects. `AGENTOS_SCIM_GROUP_ROLES`
+maps group displayNames to roles; unset (the default) means groups grant
+nothing and SCIM still cannot change any role. A user in several mapped groups
+takes the strongest; leaving their last mapped group demotes them back to the
+default, because an identity provider that can grant but never revoke is worse
+than one that does neither. Only users carrying a SCIM `externalId` are
+reconciled, so a hand-created owner is never demoted by group membership.
+
 ## Operators — governed single-agent autonomy
 
 Interval / cron / webhook triggers toward stored objectives, bounded and

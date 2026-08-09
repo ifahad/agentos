@@ -1,12 +1,26 @@
-name: evals
+name: stack integration
 
-# LLM-judge eval gate. Boots the full compose stack against a DETERMINISTIC,
-# OFFLINE mock model (deploy/ci/mock-model.py) so the runtime eval suite
-# (runtime/evals/default.yaml) runs with no real provider and no network, then
-# fails the job if the suite score drops below the threshold.
+# END-TO-END INTEGRATION TEST, not a measure of answer quality. Read the next
+# paragraph before trusting a green run here to mean anything about the agent.
 #
-# Triggers: manual (workflow_dispatch) and pull requests labelled `run-evals`
-# (evals are heavier than unit CI, so they are opt-in per PR).
+# It boots the whole compose stack against a DETERMINISTIC, OFFLINE mock model
+# (deploy/ci/mock-model.py) and drives the runtime eval suite
+# (runtime/evals/default.yaml) through it. Nothing else in CI starts a system
+# and runs an agent, so this is the only gate that exercises the gateway ->
+# runtime -> connector -> sandbox path together.
+#
+# WHAT THE SCORE IS AND IS NOT. The mock's judge returns a fixed 1.0 for any
+# input, and the canned answers are written to satisfy the suite's
+# expect_substring values, so the suite scores 1.0 by construction and would go
+# on doing so with retrieval deleted or the answers wrong. What the score DOES
+# catch is the shape of the run breaking: a tool that stops being called fails
+# expect_tool, a case that errors fails outright, and the stack failing to boot
+# fails everything. Treat a drop as "the plumbing broke", never as "quality
+# regressed" — there is no automated quality gate for agent output, and
+# pretending this is one is worse than admitting there is none.
+#
+# Triggers: every push to main, manual dispatch, and pull requests labelled
+# `run-evals` (it is heavier than unit CI, so PRs opt in).
 #
 # ---------------------------------------------------------------------------
 # Eval wiring (mock model, zero-friction)
@@ -21,7 +35,7 @@ name: evals
 #   3. set the runtime's three models to ollama/mock-* so agent, judge and embed
 #      calls all land on the mock.
 # The mock returns canned tool-calls + answers keyed off conversation substrings,
-# so the suite scores 1.0 every run.
+# so the suite scores 1.0 every run BY CONSTRUCTION. See the note at the top.
 #
 # ---------------------------------------------------------------------------
 # Running against REAL models instead
@@ -35,6 +49,8 @@ name: evals
 # and drop the AGENTOS_OLLAMA_BASE_URL/mock steps. Everything else is identical.
 
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
   pull_request:
     types: [labeled, opened, synchronize, reopened]
@@ -44,7 +60,10 @@ permissions:
 
 concurrency:
   group: evals-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel on main: a superseded run leaves that commit with no verdict at
+  # all, which has already happened here — a security-hardening commit's run was
+  # cancelled by the next push and never completed. Branches keep the saving.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   MOCK_PORT: "8100"
@@ -53,10 +72,11 @@ env:
 
 jobs:
   evals:
-    name: eval gate (mock model)
+    name: stack integration (mock model)
     runs-on: ubuntu-latest
-    # Run on manual dispatch, OR on a PR that carries the `run-evals` label.
+    # Every push to main, manual dispatch, or a PR carrying `run-evals`.
     if: >-
+      github.event_name == 'push' ||
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'run-evals')
     steps:
@@ -130,7 +150,11 @@ jobs:
           failed = resp.get("failed", 0)
           threshold = float(os.environ["SCORE_THRESHOLD"])
           lines = [
-              "## Eval gate (mock model)",
+              "## Stack integration (mock model)",
+              "",
+              "_The mock judge returns 1.0 for any input. A drop here means the",
+              "run's SHAPE broke — a tool stopped being called, a case errored,",
+              "the stack failed to boot — not that answer quality regressed._",
               "",
               f"- **Score:** {score:.3f} (threshold {threshold:.2f})",
               f"- **Passed:** {passed}  **Failed:** {failed}",

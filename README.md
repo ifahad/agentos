@@ -337,11 +337,17 @@ Shipped work is recorded in [`CHANGELOG.md`](CHANGELOG.md). Next:
 
 - SAML SSO
 - Cloud-KMS secret backends
-- Redis limiter option
 - Secret rotation webhooks
-- SCIM Groups
-- Restore the CI and eval-gate status badges once the repository is public
-  (they were removed because they cannot resolve against a private repo)
+- Restore the CI status badges once the repository is public (they were removed
+  because they cannot resolve against a private repo)
+
+Dropped, deliberately:
+
+- **Redis limiter option.** The Postgres backend already gives correct
+  distributed limiting; Redis would buy throughput, and no measurement asks for
+  it. Adding a second piece of infrastructure to a platform whose premise is
+  self-hosting needs a reason better than "the roadmap said so". Revisit when a
+  deployment actually outgrows the Postgres limiter.
 
 ## Documentation
 

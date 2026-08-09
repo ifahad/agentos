@@ -7,10 +7,14 @@ on:
   push:
   pull_request:
 
-# Cancel superseded runs on the same ref to save minutes.
+# Cancel superseded runs on the same ref to save minutes — but never on main.
+# A cancelled run leaves that commit with no verdict, and it has happened here:
+# a security-hardening commit's run was cancelled by the next push and never
+# completed. On main every commit gets a finished answer; branches keep the
+# saving.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
