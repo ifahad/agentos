@@ -168,7 +168,7 @@ func (s *Server) handleSCIMGetUser(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleSCIMListUsers(w http.ResponseWriter, r *http.Request) {
 	filter := strings.TrimSpace(r.URL.Query().Get("filter"))
 	if filter != "" {
-		userName, ok := parseUserNameEqFilter(filter)
+		userName, ok := parseEqFilter(filter, "userName")
 		if !ok {
 			// Only userName eq is supported; anything else matches nothing.
 			writeSCIM(w, http.StatusOK, scim.NewListResponse(nil))
@@ -199,14 +199,18 @@ func (s *Server) handleSCIMListUsers(w http.ResponseWriter, r *http.Request) {
 	writeSCIM(w, http.StatusOK, scim.NewListResponse(resources))
 }
 
-// parseUserNameEqFilter extracts x from `userName eq "x"` (case-insensitive on
-// the attribute and operator). ok is false for any other filter.
-func parseUserNameEqFilter(filter string) (userName string, ok bool) {
+// parseEqFilter extracts x from `<attr> eq "x"` (case-insensitive on the
+// attribute and operator). ok is false for any other filter.
+//
+// SplitN with a limit of 3 rather than strings.Fields: the value is the
+// remainder, so a Group displayName containing spaces — which is the normal
+// case, unlike userName — survives intact.
+func parseEqFilter(filter, attr string) (value string, ok bool) {
 	fields := strings.SplitN(filter, " ", 3)
 	if len(fields) != 3 {
 		return "", false
 	}
-	if !strings.EqualFold(fields[0], "userName") || !strings.EqualFold(fields[1], "eq") {
+	if !strings.EqualFold(fields[0], attr) || !strings.EqualFold(fields[1], "eq") {
 		return "", false
 	}
 	val := strings.TrimSpace(fields[2])
@@ -315,6 +319,17 @@ func (s *Server) registerSCIMRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PATCH /scim/v2/Users/{id}", s.scimAuth(s.handleSCIMPatchUser))
 	mux.HandleFunc("PUT /scim/v2/Users/{id}", s.scimAuth(s.handleSCIMPutUser))
 	mux.HandleFunc("DELETE /scim/v2/Users/{id}", s.scimAuth(s.handleSCIMDeleteUser))
+
+	// All six at once. A registered path under an unregistered method answers
+	// 405 with a text/plain body BEFORE any handler wrapper runs, which a SCIM
+	// client cannot parse as an Error — so a partially registered resource is
+	// worse than an absent one.
+	mux.HandleFunc("POST /scim/v2/Groups", s.scimAuth(s.handleSCIMCreateGroup))
+	mux.HandleFunc("GET /scim/v2/Groups", s.scimAuth(s.handleSCIMListGroups))
+	mux.HandleFunc("GET /scim/v2/Groups/{id}", s.scimAuth(s.handleSCIMGetGroup))
+	mux.HandleFunc("PATCH /scim/v2/Groups/{id}", s.scimAuth(s.handleSCIMPatchGroup))
+	mux.HandleFunc("PUT /scim/v2/Groups/{id}", s.scimAuth(s.handleSCIMPutGroup))
+	mux.HandleFunc("DELETE /scim/v2/Groups/{id}", s.scimAuth(s.handleSCIMDeleteGroup))
 	mux.HandleFunc("GET /scim/v2/ServiceProviderConfig", s.scimAuth(s.handleSCIMServiceProviderConfig))
 	mux.HandleFunc("GET /scim/v2/ResourceTypes", s.scimAuth(s.handleSCIMResourceTypes))
 	mux.HandleFunc("GET /scim/v2/Schemas", s.scimAuth(s.handleSCIMSchemas))

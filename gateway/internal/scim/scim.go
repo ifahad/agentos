@@ -275,3 +275,142 @@ func NewGroupListResponse(resources []Group) GroupListResponse {
 		Resources:    resources,
 	}
 }
+
+// GroupOpKind is the operation a Group PATCH asks for.
+type GroupOpKind int
+
+const (
+	GroupOpAddMembers GroupOpKind = iota
+	GroupOpRemoveMembers
+	GroupOpReplaceMembers
+	GroupOpSetDisplayName
+)
+
+// GroupOp is one normalised Group PATCH operation.
+type GroupOp struct {
+	Kind        GroupOpKind
+	MemberIDs   []string // for add/remove/replace; empty on a bare "remove members"
+	DisplayName string   // for GroupOpSetDisplayName
+}
+
+// memberValue is the member entry shape inside a PATCH value array.
+type memberValue struct {
+	Value string `json:"value"`
+}
+
+// membersPathFilter extracts x from a `members[value eq "x"]` path. Okta removes
+// a single member with this form rather than by sending a value array.
+func membersPathFilter(path string) (id string, ok bool) {
+	open := strings.Index(path, "[")
+	if open < 0 || !strings.EqualFold(strings.TrimSpace(path[:open]), "members") {
+		return "", false
+	}
+	if !strings.HasSuffix(path, "]") {
+		return "", false
+	}
+	inner := strings.TrimSpace(path[open+1 : len(path)-1])
+	fields := strings.SplitN(inner, " ", 3)
+	if len(fields) != 3 || !strings.EqualFold(fields[0], "value") || !strings.EqualFold(fields[1], "eq") {
+		return "", false
+	}
+	v := strings.TrimSpace(fields[2])
+	if len(v) >= 2 && (v[0] == '"' || v[0] == '\'') && v[len(v)-1] == v[0] {
+		return v[1 : len(v)-1], true
+	}
+	return "", false
+}
+
+// GroupOps normalises a Group PATCH body into an ORDERED slice of operations.
+//
+// Order is preserved rather than fused into a single result because Okta packs
+// a remove and an add into one Operations array: a member removed by the first
+// op and re-added by the second must end up present, which only an ordered
+// application gets right.
+//
+// Every verb and attribute is compared case-insensitively. Entra sends
+// "Add"/"Replace"/"Remove" capitalised and documents that servers must not
+// match case-sensitively; Okta sends them lowercase.
+//
+// Recognised forms:
+//
+//	{"op":"Add",    "path":"members","value":[{"value":"usr_x"}]}   add
+//	{"op":"Remove", "path":"members","value":[{"value":"usr_x"}]}   remove those
+//	{"op":"remove", "path":"members[value eq \"usr_x\"]"}           remove that one
+//	{"op":"replace","path":"members","value":[...]}                 wholesale
+//	{"op":"remove", "path":"members"}                               remove all
+//	{"op":"replace","path":"displayName","value":"New"}             rename
+//	{"op":"replace","value":{"displayName":"New"}}                  pathless rename
+//
+// Unrecognised operations are skipped rather than rejected: identity providers
+// send attributes this gateway does not model, and failing the whole request
+// would stall provisioning over an attribute nobody reads.
+func (p PatchRequest) GroupOps() []GroupOp {
+	ops := p.Operations
+	if len(ops) == 0 && p.Op != "" {
+		ops = []PatchOperation{{Op: p.Op, Path: p.Path, Value: p.Value}}
+	}
+
+	var out []GroupOp
+	for _, op := range ops {
+		path := strings.TrimSpace(op.Path)
+
+		if id, ok := membersPathFilter(path); ok && strings.EqualFold(op.Op, "remove") {
+			out = append(out, GroupOp{Kind: GroupOpRemoveMembers, MemberIDs: []string{id}})
+			continue
+		}
+
+		if strings.EqualFold(path, "members") {
+			var vals []memberValue
+			_ = json.Unmarshal(op.Value, &vals) // absent/!array -> empty, which is the "all" case
+			ids := make([]string, 0, len(vals))
+			for _, v := range vals {
+				if v.Value != "" {
+					ids = append(ids, v.Value)
+				}
+			}
+			switch {
+			case strings.EqualFold(op.Op, "add"):
+				out = append(out, GroupOp{Kind: GroupOpAddMembers, MemberIDs: ids})
+			case strings.EqualFold(op.Op, "remove"):
+				// No value array means remove every member (RFC 7644 §3.5.2).
+				out = append(out, GroupOp{Kind: GroupOpRemoveMembers, MemberIDs: ids})
+			case strings.EqualFold(op.Op, "replace"):
+				out = append(out, GroupOp{Kind: GroupOpReplaceMembers, MemberIDs: ids})
+			}
+			continue
+		}
+
+		if strings.EqualFold(path, "displayName") &&
+			(strings.EqualFold(op.Op, "replace") || strings.EqualFold(op.Op, "add")) {
+			var name string
+			if err := json.Unmarshal(op.Value, &name); err == nil && name != "" {
+				out = append(out, GroupOp{Kind: GroupOpSetDisplayName, DisplayName: name})
+			}
+			continue
+		}
+
+		if path == "" && (strings.EqualFold(op.Op, "replace") || strings.EqualFold(op.Op, "add")) {
+			// Pathless form: the value object carries the attributes.
+			var obj struct {
+				DisplayName string        `json:"displayName"`
+				Members     []memberValue `json:"members"`
+			}
+			if err := json.Unmarshal(op.Value, &obj); err != nil {
+				continue
+			}
+			if obj.DisplayName != "" {
+				out = append(out, GroupOp{Kind: GroupOpSetDisplayName, DisplayName: obj.DisplayName})
+			}
+			if obj.Members != nil {
+				ids := make([]string, 0, len(obj.Members))
+				for _, v := range obj.Members {
+					if v.Value != "" {
+						ids = append(ids, v.Value)
+					}
+				}
+				out = append(out, GroupOp{Kind: GroupOpReplaceMembers, MemberIDs: ids})
+			}
+		}
+	}
+	return out
+}

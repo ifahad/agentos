@@ -27,7 +27,9 @@ func ServiceProviderConfig() map[string]any {
 	}
 }
 
-// ResourceTypes returns the SCIM ResourceTypes listing (just the User type).
+// ResourceTypes returns the SCIM ResourceTypes listing. Identity providers read
+// this before provisioning to learn which resources exist, so a Group endpoint
+// that is served but not advertised here is one the IdP will never call.
 func ResourceTypes() ListResponseRaw {
 	user := map[string]any{
 		"schemas":     []string{SchemaResourceType},
@@ -38,7 +40,16 @@ func ResourceTypes() ListResponseRaw {
 		"schema":      SchemaUser,
 		"meta":        map[string]any{"resourceType": "ResourceType", "location": "/scim/v2/ResourceTypes/User"},
 	}
-	return newRawList([]any{user})
+	group := map[string]any{
+		"schemas":     []string{SchemaResourceType},
+		"id":          "Group",
+		"name":        "Group",
+		"endpoint":    "/Groups",
+		"description": "Group",
+		"schema":      SchemaGroup,
+		"meta":        map[string]any{"resourceType": "ResourceType", "location": "/scim/v2/ResourceTypes/Group"},
+	}
+	return newRawList([]any{user, group})
 }
 
 // Schemas returns the SCIM Schemas listing advertising the core User schema and
@@ -58,7 +69,23 @@ func Schemas() ListResponseRaw {
 		},
 		"meta": map[string]any{"resourceType": "Schema", "location": "/scim/v2/Schemas/" + SchemaUser},
 	}
-	return newRawList([]any{userSchema})
+	groupSchema := map[string]any{
+		"schemas":     []string{SchemaSchema},
+		"id":          SchemaGroup,
+		"name":        "Group",
+		"description": "Group",
+		"attributes": []any{
+			attr("displayName", "string", true, "server"),
+			attr("externalId", "string", false, "none"),
+			complexAttr("members", []any{
+				attr("value", "string", false, "none"),
+				attr("display", "string", false, "none"),
+				attr("type", "string", false, "none"),
+			}),
+		},
+		"meta": map[string]any{"resourceType": "Schema", "location": "/scim/v2/Schemas/" + SchemaGroup},
+	}
+	return newRawList([]any{userSchema, groupSchema})
 }
 
 // ListResponseRaw is a SCIM ListResponse over arbitrary resource maps (used by
