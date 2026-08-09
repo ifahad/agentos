@@ -9,6 +9,12 @@ import (
 
 // newTestPostgres connects to AGENTOS_TEST_DATABASE_URL, skipping the test
 // when it is unset, and truncates the gateway tables for isolation.
+//
+// Every table belongs in the list. scim_group_members holds foreign keys to
+// users and scim_groups, so omitting it does not merely leak state between
+// tests — TRUNCATE users fails outright with "cannot truncate a table
+// referenced in a foreign key constraint", and every Postgres test in the
+// package dies in the helper.
 func newTestPostgres(t *testing.T) *Postgres {
 	t.Helper()
 	dsn := os.Getenv("AGENTOS_TEST_DATABASE_URL")
@@ -21,7 +27,7 @@ func newTestPostgres(t *testing.T) *Postgres {
 		t.Fatalf("NewPostgres: %v", err)
 	}
 	t.Cleanup(p.Close)
-	if _, err := p.pool.Exec(ctx, `TRUNCATE keys, "usage", audit_log, orgs, users`); err != nil {
+	if _, err := p.pool.Exec(ctx, `TRUNCATE keys, "usage", audit_log, orgs, users, scim_groups, scim_group_members`); err != nil {
 		t.Fatalf("truncate: %v", err)
 	}
 	return p

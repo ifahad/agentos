@@ -31,6 +31,15 @@ var ErrUserNotFound = errors.New("user not found")
 // operator can fix, not a 404.
 var ErrInvalidRole = errors.New("invalid role")
 
+// ErrGroupNotFound is returned for an unknown group id or displayName.
+var ErrGroupNotFound = errors.New("group not found")
+
+// ErrGroupExists is returned when a group's displayName is already taken in the
+// org. Identity providers depend on this being distinguishable: Entra retries a
+// create until it receives a 409, so collapsing it into a generic error makes
+// provisioning loop forever.
+var ErrGroupExists = errors.New("group already exists")
+
 // ErrUserInactive is returned by AuthenticateUser when a user exists but has
 // been deactivated (SCIM active=false). Its agu- token stops working while the
 // account is retained and can be reactivated.
@@ -110,6 +119,21 @@ type User struct {
 	Active bool `json:"active"`
 	// ExternalID is the IdP-assigned SCIM external id, empty when the user was
 	// not provisioned via SCIM. (Phase 7)
+	ExternalID string    `json:"external_id"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+// Group is a SCIM-provisioned directory group within an org. It is a
+// first-class object, NOT a role: an identity provider pushes every group an
+// admin scopes ("Engineering", "All Company"), most of which grant nothing.
+// What a group GRANTS is decided separately, by an operator-configured
+// allowlist mapping displayNames to roles — so SCIM can never invent authority
+// the operator did not already name.
+type Group struct {
+	ID          string    `json:"id"`
+	OrgID       string    `json:"org_id"`
+	DisplayName string    `json:"display_name"`
+	// ExternalID is the IdP-assigned id, empty when not supplied.
 	ExternalID string    `json:"external_id"`
 	CreatedAt  time.Time `json:"created_at"`
 }
@@ -263,6 +287,30 @@ type Store interface {
 	// role outside the frozen set, so an operator's typo cannot write a role
 	// that Can() will silently treat as holding nothing.
 	SetUserRole(ctx context.Context, userID, role string) error
+
+	// SCIM Groups (Phase 7). Groups are org-scoped; displayName is unique
+	// within an org, case-insensitively, because identity providers treat it as
+	// the natural key when they have no stored id to reconcile against.
+	CreateGroup(ctx context.Context, orgID, displayName, externalID string) (*Group, error) // ErrOrgNotFound, ErrGroupExists
+	GroupByID(ctx context.Context, orgID, groupID string) (*Group, error)                   // ErrGroupNotFound
+	GroupByDisplayName(ctx context.Context, orgID, displayName string) (*Group, error)      // ErrGroupNotFound
+	Groups(ctx context.Context, orgID string) ([]Group, error)
+	// RenameGroup changes a group's displayName. ErrGroupExists when the new
+	// name collides with another group in the org.
+	RenameGroup(ctx context.Context, orgID, groupID, displayName string) error // ErrGroupNotFound, ErrGroupExists
+	DeleteGroup(ctx context.Context, orgID, groupID string) error              // ErrGroupNotFound
+	// SetGroupMembers replaces the membership wholesale. SCIM PATCH semantics
+	// are expressed by the caller reading the current set, applying the ops in
+	// order and writing the result, so add/remove/replace all land here.
+	// Unknown user ids are rejected rather than stored, so membership can never
+	// name a user that does not exist.
+	SetGroupMembers(ctx context.Context, orgID, groupID string, userIDs []string) error // ErrGroupNotFound, ErrUserNotFound
+	// GroupMembers returns the group's members, ordered by user id so responses
+	// are stable across calls and backends.
+	GroupMembers(ctx context.Context, orgID, groupID string) ([]User, error) // ErrGroupNotFound
+	// GroupsForUser returns every group the user belongs to. This is what role
+	// reconciliation reads, so it must reflect a membership write immediately.
+	GroupsForUser(ctx context.Context, orgID, userID string) ([]Group, error)
 	// UserByExternalID finds a user by SCIM external id within an org. Returns
 	// ErrUserNotFound when no such user exists.
 	UserByExternalID(ctx context.Context, orgID, externalID string) (*User, error)

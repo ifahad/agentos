@@ -13,6 +13,7 @@ import (
 // Schema URNs from RFC 7643/7644.
 const (
 	SchemaUser         = "urn:ietf:params:scim:schemas:core:2.0:User"
+	SchemaGroup        = "urn:ietf:params:scim:schemas:core:2.0:Group"
 	SchemaError        = "urn:ietf:params:scim:api:messages:2.0:Error"
 	SchemaListResponse = "urn:ietf:params:scim:api:messages:2.0:ListResponse"
 	SchemaPatchOp      = "urn:ietf:params:scim:api:messages:2.0:PatchOp"
@@ -194,4 +195,83 @@ func itoa(n int) string {
 		buf[i] = '-'
 	}
 	return string(buf[i:])
+}
+
+// Member is one entry of a Group's member list. Only Value (the member's id)
+// is load-bearing; Display and Ref are conveniences identity providers show in
+// their UI, and Type distinguishes User members from nested Group members —
+// which this gateway does not support.
+type Member struct {
+	Value   string `json:"value"`
+	Display string `json:"display,omitempty"`
+	Ref     string `json:"$ref,omitempty"`
+	Type    string `json:"type,omitempty"`
+}
+
+// Group is the SCIM core Group resource (the subset the gateway serves).
+//
+// Members is a POINTER to a slice, not a slice, because three states must be
+// distinguishable on the wire and only a pointer gives all three:
+//
+//	nil pointer            -> the key is omitted   (?excludedAttributes=members)
+//	pointer to empty slice -> "members": []        (a group with no members)
+//	pointer to a populated slice
+//
+// A plain []Member with omitempty collapses the middle case into the first,
+// dropping the key for an empty group — which Okta treats as a malformed
+// response. This is the same tri-state discipline the User path uses for
+// *bool Active.
+type Group struct {
+	Schemas     []string  `json:"schemas"`
+	ID          string    `json:"id"`
+	ExternalID  string    `json:"externalId,omitempty"`
+	DisplayName string    `json:"displayName"`
+	Members     *[]Member `json:"members,omitempty"`
+	Meta        Meta      `json:"meta"`
+}
+
+// NewGroup builds a Group resource. baseURL is the absolute /scim/v2/Groups
+// prefix used for meta.location. members may be nil, which still yields
+// "members": [] — callers that want the key omitted set Members to nil after
+// construction, so omission is always a deliberate act rather than an accident
+// of an empty result.
+func NewGroup(id, externalID, displayName string, members []Member, baseURL string) Group {
+	if members == nil {
+		members = []Member{}
+	}
+	return Group{
+		Schemas:     []string{SchemaGroup},
+		ID:          id,
+		ExternalID:  externalID,
+		DisplayName: displayName,
+		Members:     &members,
+		Meta:        Meta{ResourceType: "Group", Location: strings.TrimRight(baseURL, "/") + "/" + id},
+	}
+}
+
+// GroupListResponse is the ListResponse envelope for Groups. It duplicates
+// ListResponse's fields rather than making that type generic: ListResponse is
+// on the User path that identity providers already consume, and reshaping it
+// to serve a second resource is a change to working code for no gain.
+type GroupListResponse struct {
+	Schemas      []string `json:"schemas"`
+	TotalResults int      `json:"totalResults"`
+	StartIndex   int      `json:"startIndex"`
+	ItemsPerPage int      `json:"itemsPerPage"`
+	Resources    []Group  `json:"Resources"`
+}
+
+// NewGroupListResponse wraps resources in a SCIM ListResponse. A nil slice is
+// rendered as an empty JSON array.
+func NewGroupListResponse(resources []Group) GroupListResponse {
+	if resources == nil {
+		resources = []Group{}
+	}
+	return GroupListResponse{
+		Schemas:      []string{SchemaListResponse},
+		TotalResults: len(resources),
+		StartIndex:   1,
+		ItemsPerPage: len(resources),
+		Resources:    resources,
+	}
 }

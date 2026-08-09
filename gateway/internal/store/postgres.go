@@ -126,6 +126,28 @@ CREATE INDEX IF NOT EXISTS audit_log_org_idx ON audit_log (org_id);
 -- primary key, so it needs nothing here.
 CREATE INDEX IF NOT EXISTS audit_log_created_at_idx ON audit_log (created_at);
 CREATE INDEX IF NOT EXISTS keys_org_idx ON keys (org_id);
+
+-- SCIM Groups (Phase 7). Named scim_groups rather than groups: GROUP is a
+-- reserved word in SQL, and the prefix says where the rows come from.
+CREATE TABLE IF NOT EXISTS scim_groups (
+    id           TEXT PRIMARY KEY,
+    org_id       TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    external_id  TEXT,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+-- Case-insensitive uniqueness: an identity provider does not guarantee casing
+-- between a create and a later re-sync, and two groups differing only in case
+-- would both match the same role-allowlist entry.
+CREATE UNIQUE INDEX IF NOT EXISTS scim_groups_org_name_idx
+    ON scim_groups (org_id, lower(display_name));
+CREATE TABLE IF NOT EXISTS scim_group_members (
+    group_id TEXT NOT NULL REFERENCES scim_groups(id) ON DELETE CASCADE,
+    user_id  TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    PRIMARY KEY (group_id, user_id)
+);
+-- Role reconciliation reads memberships by user, on every membership change.
+CREATE INDEX IF NOT EXISTS scim_group_members_user_idx ON scim_group_members (user_id);
 `
 
 // NewPostgres connects to databaseURL and ensures the schema exists.
@@ -752,4 +774,208 @@ func (p *Postgres) DeleteUser(ctx context.Context, orgID, userID string) error {
 		return ErrUserNotFound
 	}
 	return nil
+}
+
+// --- SCIM Groups (Phase 7) ---
+
+func (p *Postgres) CreateGroup(ctx context.Context, orgID, displayName, externalID string) (*Group, error) {
+	if _, err := p.Org(ctx, orgID); err != nil {
+		return nil, err
+	}
+	id, err := newID("grp_")
+	if err != nil {
+		return nil, err
+	}
+	g := &Group{ID: id, OrgID: orgID, DisplayName: displayName, ExternalID: externalID}
+	err = p.pool.QueryRow(ctx,
+		`INSERT INTO scim_groups (id, org_id, display_name, external_id)
+		 VALUES ($1, $2, $3, NULLIF($4, ''))
+		 ON CONFLICT DO NOTHING
+		 RETURNING created_at`, id, orgID, displayName, externalID).Scan(&g.CreatedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// ON CONFLICT DO NOTHING returns no row, which is the unique index on
+		// (org_id, lower(display_name)) firing. Identity providers retry a
+		// create until they see a 409, so this must be distinguishable.
+		return nil, ErrGroupExists
+	}
+	if err != nil {
+		return nil, fmt.Errorf("create group: %w", err)
+	}
+	return g, nil
+}
+
+// scanGroup reads the standard column order used by every group query.
+func scanGroup(row interface{ Scan(...any) error }) (*Group, error) {
+	var g Group
+	var externalID *string
+	if err := row.Scan(&g.ID, &g.OrgID, &g.DisplayName, &externalID, &g.CreatedAt); err != nil {
+		return nil, err
+	}
+	if externalID != nil {
+		g.ExternalID = *externalID
+	}
+	return &g, nil
+}
+
+const groupCols = `id, org_id, display_name, external_id, created_at`
+
+func (p *Postgres) GroupByID(ctx context.Context, orgID, groupID string) (*Group, error) {
+	g, err := scanGroup(p.pool.QueryRow(ctx,
+		`SELECT `+groupCols+` FROM scim_groups WHERE id = $1 AND org_id = $2`, groupID, orgID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrGroupNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("group by id: %w", err)
+	}
+	return g, nil
+}
+
+func (p *Postgres) GroupByDisplayName(ctx context.Context, orgID, displayName string) (*Group, error) {
+	g, err := scanGroup(p.pool.QueryRow(ctx,
+		`SELECT `+groupCols+` FROM scim_groups
+		 WHERE org_id = $1 AND lower(display_name) = lower($2)`, orgID, displayName))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrGroupNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("group by display name: %w", err)
+	}
+	return g, nil
+}
+
+func (p *Postgres) Groups(ctx context.Context, orgID string) ([]Group, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT `+groupCols+` FROM scim_groups WHERE org_id = $1 ORDER BY id`, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("list groups: %w", err)
+	}
+	defer rows.Close()
+	out := []Group{}
+	for rows.Next() {
+		g, err := scanGroup(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan group: %w", err)
+		}
+		out = append(out, *g)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) RenameGroup(ctx context.Context, orgID, groupID, displayName string) error {
+	if _, err := p.GroupByID(ctx, orgID, groupID); err != nil {
+		return err
+	}
+	tag, err := p.pool.Exec(ctx,
+		`UPDATE scim_groups SET display_name = $3 WHERE id = $1 AND org_id = $2
+		 AND NOT EXISTS (
+		   SELECT 1 FROM scim_groups other
+		   WHERE other.org_id = $2 AND other.id <> $1
+		     AND lower(other.display_name) = lower($3))`, groupID, orgID, displayName)
+	if err != nil {
+		return fmt.Errorf("rename group: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		// The group exists (checked above), so the only way to update nothing is
+		// the NOT EXISTS guard: another group already holds the name.
+		return ErrGroupExists
+	}
+	return nil
+}
+
+func (p *Postgres) DeleteGroup(ctx context.Context, orgID, groupID string) error {
+	tag, err := p.pool.Exec(ctx, `DELETE FROM scim_groups WHERE id = $1 AND org_id = $2`, groupID, orgID)
+	if err != nil {
+		return fmt.Errorf("delete group: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrGroupNotFound
+	}
+	return nil
+}
+
+func (p *Postgres) SetGroupMembers(ctx context.Context, orgID, groupID string, userIDs []string) error {
+	if _, err := p.GroupByID(ctx, orgID, groupID); err != nil {
+		return err
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("set group members: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Validate every id first. Without this a bad member would be caught by the
+	// foreign key mid-insert, leaving the replacement half-applied — and the FK
+	// violation cannot distinguish "no such user" from "user in another org".
+	for _, uid := range userIDs {
+		var n int
+		if err := tx.QueryRow(ctx,
+			`SELECT count(*) FROM users WHERE id = $1 AND org_id = $2`, uid, orgID).Scan(&n); err != nil {
+			return fmt.Errorf("verify member: %w", err)
+		}
+		if n == 0 {
+			return ErrUserNotFound
+		}
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM scim_group_members WHERE group_id = $1`, groupID); err != nil {
+		return fmt.Errorf("clear group members: %w", err)
+	}
+	for _, uid := range userIDs {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO scim_group_members (group_id, user_id) VALUES ($1, $2)
+			 ON CONFLICT DO NOTHING`, groupID, uid); err != nil {
+			return fmt.Errorf("add group member: %w", err)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit group members: %w", err)
+	}
+	return nil
+}
+
+func (p *Postgres) GroupMembers(ctx context.Context, orgID, groupID string) ([]User, error) {
+	if _, err := p.GroupByID(ctx, orgID, groupID); err != nil {
+		return nil, err
+	}
+	rows, err := p.pool.Query(ctx,
+		`SELECT u.id, u.org_id, u.email, u.role, u.active, u.external_id, u.created_at
+		 FROM scim_group_members m JOIN users u ON u.id = m.user_id
+		 WHERE m.group_id = $1 ORDER BY u.id`, groupID)
+	if err != nil {
+		return nil, fmt.Errorf("group members: %w", err)
+	}
+	defer rows.Close()
+	out := []User{}
+	for rows.Next() {
+		var u User
+		var externalID *string
+		if err := rows.Scan(&u.ID, &u.OrgID, &u.Email, &u.Role, &u.Active, &externalID, &u.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scan member: %w", err)
+		}
+		if externalID != nil {
+			u.ExternalID = *externalID
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+func (p *Postgres) GroupsForUser(ctx context.Context, orgID, userID string) ([]Group, error) {
+	rows, err := p.pool.Query(ctx,
+		`SELECT g.id, g.org_id, g.display_name, g.external_id, g.created_at
+		 FROM scim_group_members m JOIN scim_groups g ON g.id = m.group_id
+		 WHERE m.user_id = $1 AND g.org_id = $2 ORDER BY g.id`, userID, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("groups for user: %w", err)
+	}
+	defer rows.Close()
+	out := []Group{}
+	for rows.Next() {
+		g, err := scanGroup(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan group: %w", err)
+		}
+		out = append(out, *g)
+	}
+	return out, rows.Err()
 }

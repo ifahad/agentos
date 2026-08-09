@@ -4,6 +4,7 @@ import (
 	"context"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -53,6 +54,8 @@ type Memory struct {
 	audit []memoryAudit           // oldest first
 	orgs  map[string]*Org         // org id -> org
 	users map[string]*memoryUser  // user id -> user (with token hash)
+	groups  map[string]*Group              // group id -> group
+	members map[string]map[string]struct{} // group id -> set of user ids
 	// In-flight spend reservations, keyed by the handle handed to the caller.
 	reservations   map[string]*memoryReservation
 	reservationSeq int64
@@ -65,6 +68,8 @@ func NewMemory() *Memory {
 		usage: make(map[string]*memoryUsage),
 		orgs:  make(map[string]*Org),
 		users: make(map[string]*memoryUser),
+		groups:  make(map[string]*Group),
+		members: make(map[string]map[string]struct{}),
 
 		reservations: make(map[string]*memoryReservation),
 	}
@@ -581,6 +586,12 @@ func (m *Memory) DeleteUser(_ context.Context, orgID, userID string) error {
 		return ErrUserNotFound
 	}
 	delete(m.users, userID)
+	// Membership must not outlive the user, or GroupMembers would name someone
+	// who no longer exists. Postgres gets this from ON DELETE CASCADE; here it
+	// is explicit, and TestGroupMembershipFollowsUserDeletion pins the parity.
+	for _, set := range m.members {
+		delete(set, userID)
+	}
 	return nil
 }
 
@@ -604,4 +615,164 @@ func (m *Memory) Audit() []Usage {
 		}
 	}
 	return out
+}
+
+// --- SCIM Groups (Phase 7) ---
+
+// memberSet returns the membership set for a group, creating it on demand.
+// Callers hold m.mu.
+func (m *Memory) memberSet(groupID string) map[string]struct{} {
+	set, ok := m.members[groupID]
+	if !ok {
+		set = make(map[string]struct{})
+		m.members[groupID] = set
+	}
+	return set
+}
+
+func (m *Memory) CreateGroup(_ context.Context, orgID, displayName, externalID string) (*Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if _, ok := m.orgs[orgID]; !ok {
+		return nil, ErrOrgNotFound
+	}
+	// Case-insensitive, matching the Postgres unique index on lower(name):
+	// identity providers do not guarantee casing between a create and a later
+	// re-sync, and two groups differing only in case would each map to the same
+	// role allowlist entry.
+	for _, g := range m.groups {
+		if g.OrgID == orgID && strings.EqualFold(g.DisplayName, displayName) {
+			return nil, ErrGroupExists
+		}
+	}
+	id, err := newID("grp_")
+	if err != nil {
+		return nil, err
+	}
+	g := &Group{ID: id, OrgID: orgID, DisplayName: displayName, ExternalID: externalID, CreatedAt: time.Now().UTC()}
+	m.groups[id] = g
+	cp := *g
+	return &cp, nil
+}
+
+func (m *Memory) GroupByID(_ context.Context, orgID, groupID string) (*Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	g, ok := m.groups[groupID]
+	if !ok || g.OrgID != orgID {
+		return nil, ErrGroupNotFound
+	}
+	cp := *g
+	return &cp, nil
+}
+
+func (m *Memory) GroupByDisplayName(_ context.Context, orgID, displayName string) (*Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, g := range m.groups {
+		if g.OrgID == orgID && strings.EqualFold(g.DisplayName, displayName) {
+			cp := *g
+			return &cp, nil
+		}
+	}
+	return nil, ErrGroupNotFound
+}
+
+func (m *Memory) Groups(_ context.Context, orgID string) ([]Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []Group{}
+	for _, g := range m.groups {
+		if g.OrgID == orgID {
+			out = append(out, *g)
+		}
+	}
+	// Map iteration is randomised, so without this the list order differs run to
+	// run and Postgres (ORDER BY id) would disagree with Memory.
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+func (m *Memory) RenameGroup(_ context.Context, orgID, groupID, displayName string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	g, ok := m.groups[groupID]
+	if !ok || g.OrgID != orgID {
+		return ErrGroupNotFound
+	}
+	for _, other := range m.groups {
+		if other.ID != groupID && other.OrgID == orgID && strings.EqualFold(other.DisplayName, displayName) {
+			return ErrGroupExists
+		}
+	}
+	g.DisplayName = displayName
+	return nil
+}
+
+func (m *Memory) DeleteGroup(_ context.Context, orgID, groupID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	g, ok := m.groups[groupID]
+	if !ok || g.OrgID != orgID {
+		return ErrGroupNotFound
+	}
+	delete(m.groups, groupID)
+	delete(m.members, groupID)
+	return nil
+}
+
+func (m *Memory) SetGroupMembers(_ context.Context, orgID, groupID string, userIDs []string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	g, ok := m.groups[groupID]
+	if !ok || g.OrgID != orgID {
+		return ErrGroupNotFound
+	}
+	// Validate every id BEFORE writing any, so a rejected member cannot leave
+	// the membership half-applied.
+	for _, uid := range userIDs {
+		mu, ok := m.users[uid]
+		if !ok || mu.user.OrgID != orgID {
+			return ErrUserNotFound
+		}
+	}
+	set := make(map[string]struct{}, len(userIDs))
+	for _, uid := range userIDs {
+		set[uid] = struct{}{}
+	}
+	m.members[groupID] = set
+	return nil
+}
+
+func (m *Memory) GroupMembers(_ context.Context, orgID, groupID string) ([]User, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	g, ok := m.groups[groupID]
+	if !ok || g.OrgID != orgID {
+		return nil, ErrGroupNotFound
+	}
+	out := []User{}
+	for uid := range m.memberSet(groupID) {
+		if mu, ok := m.users[uid]; ok {
+			out = append(out, mu.user)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
+}
+
+func (m *Memory) GroupsForUser(_ context.Context, orgID, userID string) ([]Group, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := []Group{}
+	for gid, set := range m.members {
+		if _, ok := set[userID]; !ok {
+			continue
+		}
+		if g, ok := m.groups[gid]; ok && g.OrgID == orgID {
+			out = append(out, *g)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+	return out, nil
 }
