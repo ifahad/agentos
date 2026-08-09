@@ -68,6 +68,12 @@ concurrency:
 env:
   MOCK_PORT: "8100"
   RUNTIME_URL: "http://localhost:8000"
+  # The runtime demands a bearer on every route except GET /healthz. This
+  # workflow polled /healthz (open) and then called /evals/run (not), so it had
+  # been failing with curl exit 22 ever since runtime auth landed — unnoticed,
+  # because it only ran on dispatch or a labelled PR and so effectively never
+  # ran at all. Enabling it on push found this on the first execution.
+  AGENTOS_RUNTIME_AUTH_TOKEN: "runtime-ci-token"
   SCORE_THRESHOLD: "0.8"
 
 jobs:
@@ -111,6 +117,9 @@ jobs:
           AGENTOS_OLLAMA_BASE_URL=http://host.docker.internal:8100
           AGENTOS_GUARDRAILS_MODE=off
           EOF
+          # Appended rather than inlined in the quoted heredoc, which would
+          # write the literal variable name instead of its value.
+          echo "AGENTOS_RUNTIME_AUTH_TOKEN=${AGENTOS_RUNTIME_AUTH_TOKEN}" >> deploy/.env
           echo "wrote deploy/.env:"; cat deploy/.env
 
       - name: Boot compose stack
@@ -140,6 +149,7 @@ jobs:
           set -euo pipefail
           resp="$(curl -sf -X POST "${RUNTIME_URL}/evals/run" \
             -H 'content-type: application/json' \
+            -H "Authorization: Bearer ${AGENTOS_RUNTIME_AUTH_TOKEN}" \
             -d '{"suite":"default","use_judge":true}')"
           echo "raw response: $resp"
           python3 - "$resp" <<'PY'
