@@ -92,6 +92,7 @@ budget hold → guardrail → provider/council → audit).
 | `AGENTOS_SCIM_TOKEN` | *(unset)* | Static bearer secret that guards every `/scim/v2/*` route. Unset leaves all SCIM routes 404 — setting it is what enables provisioning; the IdP sends it as its Bearer token. |
 | `AGENTOS_SCIM_DEFAULT_ORG` | `org_default` | Org a user provisioned via SCIM lands in by default. |
 | `AGENTOS_SCIM_DEFAULT_ROLE` | `member` | Role a user provisioned via SCIM is given by default. |
+| `AGENTOS_SCIM_GROUP_ROLES` | *(unset; groups grant nothing)* | Comma-separated `displayName=role` pairs naming which SCIM groups grant which role, e.g. `AgentOS Admins=admin,Contractors=viewer`. Matched case-insensitively. A user in several mapped groups takes the **strongest** role; leaving their last mapped group returns them to `AGENTOS_SCIM_DEFAULT_ROLE`. Only users carrying a SCIM `externalId` are reconciled, so a hand-created user is never demoted by group membership. Deliberately operator config and never derived from the names an IdP pushes — otherwise anyone able to create a group there could mint an owner. An unknown role is fatal at startup rather than silently skipped. |
 
 ## Runtime & agents
 

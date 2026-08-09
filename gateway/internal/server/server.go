@@ -70,6 +70,10 @@ type Server struct {
 	scimToken   string            // AGENTOS_SCIM_TOKEN; "" disables SCIM
 	scimOrg     string            // SCIM default org (AGENTOS_SCIM_DEFAULT_ORG)
 	scimRole    string            // SCIM default role (AGENTOS_SCIM_DEFAULT_ROLE)
+	// scimGroupRoles maps a lowercased group displayName to the role membership
+	// of that group grants (AGENTOS_SCIM_GROUP_ROLES). Empty — the default —
+	// means groups grant nothing and SCIM cannot change any role at all.
+	scimGroupRoles map[string]string
 	// reserveUSD is the amount held against a budget while a request is in
 	// flight (AGENTOS_BUDGET_RESERVE_USD). See DefaultReserveUSD.
 	reserveUSD float64
@@ -225,6 +229,30 @@ func WithSCIM(token, defaultOrg, defaultRole string) Option {
 		if defaultRole != "" {
 			s.scimRole = defaultRole
 		}
+	}
+}
+
+// WithSCIMGroupRoles maps group displayNames to the role that membership of
+// them grants. Keys are matched case-insensitively.
+//
+// This is deliberately operator configuration and never IdP-derived. If the
+// mapping came from the group names an identity provider happens to push, then
+// anyone who can create a group in that IdP — in Entra, a group owner, not
+// only a tenant admin — could mint an AgentOS owner. With an allowlist, SCIM
+// can assign only roles an operator typed on the gateway host.
+//
+// Unset (the default) means group membership grants nothing, so every existing
+// deployment keeps the property that SCIM cannot change a role.
+func WithSCIMGroupRoles(m map[string]string) Option {
+	return func(s *Server) {
+		if len(m) == 0 {
+			return
+		}
+		lowered := make(map[string]string, len(m))
+		for name, role := range m {
+			lowered[strings.ToLower(strings.TrimSpace(name))] = role
+		}
+		s.scimGroupRoles = lowered
 	}
 }
 

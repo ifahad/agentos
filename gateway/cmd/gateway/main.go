@@ -18,6 +18,7 @@ import (
 	"github.com/ifahad/agentos/gateway/internal/guardrail"
 	"github.com/ifahad/agentos/gateway/internal/oidc"
 	"github.com/ifahad/agentos/gateway/internal/provider"
+	"github.com/ifahad/agentos/gateway/internal/rbac"
 	"github.com/ifahad/agentos/gateway/internal/ratelimit"
 	"github.com/ifahad/agentos/gateway/internal/secret"
 	"github.com/ifahad/agentos/gateway/internal/server"
@@ -288,7 +289,15 @@ func run() error {
 				return fmt.Errorf("ensure SCIM default org: %w", err)
 			}
 		}
+		groupRoles, gerr := parseSCIMGroupRoles(os.Getenv("AGENTOS_SCIM_GROUP_ROLES"))
+		if gerr != nil {
+			return fmt.Errorf("AGENTOS_SCIM_GROUP_ROLES: %w", gerr)
+		}
 		opts = append(opts, server.WithSCIM(scimToken, scimOrg, scimRole))
+		if len(groupRoles) > 0 {
+			opts = append(opts, server.WithSCIMGroupRoles(groupRoles))
+			log.Printf("SCIM group->role mapping active for %d group(s)", len(groupRoles))
+		}
 		log.Printf("SCIM provisioning enabled (default org=%s, role=%s)", scimOrg, scimRole)
 	}
 
@@ -485,4 +494,45 @@ func startAuditRetention(ctx context.Context, st store.Store, retention time.Dur
 			}
 		}
 	}()
+}
+
+// parseSCIMGroupRoles parses AGENTOS_SCIM_GROUP_ROLES, a comma-separated list
+// of `displayName=role` pairs naming which SCIM groups grant which role:
+//
+//	AGENTOS_SCIM_GROUP_ROLES="AgentOS Admins=admin,Contractors=viewer"
+//
+// Empty (the default) means group membership grants nothing and SCIM cannot
+// change any role — which is the property every existing deployment has today,
+// and is why this is opt-in rather than inferred from group names.
+//
+// An unknown role is fatal at startup rather than skipped. A silently dropped
+// mapping is the worst outcome available: the operator believes a group grants
+// admin, the gateway starts cleanly, and nobody is granted anything until
+// somebody notices. The same argument the guardrail and rate-limit settings
+// already make for validating at boot.
+func parseSCIMGroupRoles(raw string) (map[string]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	out := map[string]string{}
+	for _, pair := range strings.Split(raw, ",") {
+		pair = strings.TrimSpace(pair)
+		if pair == "" {
+			continue
+		}
+		name, role, ok := strings.Cut(pair, "=")
+		name, role = strings.TrimSpace(name), strings.TrimSpace(role)
+		if !ok || name == "" || role == "" {
+			return nil, fmt.Errorf("expected displayName=role pairs, got %q", pair)
+		}
+		if !rbac.ValidRole(role) {
+			return nil, fmt.Errorf("group %q maps to unknown role %q (want owner, admin, member or viewer)", name, role)
+		}
+		if prev, dup := out[strings.ToLower(name)]; dup {
+			return nil, fmt.Errorf("group %q is mapped twice (%q and %q)", name, prev, role)
+		}
+		out[strings.ToLower(name)] = role
+	}
+	return out, nil
 }

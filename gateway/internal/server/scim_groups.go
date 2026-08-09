@@ -1,10 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
+
+	"github.com/ifahad/agentos/gateway/internal/rbac"
 
 	"github.com/ifahad/agentos/gateway/internal/scim"
 	"github.com/ifahad/agentos/gateway/internal/store"
@@ -136,6 +140,7 @@ func (s *Server) handleSCIMCreateGroup(w http.ResponseWriter, r *http.Request) {
 			writeSCIMError(w, http.StatusInternalServerError, "failed to set group members")
 			return
 		}
+		s.reconcileRoles(r.Context(), ids)
 	}
 
 	res, err := s.loadGroupResource(r, g.ID)
@@ -318,6 +323,9 @@ func (s *Server) handleSCIMPatchGroup(w http.ResponseWriter, r *http.Request) {
 		writeSCIMError(w, http.StatusInternalServerError, "failed to set group members")
 		return
 	}
+	// Everyone on either side of the change: the users who LEFT are exactly the
+	// ones a grant-only implementation would forget to demote.
+	s.reconcileRoles(r.Context(), unionIDs(current, next))
 
 	res, err := s.loadGroupResource(r, id)
 	if err != nil {
@@ -357,6 +365,17 @@ func (s *Server) handleSCIMPutGroup(w http.ResponseWriter, r *http.Request) {
 		writeSCIMError(w, http.StatusInternalServerError, "failed to rename group")
 		return
 	}
+	// Capture the prior membership before overwriting it, so users dropped by
+	// the replacement are reconciled too.
+	prior, err := s.store.GroupMembers(r.Context(), s.scimOrg, id)
+	if err != nil {
+		writeSCIMError(w, http.StatusInternalServerError, "failed to load group members")
+		return
+	}
+	priorIDs := make([]string, 0, len(prior))
+	for i := range prior {
+		priorIDs = append(priorIDs, prior[i].ID)
+	}
 	// PUT is a full replacement, so an absent members array means "no members".
 	if err := s.store.SetGroupMembers(r.Context(), s.scimOrg, id, body.memberIDs()); err != nil {
 		if errors.Is(err, store.ErrUserNotFound) {
@@ -368,6 +387,7 @@ func (s *Server) handleSCIMPutGroup(w http.ResponseWriter, r *http.Request) {
 		writeSCIMError(w, http.StatusInternalServerError, "failed to set group members")
 		return
 	}
+	s.reconcileRoles(r.Context(), unionIDs(priorIDs, body.memberIDs()))
 	res, err := s.loadGroupResource(r, id)
 	if err != nil {
 		writeSCIMError(w, http.StatusInternalServerError, "failed to load group")
@@ -380,6 +400,14 @@ func (s *Server) handleSCIMPutGroup(w http.ResponseWriter, r *http.Request) {
 // themselves are untouched.
 func (s *Server) handleSCIMDeleteGroup(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	// Read the membership first: after the delete there is nothing left to ask,
+	// and these users may have just lost the group that granted their role.
+	var memberIDs []string
+	if members, merr := s.store.GroupMembers(r.Context(), s.scimOrg, id); merr == nil {
+		for i := range members {
+			memberIDs = append(memberIDs, members[i].ID)
+		}
+	}
 	err := s.store.DeleteGroup(r.Context(), s.scimOrg, id)
 	if errors.Is(err, store.ErrGroupNotFound) {
 		writeSCIMError(w, http.StatusNotFound, "group "+id+" not found")
@@ -389,5 +417,111 @@ func (s *Server) handleSCIMDeleteGroup(w http.ResponseWriter, r *http.Request) {
 		writeSCIMError(w, http.StatusInternalServerError, "failed to delete group")
 		return
 	}
+	s.reconcileRoles(r.Context(), memberIDs)
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// roleForGroups resolves the role a user's group memberships grant: the
+// strongest role any mapped group of theirs confers, falling back to the SCIM
+// default role when none of their groups is mapped.
+//
+// "Strongest wins" is the only deterministic rule available. First-match-in-
+// config-order would make the operator's typing order invisible load-bearing
+// config, and last-write-wins would be nondeterministic under IdP retry — an
+// identity provider re-syncing groups in a different order would silently
+// change someone's authority.
+//
+// A mapped group always beats the default, even when the default ranks higher:
+// the fallback is for "no mapped group", not a floor. An operator who maps a
+// group to viewer means it.
+func (s *Server) roleForGroups(groups []store.Group) string {
+	best, role := -1, s.scimRole
+	for i := range groups {
+		mapped, ok := s.scimGroupRoles[strings.ToLower(groups[i].DisplayName)]
+		if !ok {
+			continue
+		}
+		if rank := rbac.RoleRank(mapped); rank > best {
+			best, role = rank, mapped
+		}
+	}
+	return role
+}
+
+// reconcileRoles recomputes and applies the role of each named user from their
+// current group memberships. It is called after every membership change.
+//
+// Reconciliation must run on REMOVAL as well as addition. If leaving a group
+// did not demote, an identity provider could grant authority and never revoke
+// it — the privilege-retention bug that would defeat the point of the feature.
+//
+// Only users carrying an ExternalID are touched. That field is already defined
+// as the marker of SCIM provenance, and without the guard an owner created by
+// hand through the admin API, who happens to be added to and then removed from
+// an IdP group, would be silently demoted. A SCIM user whose IdP omits
+// externalId is therefore not role-managed — both Entra and Okta always send
+// it, and the failure direction is "no role change", which is the safe one.
+//
+// Errors are logged and swallowed rather than failing the request: the
+// membership write already succeeded, and answering an identity provider with
+// a 500 makes it retry a change that has in fact been applied.
+func (s *Server) reconcileRoles(ctx context.Context, userIDs []string) {
+	if len(s.scimGroupRoles) == 0 {
+		return // groups grant nothing; no role may change
+	}
+	for _, id := range userIDs {
+		u, err := s.userByIDInSCIMOrg(ctx, id)
+		if err != nil {
+			log.Printf("scim: reconcile role for %s: %v", id, err)
+			continue
+		}
+		if u.ExternalID == "" {
+			continue // not SCIM-provisioned; its role is not ours to manage
+		}
+		groups, err := s.store.GroupsForUser(ctx, s.scimOrg, id)
+		if err != nil {
+			log.Printf("scim: groups for %s: %v", id, err)
+			continue
+		}
+		want := s.roleForGroups(groups)
+		if want == u.Role {
+			continue
+		}
+		if err := s.store.SetUserRole(ctx, id, want); err != nil {
+			log.Printf("scim: set role %s for %s: %v", want, id, err)
+		}
+	}
+}
+
+// userByIDInSCIMOrg is the context-taking sibling of scimUserByID, for call
+// sites that have no *http.Request in hand.
+func (s *Server) userByIDInSCIMOrg(ctx context.Context, id string) (*store.User, error) {
+	users, err := s.store.Users(ctx, s.scimOrg)
+	if err != nil {
+		return nil, err
+	}
+	for i := range users {
+		if users[i].ID == id {
+			return &users[i], nil
+		}
+	}
+	return nil, store.ErrUserNotFound
+}
+
+// unionIDs returns the distinct ids across both sets. Membership changes must
+// reconcile everyone who was in the group AND everyone who now is: the users
+// who left are exactly the ones a grant-only implementation would forget.
+func unionIDs(a, b []string) []string {
+	seen := make(map[string]struct{}, len(a)+len(b))
+	out := make([]string, 0, len(a)+len(b))
+	for _, list := range [][]string{a, b} {
+		for _, id := range list {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out
 }
