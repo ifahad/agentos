@@ -33,8 +33,17 @@ export default defineConfig({
     },
   },
   test: {
+    // node stays the default: the 36 suites that predate the DOM harness are
+    // pure logic and run faster without one, and styles.partition.test.ts reads
+    // CSS through ?raw, which needs no document. A component or hook test opts
+    // in per file with a `// @vitest-environment jsdom` docblock — explicit at
+    // the point of use, rather than a glob in here that has to be kept in step
+    // with wherever tests happen to live.
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // Registers DOM cleanup between tests, and no-ops under the node
+    // environment. See src/test/setup.ts for why it cannot be left implicit.
+    setupFiles: ["src/test/setup.ts"],
     css: { include: [/\?raw/] },
   },
 });
