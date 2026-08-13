@@ -93,10 +93,18 @@ func (s *Server) admitSpend(w http.ResponseWriter, r *http.Request, key *store.K
 	id, err := s.store.ReserveSpend(r.Context(), key.SecretHash, s.reserveUSD)
 	switch {
 	case errors.Is(err, store.ErrBudgetExceeded):
+		s.recordAudit(r, store.Usage{
+			SecretHash: key.SecretHash, OrgID: key.OrgID, KeyName: key.Name,
+			Status: http.StatusPaymentRequired, Kind: store.KindBudgetExceeded,
+		})
 		writeError(w, http.StatusPaymentRequired, errBudgetExceeded,
 			fmt.Sprintf("monthly budget of $%.2f exhausted for key %q", key.MonthlyBudgetUSD, key.Name))
 		return nil, false
 	case errors.Is(err, store.ErrOrgBudgetExceeded):
+		s.recordAudit(r, store.Usage{
+			SecretHash: key.SecretHash, OrgID: key.OrgID, KeyName: key.Name,
+			Status: http.StatusPaymentRequired, Kind: store.KindBudgetExceeded,
+		})
 		writeError(w, http.StatusPaymentRequired, errOrgBudgetExceeded,
 			fmt.Sprintf("org %q monthly budget exhausted", key.OrgID))
 		return nil, false

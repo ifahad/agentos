@@ -94,6 +94,12 @@ const (
 	// took the fail-open half without the audited half, and its own comment
 	// claimed otherwise.
 	KindBudgetError = "budget_error"
+	// KindBudgetExceeded marks a request refused because a key's or its org's
+	// monthly budget is exhausted (402). On a platform whose central control is
+	// the budget, this is the denial most worth being able to point at, and it
+	// was unrecorded: every allowed call was written down and the one that
+	// enforced the limit was not.
+	KindBudgetExceeded = "budget_exceeded"
 )
 
 // Key is an authenticated virtual key.

@@ -132,12 +132,14 @@ fixed order:
    store error above — it leaves its own audit entry.
 5. **Upstream provider or council** — the request is routed by model prefix to
    a provider, or, for a `council/…` model, to the runtime's council.
-6. **Audit** — the gateway's audit log records outcomes as one of seven
+6. **Audit** — the gateway's audit log records outcomes as one of ten
    kinds: `chat`, `embeddings`, `guardrail_flag`, `guardrail_block`,
-   `guardrail_error`, `rate_limited`, `secret_reload`. Among the denials
-   above, only the rate-limit rejection and the three guardrail outcomes
-   write an audit entry; a `401` auth failure and a `402` budget exhaustion
-   do not.
+   `guardrail_error`, `rate_limited`, `secret_reload`, `denied`,
+   `budget_exceeded`, `budget_error`. Every denial above writes an entry
+   except a `401`: an invalid key is by definition unattributable, so there is
+   nothing to record it against. `budget_error` marks the fail-open — the
+   request was ALLOWED because the reservation could not be evaluated, and
+   that blind spot is audited rather than silent.
 
 `POST /v1/embeddings` runs the identical chain **minus the guardrail step**.
 

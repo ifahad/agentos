@@ -111,3 +111,48 @@ func TestAllowedActionRecordsNoDenial(t *testing.T) {
 		t.Errorf("an allowed action was recorded as a denial: %v", kinds)
 	}
 }
+
+// The budget is this platform's central control, so its refusal is the denial
+// most worth being able to point at — and it was the one that wrote nothing.
+func TestBudgetExhaustionIsAudited(t *testing.T) {
+	_, mem, srv := newTestGateway(t)
+	// A budget below the per-request admission reserve is refused on the first
+	// call, which is the behaviour that stops a burst slipping past a limit.
+	secret, err := mem.CreateKey(context.Background(), "broke", 0.0001)
+	if err != nil {
+		t.Fatalf("CreateKey: %v", err)
+	}
+	resp, _ := doRawBytes(t, http.MethodPost, srv.URL+"/v1/chat/completions", secret,
+		`{"model":"anthropic/claude-sonnet-5","messages":[{"role":"user","content":"hi"}]}`)
+	if resp.StatusCode != http.StatusPaymentRequired {
+		t.Fatalf("status = %d, want 402", resp.StatusCode)
+	}
+	var found bool
+	for _, e := range mem.Audit() {
+		if e.Kind == store.KindBudgetExceeded {
+			found = true
+			if e.KeyName != "broke" || e.Status != http.StatusPaymentRequired {
+				t.Errorf("row = key %q status %d, want \"broke\" / 402", e.KeyName, e.Status)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("a request was refused for budget and nothing was recorded; kinds: %v", auditKinds(t, mem))
+	}
+}
+
+func TestFundedKeyWritesNoBudgetExceededRow(t *testing.T) {
+	_, mem, srv := newTestGateway(t)
+	secret, err := mem.CreateKey(context.Background(), "funded", 25)
+	if err != nil {
+		t.Fatalf("CreateKey: %v", err)
+	}
+	resp, _ := doRawBytes(t, http.MethodPost, srv.URL+"/v1/chat/completions", secret,
+		`{"model":"anthropic/claude-sonnet-5","messages":[{"role":"user","content":"hi"}]}`)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if kinds := auditKinds(t, mem); hasKind(kinds, store.KindBudgetExceeded) {
+		t.Errorf("a funded key recorded a budget refusal: %v", kinds)
+	}
+}

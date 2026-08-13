@@ -53,11 +53,13 @@ part of the system they belong to.
 - **Guardrail** — prompt-injection screening at the gateway
   (`AGENTOS_GUARDRAILS_MODE` = `off` | `log` | `block` | `model`). A classifier
   outage fails open with a `guardrail_error` audit entry.
-- **Audit log** — the gateway's record of outcomes, as one of seven kinds:
+- **Audit log** — the gateway's record of outcomes, as one of ten kinds:
   `chat`, `embeddings`, `guardrail_flag`, `guardrail_block`,
-  `guardrail_error`, `rate_limited`, `secret_reload`. Among denials, only
-  rate-limit and guardrail events are recorded; auth failures and budget
-  exhaustion are not.
+  `guardrail_error`, `rate_limited`, `secret_reload`, `denied`,
+  `budget_exceeded`, `budget_error`. Every denial is recorded except a `401`,
+  which carries no valid key and so has nothing to attribute it to.
+  `budget_error` is the fail-open: the request was *allowed* because the
+  reservation could not be evaluated, and the blind spot is on the record.
 - **RBAC** — role checks on the **admin plane**, `/admin/*` only. `/scim/v2/*`
   is gated separately by a static shared-secret bearer token, not a role;
   `/auth/oidc/*` is unauthenticated (the public login/callback flow). **Not**
