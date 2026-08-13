@@ -265,6 +265,12 @@ jobs:
             check "a viewer cannot mint keys" \
               "$(status -X POST "$GATEWAY_URL/admin/keys" -H "authorization: Bearer $viewer" \
                    -H 'content-type: application/json' -d '{"name":"nope","monthly_budget_usd":1}')" 403
+            # Refusing is half of it. The denial has to be answerable later.
+            if curl -sf "$GATEWAY_URL/admin/audit" -H "authorization: Bearer $ADMIN_KEY" | grep -q '"denied"'; then
+              echo "  ok: the denial is in the audit log"
+            else
+              echo "::error::a request was refused and no denied row was written"; fails=$((fails+1))
+            fi
           fi
 
           echo "== the guardrail refuses, and says so in the audit log"

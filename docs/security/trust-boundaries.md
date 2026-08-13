@@ -68,11 +68,14 @@ authenticate the proxy — that is the "trusted surface" model.
 
 Recorded rather than implied:
 
-- **The budget-reservation fail-open writes no audit row.** On a store error the
-  gateway admits the request (`internal/server/rbac.go`), unlike the guardrail
-  fail-open, which has a dedicated `guardrail_error` audit kind precisely so the
-  blind spot is recorded.
-- **RBAC denials are not audited.** There is no audit kind for a 403.
+- ~~The budget-reservation fail-open writes no audit row.~~ **Closed.** It now
+  records `budget_error`, matching the stance the guardrail screener has taken
+  since Phase 4: the request is still admitted, because a store fault must not
+  take traffic down, but the moment a budget could not be enforced is on the
+  record.
+- ~~RBAC denials are not audited.~~ **Closed.** A 403 now writes a `denied` row
+  naming the actor refused. Refusals are what an auditor asks to see, and they
+  were the only outcome the gateway did not write down.
 - **The sandbox NetworkPolicy depends on the CNI.** If yours does not enforce
   NetworkPolicy, the object renders and does nothing, while the manifest still
   claims the sandbox is egress-less.

@@ -81,6 +81,19 @@ const (
 	// KindSecretReload marks a forced secret-source reload via
 	// POST /admin/secrets/reload (Phase 7). Audited for the root actor.
 	KindSecretReload = "secret_reload"
+	// KindDenied marks a request refused by RBAC (403). Without it an
+	// authorization denial left no trace at all, on a platform whose stated
+	// contract is that nothing runs unauthorized OR unrecorded — the refusal is
+	// exactly the event an auditor asks about, and it was the one event with no
+	// row.
+	KindDenied = "denied"
+	// KindBudgetError marks a budget reservation that failed to evaluate: the
+	// request was ADMITTED (fail open, so a store blip does not take traffic
+	// down) but the blind spot is audited. The guardrail screener has taken
+	// exactly this stance since Phase 4 via KindGuardrailError; the budget path
+	// took the fail-open half without the audited half, and its own comment
+	// claimed otherwise.
+	KindBudgetError = "budget_error"
 )
 
 // Key is an authenticated virtual key.

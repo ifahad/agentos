@@ -57,6 +57,24 @@ func writeForbidden(w http.ResponseWriter, msg string) {
 	writeError(w, http.StatusForbidden, errForbidden, msg)
 }
 
+// denyOrgAction writes the 403 AND records it. A denial that leaves no trace is
+// the gap between "nothing runs unauthorized" and being able to show it: the
+// refusals are what an auditor asks to see, and they were the only outcome the
+// gateway did not write down.
+func (s *Server) denyOrgAction(w http.ResponseWriter, r *http.Request, c *caller, orgID, msg string) {
+	u := store.Usage{OrgID: orgID, Status: http.StatusForbidden, Kind: store.KindDenied}
+	if c.user != nil {
+		// Attribute to the user that was refused. KeyName carries the actor
+		// because a denial has no virtual key behind it.
+		u.KeyName = c.user.Email
+		if orgID == "" {
+			u.OrgID = c.user.OrgID
+		}
+	}
+	s.recordAudit(r, u)
+	writeForbidden(w, msg)
+}
+
 // The org budget check used to live here as orgBudgetExceeded, costing a second
 // Org lookup plus an OrgSpend aggregate on every proxied request — on top of the
 // Org lookup the rate limiter already does. It is gone: ReserveSpend now applies
@@ -86,6 +104,16 @@ func (s *Server) admitSpend(w http.ResponseWriter, r *http.Request, key *store.K
 		// Reservation is a guardrail, not the request's purpose. A store blip
 		// must not take traffic down, so admit and rely on the post-hoc spend
 		// record — the same fail-open stance the guardrail screener takes.
+		//
+		// And, like the guardrail, say so. The screener records its fail-open
+		// as KindGuardrailError precisely so the blind spot is on the record;
+		// this path claimed the same stance while writing nothing, which made
+		// the one moment a budget was NOT enforced the one moment nothing was
+		// written down.
+		s.recordAudit(r, store.Usage{
+			SecretHash: key.SecretHash, OrgID: key.OrgID, KeyName: key.Name,
+			Status: http.StatusOK, Kind: store.KindBudgetError,
+		})
 		return func() {}, true
 	}
 	return func() {
@@ -165,7 +193,7 @@ func (s *Server) handleCreateOrg(w http.ResponseWriter, r *http.Request, c *call
 // update_org capability). A nil field is left unchanged.
 func (s *Server) handleUpdateOrg(w http.ResponseWriter, r *http.Request, c *caller) {
 	orgID := r.PathValue("org_id")
-	if !s.authorizeOrgAction(w, c, orgID, rbac.ActUpdateOrg) {
+	if !s.authorizeOrgAction(w, r, c, orgID, rbac.ActUpdateOrg) {
 		return
 	}
 	var req struct {
@@ -240,16 +268,16 @@ func (s *Server) handleListOrgs(w http.ResponseWriter, r *http.Request, c *calle
 
 // authorizeOrgAction checks that the caller may act on orgID for the given
 // capability. It writes a 403 and returns false when denied.
-func (s *Server) authorizeOrgAction(w http.ResponseWriter, c *caller, orgID string, action rbac.Action) bool {
+func (s *Server) authorizeOrgAction(w http.ResponseWriter, r *http.Request, c *caller, orgID string, action rbac.Action) bool {
 	if c.root {
 		return true
 	}
 	if c.user.OrgID != orgID {
-		writeForbidden(w, "cannot act on another org")
+		s.denyOrgAction(w, r, c, orgID, "cannot act on another org")
 		return false
 	}
 	if !c.can(action) {
-		writeForbidden(w, "role lacks capability "+string(action))
+		s.denyOrgAction(w, r, c, orgID, "role lacks capability "+string(action))
 		return false
 	}
 	return true
@@ -257,7 +285,7 @@ func (s *Server) authorizeOrgAction(w http.ResponseWriter, c *caller, orgID stri
 
 func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, c *caller) {
 	orgID := r.PathValue("org_id")
-	if !s.authorizeOrgAction(w, c, orgID, rbac.ActCreateUser) {
+	if !s.authorizeOrgAction(w, r, c, orgID, rbac.ActCreateUser) {
 		return
 	}
 	var req struct {
@@ -300,7 +328,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, c *cal
 
 func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request, c *caller) {
 	orgID := r.PathValue("org_id")
-	if !s.authorizeOrgAction(w, c, orgID, rbac.ActListUsers) {
+	if !s.authorizeOrgAction(w, r, c, orgID, rbac.ActListUsers) {
 		return
 	}
 	users, err := s.store.Users(r.Context(), orgID)
@@ -317,7 +345,7 @@ func (s *Server) handleListUsers(w http.ResponseWriter, r *http.Request, c *call
 func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, c *caller) {
 	orgID := r.PathValue("org_id")
 	userID := r.PathValue("user_id")
-	if !s.authorizeOrgAction(w, c, orgID, rbac.ActDeleteUser) {
+	if !s.authorizeOrgAction(w, r, c, orgID, rbac.ActDeleteUser) {
 		return
 	}
 	// A non-root actor may only delete users within its management scope.
