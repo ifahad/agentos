@@ -28,7 +28,7 @@ func (s *Server) ReloadSecrets() (changed int, reloadable bool, err error) {
 // /admin/secrets/status array. It audits a store.KindSecretReload event.
 func (s *Server) handleSecretsReload(w http.ResponseWriter, r *http.Request, c *caller) {
 	if !c.root {
-		writeForbidden(w, "only the root admin key may reload secrets")
+		s.forbid(w, r, c, "only the root admin key may reload secrets")
 		return
 	}
 	if _, _, err := s.ReloadSecrets(); err != nil {

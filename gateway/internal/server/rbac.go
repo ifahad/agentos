@@ -57,21 +57,26 @@ func writeForbidden(w http.ResponseWriter, msg string) {
 	writeError(w, http.StatusForbidden, errForbidden, msg)
 }
 
-// denyOrgAction writes the 403 AND records it. A denial that leaves no trace is
-// the gap between "nothing runs unauthorized" and being able to show it: the
-// refusals are what an auditor asks to see, and they were the only outcome the
-// gateway did not write down.
-func (s *Server) denyOrgAction(w http.ResponseWriter, r *http.Request, c *caller, orgID, msg string) {
-	u := store.Usage{OrgID: orgID, Status: http.StatusForbidden, Kind: store.KindDenied}
-	if c.user != nil {
-		// Attribute to the user that was refused. KeyName carries the actor
-		// because a denial has no virtual key behind it.
+// forbid writes the 403 AND records it.
+//
+// The recording lives HERE, at the one point every denial passes through,
+// rather than at each call site. The first version audited only the two sites
+// its author had read; the live governance gate immediately caught a third —
+// POST /admin/keys — refusing a viewer while writing nothing. There are eight
+// such sites, and remembering them one at a time is not a strategy.
+//
+// A denial that leaves no trace is the gap between "nothing runs unauthorized"
+// and being able to show it: the refusals are what an auditor asks to see.
+func (s *Server) forbid(w http.ResponseWriter, r *http.Request, c *caller, msg string) {
+	u := store.Usage{Status: http.StatusForbidden, Kind: store.KindDenied}
+	if c != nil && c.user != nil {
+		// KeyName carries the actor: a denial has no virtual key behind it.
 		u.KeyName = c.user.Email
-		if orgID == "" {
-			u.OrgID = c.user.OrgID
-		}
+		u.OrgID = c.user.OrgID
 	}
 	s.recordAudit(r, u)
+	// The plain writer, deliberately: calling forbid here recurses forever, and
+	// a blanket rewrite of every writeForbidden call site did exactly that.
 	writeForbidden(w, msg)
 }
 
@@ -163,7 +168,7 @@ func (s *Server) scopeKeys(c *caller, keys []store.KeyInfo) []store.KeyInfo {
 
 func (s *Server) handleCreateOrg(w http.ResponseWriter, r *http.Request, c *caller) {
 	if !c.can(rbac.ActCreateOrg) {
-		writeForbidden(w, "only the root admin key may create orgs")
+		s.forbid(w, r, c, "only the root admin key may create orgs")
 		return
 	}
 	var req struct {
@@ -249,7 +254,7 @@ type orgWithSpend struct {
 
 func (s *Server) handleListOrgs(w http.ResponseWriter, r *http.Request, c *caller) {
 	if !c.can(rbac.ActListOrgs) {
-		writeForbidden(w, "only the root admin key may list orgs")
+		s.forbid(w, r, c, "only the root admin key may list orgs")
 		return
 	}
 	orgs, err := s.store.Orgs(r.Context())
@@ -281,11 +286,11 @@ func (s *Server) authorizeOrgAction(w http.ResponseWriter, r *http.Request, c *c
 		return true
 	}
 	if c.user.OrgID != orgID {
-		s.denyOrgAction(w, r, c, orgID, "cannot act on another org")
+		s.forbid(w, r, c, "cannot act on another org")
 		return false
 	}
 	if !c.can(action) {
-		s.denyOrgAction(w, r, c, orgID, "role lacks capability "+string(action))
+		s.forbid(w, r, c, "role lacks capability "+string(action))
 		return false
 	}
 	return true
@@ -314,7 +319,7 @@ func (s *Server) handleCreateUser(w http.ResponseWriter, r *http.Request, c *cal
 	}
 	// A non-root actor may not create a user above its own management scope.
 	if !c.root && !rbac.CanManageRole(c.user.Role, req.Role) {
-		writeForbidden(w, "role cannot create a user with role "+req.Role)
+		s.forbid(w, r, c, "role cannot create a user with role "+req.Role)
 		return
 	}
 	user, token, err := s.store.CreateUser(r.Context(), orgID, req.Email, req.Role)
@@ -375,7 +380,7 @@ func (s *Server) handleDeleteUser(w http.ResponseWriter, r *http.Request, c *cal
 			return
 		}
 		if !rbac.CanManageRole(c.user.Role, target.Role) {
-			writeForbidden(w, "role cannot delete a user with role "+target.Role)
+			s.forbid(w, r, c, "role cannot delete a user with role "+target.Role)
 			return
 		}
 	}
@@ -414,9 +419,9 @@ func (s *Server) secretsStatus() []secretStatus {
 	return out
 }
 
-func (s *Server) handleSecretsStatus(w http.ResponseWriter, _ *http.Request, c *caller) {
+func (s *Server) handleSecretsStatus(w http.ResponseWriter, r *http.Request, c *caller) {
 	if !c.root {
-		writeForbidden(w, "only the root admin key may view secrets status")
+		s.forbid(w, r, c, "only the root admin key may view secrets status")
 		return
 	}
 	writeJSON(w, http.StatusOK, s.secretsStatus())
@@ -425,9 +430,9 @@ func (s *Server) handleSecretsStatus(w http.ResponseWriter, _ *http.Request, c *
 // handleProviders reports the configured OpenAI-compatible providers. It reports
 // only whether each credential RESOLVES — never a key name's value — so the page
 // can never leak a secret. Root-admin only, like the secrets status endpoint.
-func (s *Server) handleProviders(w http.ResponseWriter, _ *http.Request, c *caller) {
+func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request, c *caller) {
 	if !c.root {
-		writeForbidden(w, "only the root admin key may view providers")
+		s.forbid(w, r, c, "only the root admin key may view providers")
 		return
 	}
 	type providerOut struct {

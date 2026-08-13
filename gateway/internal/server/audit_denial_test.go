@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/ifahad/agentos/gateway/internal/rbac"
@@ -154,5 +155,45 @@ func TestFundedKeyWritesNoBudgetExceededRow(t *testing.T) {
 	}
 	if kinds := auditKinds(t, mem); hasKind(kinds, store.KindBudgetExceeded) {
 		t.Errorf("a funded key recorded a budget refusal: %v", kinds)
+	}
+}
+
+// Every 403 must record, not just the ones someone remembered. The live
+// governance gate caught POST /admin/keys refusing a viewer silently after the
+// first fix, so this walks the denial paths rather than trusting the helper is
+// used everywhere.
+func TestEveryDenialPathIsAudited(t *testing.T) {
+	cases := []struct {
+		name, method, path, body string
+		role                     string
+	}{
+		{"create a key", http.MethodPost, "/admin/keys", `{"name":"x","monthly_budget_usd":1}`, rbac.RoleViewer},
+		{"create a user", http.MethodPost, "/admin/orgs/ORG/users", `{"email":"n@a.test","role":"member"}`, rbac.RoleViewer},
+		{"create an org", http.MethodPost, "/admin/orgs", `{"name":"nope"}`, rbac.RoleOwner},
+		{"list orgs", http.MethodGet, "/admin/orgs", "", rbac.RoleOwner},
+		{"secrets status", http.MethodGet, "/admin/secrets/status", "", rbac.RoleOwner},
+		{"providers", http.MethodGet, "/admin/providers", "", rbac.RoleOwner},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, mem, srv := newTestGateway(t)
+			ctx := context.Background()
+			org, err := mem.CreateOrg(ctx, "acme", 0)
+			if err != nil {
+				t.Fatalf("CreateOrg: %v", err)
+			}
+			_, token, err := mem.CreateUser(ctx, org.ID, "u@acme.test", tc.role)
+			if err != nil {
+				t.Fatalf("CreateUser: %v", err)
+			}
+			path := strings.ReplaceAll(tc.path, "ORG", org.ID)
+			resp, _ := doRawBytes(t, tc.method, srv.URL+path, token, tc.body)
+			if resp.StatusCode != http.StatusForbidden {
+				t.Fatalf("%s as %s = %d, want 403", tc.name, tc.role, resp.StatusCode)
+			}
+			if kinds := auditKinds(t, mem); !hasKind(kinds, store.KindDenied) {
+				t.Errorf("%s was refused and wrote no denied row; kinds: %v", tc.name, kinds)
+			}
+		})
 	}
 }

@@ -435,11 +435,11 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request, c *call
 		}
 	} else {
 		if !c.can(rbac.ActCreateKey) {
-			writeForbidden(w, "role lacks create_key capability")
+			s.forbid(w, r, c, "role lacks create_key capability")
 			return
 		}
 		if req.OrgID != "" && req.OrgID != c.user.OrgID {
-			writeForbidden(w, "cannot create keys outside your org")
+			s.forbid(w, r, c, "cannot create keys outside your org")
 			return
 		}
 		orgID, createdBy = c.user.OrgID, c.user.ID
@@ -460,7 +460,7 @@ func (s *Server) handleCreateKey(w http.ResponseWriter, r *http.Request, c *call
 
 func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request, c *caller) {
 	if !c.root && !c.can(rbac.ActListKeys) {
-		writeForbidden(w, "role lacks list_keys capability")
+		s.forbid(w, r, c, "role lacks list_keys capability")
 		return
 	}
 	keys, err := s.store.Keys(r.Context())
@@ -477,7 +477,7 @@ func (s *Server) handleListKeys(w http.ResponseWriter, r *http.Request, c *calle
 
 func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request, c *caller) {
 	if !c.root && !c.can(rbac.ActViewUsage) {
-		writeForbidden(w, "role lacks view_usage capability")
+		s.forbid(w, r, c, "role lacks view_usage capability")
 		return
 	}
 	// Scope by org in the store query (empty = root sees all); the isolation is
@@ -495,7 +495,7 @@ func (s *Server) handleUsage(w http.ResponseWriter, r *http.Request, c *caller) 
 
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request, c *caller) {
 	if !c.root && !c.can(rbac.ActViewAudit) {
-		writeForbidden(w, "role lacks view_audit capability")
+		s.forbid(w, r, c, "role lacks view_audit capability")
 		return
 	}
 	limit := auditDefaultLimit
